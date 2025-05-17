@@ -309,6 +309,26 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
         platform: Optional platform override if user_id is platform-specific
     """
     with log_context(logger, user_id=user_id, ad_id=ad_id, platform=platform):
+        # If platform is not specified, try to determine it
+        if not platform:
+            if isinstance(user_id, str):
+                if user_id.startswith("whatsapp:"):
+                    platform = "whatsapp"
+                elif len(user_id) > 20:  # Viber IDs are typically long UUIDs
+                    platform = "viber"
+                else:
+                    # Default to Telegram for shorter IDs
+                    platform = "telegram"
+            else:
+                # Default to Telegram for numeric IDs
+                platform = "telegram"
+                
+        logger.info(f"Processing ad with platform: {platform}", extra={
+            'user_id': user_id,
+            'ad_id': ad_id,
+            'platform': platform
+        })
+        
         async def send():
             logger.info(f"Sending ad with extra buttons", extra={
                 'user_id': user_id,
@@ -316,34 +336,48 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                 'platform': platform
             })
 
-            # Determine if this is a database user ID or platform-specific ID
+            # First, try to determine if we have a telegram ID
+            telegram_id = None
             db_user_id = None
+            
+            # Check if user_id is a database ID or telegram ID
             if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
-                # This is likely a database user ID
+                # First try treating it as a database user ID
                 db_user_id = int(user_id)
-            elif platform:
-                # We have a platform-specific ID and we know the platform
-                with db_session() as db:
-                    user = UserRepository.get_by_messenger_id(db, user_id, messenger_type=platform)
-                    db_user_id = user.id if user else None
-            else:
-                # Try to detect platform from ID format
-                if user_id.startswith("whatsapp:"):
-                    with db_session() as db:
-                        user = UserRepository.get_by_messenger_id(db, user_id, messenger_type="whatsapp")
-                        db_user_id = user.id if user else None
-                elif len(user_id) > 20:  # Viber IDs are typically long UUIDs
-                    with db_session() as db:
-                        user = UserRepository.get_by_messenger_id(db, user_id, messenger_type="viber")
-                        db_user_id = user.id if user else None
+                platform_ids = get_platform_ids_for_user(db_user_id)
+                if platform_ids.get('telegram_id'):
+                    telegram_id = platform_ids.get('telegram_id')
+                    logger.info(f"Resolved telegram_id from db_user_id", extra={
+                        'db_user_id': db_user_id,
+                        'telegram_id': telegram_id
+                    })
                 else:
-                    # Default to Telegram for shorter IDs
+                    # It might be a telegram ID directly
+                    telegram_id = user_id
+                    # Try to find the user by telegram ID
                     with db_session() as db:
-                        user = UserRepository.get_by_messenger_id(db, user_id, messenger_type="telegram")
-                        db_user_id = user.id if user else None
-
-            if not db_user_id:
-                logger.warning(f"No database user found", extra={'user_id': user_id})
+                        user = UserRepository.get_by_messenger_id(db, str(telegram_id), messenger_type="telegram")
+                        if user:
+                            db_user_id = user.id
+                            logger.info(f"Resolved db_user_id from telegram_id", extra={
+                                'db_user_id': db_user_id,
+                                'telegram_id': telegram_id
+                            })
+            else:
+                # This looks like a platform-specific ID
+                telegram_id = user_id
+                # Check explicitly with telegram ID
+                with db_session() as db:
+                    user = UserRepository.get_by_messenger_id(db, str(telegram_id), messenger_type="telegram")
+                    if user:
+                        db_user_id = user.id
+                        logger.info(f"Resolved db_user_id from telegram_id", extra={
+                            'db_user_id': db_user_id,
+                            'telegram_id': telegram_id
+                        })
+            
+            if not db_user_id and not telegram_id:
+                logger.error(f"Could not resolve any user ID", extra={'input_user_id': user_id})
                 return
 
             # Fetch images, phones for the ad using the repository
@@ -373,23 +407,98 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                 "total_floors": text.split("з ")[1].split("\n")[0] if "з " in text else ""
             }
 
-            # Use the unified messaging service to send the ad
-            success = await messaging_service.send_ad(
-                user_id=db_user_id,
-                ad_data=ad_data,
-                image_url=s3_image_url
-            )
+            # Try sending via messaging service if we have database ID
+            if db_user_id:
+                try:
+                    success = await messaging_service.send_ad(
+                        user_id=db_user_id,
+                        ad_data=ad_data,
+                        image_url=s3_image_url
+                    )
+                    
+                    if success:
+                        logger.info(f"Successfully sent ad via messaging service", extra={
+                            'ad_id': ad_id,
+                            'db_user_id': db_user_id
+                        })
+                        return
+                except Exception as e:
+                    logger.error(f"Error sending ad via messaging service", exc_info=True, extra={
+                        'ad_id': ad_id,
+                        'db_user_id': db_user_id,
+                        'error_type': type(e).__name__
+                    })
+            
+            # If we have telegram ID, try direct sending
+            if telegram_id:
+                try:
+                    from .telegram_messaging import TelegramMessaging
+                    from services.telegram_service.app.bot import bot
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+                    
+                    messenger = TelegramMessaging(bot)
+                    
+                    # Create buttons for the ad
+                    markup = InlineKeyboardMarkup(row_width=2)
+                    
+                    # Process images for gallery button
+                    gallery_url = None
+                    if "images" in ad_data and ad_data["images"]:
+                        images = ad_data["images"]
+                        if isinstance(images, list) and images:
+                            image_str = ",".join(images)
+                            gallery_url = f"https://f3cc-178-150-42-6.ngrok-free.app/gallery?images={image_str}"
 
-            if success:
-                logger.info(f"Successfully sent ad", extra={
-                    'ad_id': ad_id,
-                    'user_id': db_user_id
-                })
-            else:
-                logger.error(f"Failed to send ad", extra={
-                    'ad_id': ad_id,
-                    'user_id': db_user_id
-                })
+                    # Process phone numbers for call button
+                    phone_webapp_url = None
+                    if "phones" in ad_data and ad_data["phones"]:
+                        phones = ad_data["phones"]
+                        if isinstance(phones, list) and phones:
+                            phone_str = ",".join(phones)
+                            phone_webapp_url = f"https://f3cc-178-150-42-6.ngrok-free.app/phones?numbers={phone_str}"
+                        
+                    if gallery_url:
+                        markup.add(InlineKeyboardButton(
+                            text="🖼 Більше фото",
+                            web_app=WebAppInfo(url=gallery_url)
+                        ))
+
+                    if phone_webapp_url:
+                        markup.add(InlineKeyboardButton(
+                            text="📲 Подзвонити",
+                            web_app=WebAppInfo(url=phone_webapp_url)
+                        ))
+
+                    markup.add(
+                        InlineKeyboardButton("❤️ Додати в обрані", callback_data=f"add_fav:{ad_id}"),
+                        InlineKeyboardButton("ℹ️ Повний опис", callback_data=f"show_more:{resource_url}")
+                    )
+                    
+                    # Send text with first image
+                    await messenger.send_media(
+                        user_id=telegram_id,
+                        media_url=s3_image_url,
+                        caption=text,
+                        keyboard=markup,
+                        parse_mode="Markdown"
+                    )
+                    
+                    logger.info(f"Successfully sent ad directly", extra={
+                        'ad_id': ad_id,
+                        'telegram_id': telegram_id
+                    })
+                    return
+                except Exception as e:
+                    logger.error(f"Error sending ad directly", exc_info=True, extra={
+                        'ad_id': ad_id,
+                        'telegram_id': telegram_id,
+                        'error_type': type(e).__name__
+                    })
+            
+            logger.error(f"Failed to send ad through any method", extra={
+                'ad_id': ad_id,
+                'user_id': user_id
+            })
 
         # Run the async function
         try:

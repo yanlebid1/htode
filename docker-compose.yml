@@ -176,6 +176,7 @@ services:
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       SERVICE_NAME: "telegram"
       PYTHONPATH: "/app"  # Simplified PYTHONPATH
+      WEBAPP_URL: "${WEBAPP_URL}"
     command: python -m services.telegram_service.app.main  # Updated command path
 
   telegram_worker_service:
@@ -198,6 +199,7 @@ services:
       <<: *common-variables
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       PYTHONPATH: "/app"  # Simplified PYTHONPATH
+      WEBAPP_URL: "${WEBAPP_URL}"
     command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=2 --max-tasks-per-child=100
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@telegram_worker" ]
@@ -425,6 +427,14 @@ services:
         condition: service_healthy
     environment:
       <<: *combined-env
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
     command: celery -A app.celery_app worker --loglevel=info -Q notify_queue
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@notifier_service" ]

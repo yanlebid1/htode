@@ -32,6 +32,10 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 # TODO: I receive an error while passing token for bot creating. Nonetype is received for some reason. Check logs.
 
+# WebApp Configuration - Use internal Docker network if not provided
+WEBAPP_URL = "https://c3df-178-150-42-6.ngrok-free.app"
+# os.getenv("WEBAPP_URL", "https://8b74-178-150-42-6.ngrok-free.app")
+
 # Geo ID Mappings
 GEO_ID_MAPPING = {
     10012684: 'Львів',
