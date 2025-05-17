@@ -341,7 +341,8 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
                 })
                 celery_app.send_task(
                     "common.messaging.tasks.send_ad_with_extra_buttons",
-                    args=args_for_celery
+                    args=args_for_celery,
+                    kwargs={"platform": "telegram"}
                 )
         else:
             # We never found 3 ads even in last 30 days

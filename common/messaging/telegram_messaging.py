@@ -15,6 +15,7 @@ from common.utils.logging_config import log_operation, log_context
 
 # Import the logger from the parent module
 from . import logger
+from common.config import WEBAPP_URL
 
 
 class TelegramMessaging(MessagingInterface):
@@ -38,9 +39,10 @@ class TelegramMessaging(MessagingInterface):
     async def format_user_id(self, user_id: str) -> str:
         """Format user ID for Telegram - no special formatting needed."""
         formatted_id = str(user_id)  # Ensure it's a string
+        user_id_str = str(user_id)  # Convert to string before slicing
         logger.debug("Formatted user ID", extra={
             'platform': 'telegram',
-            'original_id': user_id[:10],
+            'original_id': user_id_str[:10],
             'formatted_id': formatted_id[:10]
         })
         return formatted_id
@@ -61,7 +63,8 @@ class TelegramMessaging(MessagingInterface):
             **kwargs
     ) -> Union[Any, None]:
         """Send a text message via Telegram."""
-        with log_context(logger, user_id=user_id[:10], text_length=len(text), has_keyboard=bool(reply_markup)):
+        user_id_str = str(user_id)  # Convert to string before slicing
+        with log_context(logger, user_id=user_id_str[:10], text_length=len(text), has_keyboard=bool(reply_markup)):
             try:
                 result = await self.bot.send_message(
                     chat_id=user_id,
@@ -72,21 +75,21 @@ class TelegramMessaging(MessagingInterface):
                     **kwargs
                 )
                 logger.info("Text message sent successfully", extra={
-                    'user_id': user_id[:10],
+                    'user_id': user_id_str[:10],
                     'message_id': result.message_id if result else None
                 })
                 return result
             except (BotBlocked, ChatNotFound, UserDeactivated) as e:
                 # These are permanent errors, no need to retry
                 logger.warning(f"Permanent error sending Telegram message", extra={
-                    'user_id': user_id[:10],
+                    'user_id': user_id_str[:10],
                     'error_type': type(e).__name__,
                     'error': str(e)
                 })
                 return None
             except TelegramAPIError as e:
                 logger.error(f"Telegram API error sending message", exc_info=True, extra={
-                    'user_id': user_id[:10],
+                    'user_id': user_id_str[:10],
                     'error_type': type(e).__name__
                 })
                 raise  # Let the retry decorator handle this
@@ -107,7 +110,8 @@ class TelegramMessaging(MessagingInterface):
             **kwargs
     ) -> Union[Any, None]:
         """Send a media message via Telegram."""
-        with log_context(logger, user_id=user_id[:10], media_url=media_url[:50], has_caption=bool(caption)):
+        user_id_str = str(user_id)  # Convert to string before slicing
+        with log_context(logger, user_id=user_id_str[:10], media_url=media_url[:50], has_caption=bool(caption)):
             try:
                 result = await self.bot.send_photo(
                     chat_id=user_id,
@@ -118,21 +122,21 @@ class TelegramMessaging(MessagingInterface):
                     **kwargs
                 )
                 logger.info("Media message sent successfully", extra={
-                    'user_id': user_id[:10],
+                    'user_id': user_id_str[:10],
                     'message_id': result.message_id if result else None
                 })
                 return result
             except (BotBlocked, ChatNotFound, UserDeactivated) as e:
                 # These are permanent errors, no need to retry
                 logger.warning(f"Permanent error sending Telegram media", extra={
-                    'user_id': user_id[:10],
+                    'user_id': user_id_str[:10],
                     'error_type': type(e).__name__,
                     'error': str(e)
                 })
                 return None
             except TelegramAPIError as e:
                 logger.error(f"Telegram API error sending media", exc_info=True, extra={
-                    'user_id': user_id[:10],
+                    'user_id': user_id_str[:10],
                     'error_type': type(e).__name__
                 })
                 raise  # Let the retry decorator handle this
@@ -147,7 +151,8 @@ class TelegramMessaging(MessagingInterface):
             **kwargs
     ) -> Union[Any, None]:
         """Send a menu with options via Telegram."""
-        with log_context(logger, user_id=user_id[:10], options_count=len(options)):
+        user_id_str = str(user_id)  # Convert to string before slicing
+        with log_context(logger, user_id=user_id_str[:10], options_count=len(options)):
             keyboard = self.create_keyboard(options, **kwargs)
             return await self.send_text(
                 user_id=user_id,
@@ -168,7 +173,8 @@ class TelegramMessaging(MessagingInterface):
         """Send a real estate ad via Telegram with appropriate formatting."""
         from common.config import build_ad_text
 
-        with log_context(logger, user_id=user_id[:10], ad_id=ad_data.get('id')):
+        user_id_str = str(user_id)  # Convert to string before slicing
+        with log_context(logger, user_id=user_id_str[:10], ad_id=ad_data.get('id')):
             # Build the ad text
             text = build_ad_text(ad_data)
 
@@ -182,7 +188,7 @@ class TelegramMessaging(MessagingInterface):
                 images = ad_data["images"]
                 if isinstance(images, list) and images:
                     image_str = ",".join(images)
-                    gallery_url = f"https://f3cc-178-150-42-6.ngrok-free.app/gallery?images={image_str}"
+                    gallery_url = f"{WEBAPP_URL}/gallery?images={image_str}"
 
             # Process phone numbers for call button
             phone_webapp_url = None
@@ -190,7 +196,7 @@ class TelegramMessaging(MessagingInterface):
                 phones = ad_data["phones"]
                 if isinstance(phones, list) and phones:
                     phone_str = ",".join(phones)
-                    phone_webapp_url = f"https://f3cc-178-150-42-6.ngrok-free.app/phones?numbers={phone_str}"
+                    phone_webapp_url = f"{WEBAPP_URL}/phones?numbers={phone_str}"
 
             # Create buttons
             markup = InlineKeyboardMarkup(row_width=2)
@@ -230,7 +236,7 @@ class TelegramMessaging(MessagingInterface):
                 )
 
             logger.info("Ad sent successfully", extra={
-                'user_id': user_id[:10],
+                'user_id': user_id_str[:10],
                 'ad_id': ad_id,
                 'has_image': bool(image_url)
             })
