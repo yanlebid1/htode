@@ -464,10 +464,10 @@ async def edit_parameters(callback_query: types.CallbackQuery, state: FSMContext
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.message_handler(lambda message: True, content_types=['text'], state=None)
+@dp.message_handler(lambda message: message.text != "❤️ Обрані", content_types=['text'], state=None)
 @log_operation("debug_all_messages")
 async def debug_all_messages(message: types.Message):
-    """Debug handler that logs all text messages when not in any state"""
+    """Debug handler that logs all text messages when not in any state, except favorites"""
     telegram_id = message.from_user.id
 
     with log_context(logger, telegram_id=telegram_id, message_text=message.text):
@@ -480,8 +480,6 @@ async def debug_all_messages(message: types.Message):
         # If the message is /start, try to respond directly
         if message.text == '/start':
             try:
-                await message.answer("Debug response: Bot received your /start command. Trying to respond.")
-                # Also try to invoke the regular handler programmatically
                 await start_command(message)
             except Exception as e:
                 logger.error("Error handling /start in debug handler", exc_info=True, extra={
@@ -493,7 +491,7 @@ async def debug_all_messages(message: types.Message):
             await show_main_menu(message)
         elif message.text == "📱 Додати номер телефону":
             from .phone_verification import start_phone_verification
-            await start_phone_verification(message, FSMContext)
+            await start_phone_verification(message)
 
 
 @dp.message_handler(commands=['menu'])
@@ -515,3 +513,11 @@ async def show_main_menu(message: types.Message):
             text="Головне меню:",
             reply_markup=main_menu_keyboard()
         )
+
+
+@dp.message_handler(lambda msg: msg.text == "❤️ Обрані", state=None)
+@log_operation("forward_to_favorites")
+async def forward_to_favorites(message: types.Message, state: FSMContext):
+    """Forward favorites button to the proper handler"""
+    from .favorites import show_favorites_carousel
+    await show_favorites_carousel(message, state)

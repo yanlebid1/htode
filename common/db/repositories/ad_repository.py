@@ -170,8 +170,8 @@ class AdRepository:
             # Cache miss, query database
             ad = db.query(Ad) \
                 .options(
-                joinedload(Ad.images).limit(20),  # Limit images to 20
-                joinedload(Ad.phones).limit(10)  # Limit phones to 10
+                joinedload(Ad.images),
+                joinedload(Ad.phones)
             ) \
                 .filter(Ad.id == ad_id) \
                 .first()
@@ -195,8 +195,8 @@ class AdRepository:
                 "insert_time": ad.insert_time.isoformat() if ad.insert_time else None,
                 "description": ad.description,
                 "resource_url": ad.resource_url,
-                "images": [img.image_url for img in ad.images],
-                "phones": [phone.phone for phone in ad.phones if phone.phone],
+                "images": [img.image_url for img in ad.images][:20],  # Limit to 20 images
+                "phones": [phone.phone for phone in ad.phones if phone.phone][:10],  # Limit to 10 phones
                 "viber_link": next((phone.viber_link for phone in ad.phones if phone.viber_link), None)
             }
 

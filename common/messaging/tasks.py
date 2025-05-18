@@ -474,6 +474,48 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                         InlineKeyboardButton("ℹ️ Повний опис", callback_data=f"show_more:{resource_url}")
                     )
                     
+                    # Add detailed logging for debugging the image URL
+                    logger.info(f"DEBUGGING: Attempting to send media with URL", extra={
+                        'user_id': user_id,
+                        'telegram_id': telegram_id,
+                        'ad_id': ad_id,
+                        'image_url': s3_image_url,
+                        'image_url_type': type(s3_image_url).__name__,
+                        'image_url_length': len(s3_image_url) if isinstance(s3_image_url, str) else None
+                    })
+
+                    # If the URL starts with http, log more details
+                    if isinstance(s3_image_url, str) and (s3_image_url.startswith('http://') or s3_image_url.startswith('https://')):
+                        try:
+                            # Log URL components
+                            from urllib.parse import urlparse
+                            parsed = urlparse(s3_image_url)
+                            logger.info(f"DEBUGGING: Image URL components", extra={
+                                'scheme': parsed.scheme,
+                                'netloc': parsed.netloc,
+                                'path': parsed.path,
+                                'query': parsed.query
+                            })
+                            
+                            # Try to get headers without downloading the full image
+                            import requests
+                            try:
+                                response = requests.head(s3_image_url, timeout=3)
+                                logger.info(f"DEBUGGING: Image URL HEAD response", extra={
+                                    'status_code': response.status_code,
+                                    'content_type': response.headers.get('Content-Type'),
+                                    'content_length': response.headers.get('Content-Length')
+                                })
+                            except Exception as e:
+                                logger.info(f"DEBUGGING: Failed to get HEAD response", extra={
+                                    'error': str(e),
+                                    'error_type': type(e).__name__
+                                })
+                        except Exception as e:
+                            logger.info(f"DEBUGGING: Error parsing URL", extra={
+                                'error': str(e)
+                            })
+
                     # Send text with first image
                     await messenger.send_media(
                         user_id=telegram_id,
