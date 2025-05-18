@@ -81,20 +81,47 @@ async def handle_sub_open(callback_query: types.CallbackQuery):
                 "telegram_id": telegram_id,
                 "sub_id": sub_id,
                 "db_user_id": db_user_id,
-                "is_paused": sub_dict['is_paused']
+                "is_paused": sub_dict['is_paused'],
+                "sub_data": sub_dict  # Log the full subscription data for debugging
             })
 
+            # Format the property type (apartment/house)
             mapping_property = {"apartment": "квартира", "house": "будинок"}
             ua_lang_property_type = mapping_property.get(sub_dict['property_type'], "")
-            city = GEO_ID_MAPPING.get(sub_dict['city'])
+
+            # Handle city display - use a default if not found in mapping
+            city_code = sub_dict['city']
+            city_name = GEO_ID_MAPPING.get(city_code, "Невідомо")
+            if city_name is None:  # Explicitly check for None value
+                city_name = f"Невідомо ({city_code})" if city_code else "Невідомо"
+
+            # Format rooms display
+            rooms_display = "Не вказано"
+            if sub_dict['rooms_count']:
+                if isinstance(sub_dict['rooms_count'], list):
+                    rooms_list = [str(room) for room in sub_dict['rooms_count'] if room is not None]
+                    if rooms_list:
+                        rooms_display = ", ".join(rooms_list) + " кімн."
+                else:
+                    rooms_display = f"{sub_dict['rooms_count']} кімн."
+
+            # Format price display
+            price_min = sub_dict['price_min'] or "Не вказано"
+            price_max = sub_dict['price_max'] or "∞"
+            price_display = f"{price_min} - {price_max} грн."
+
+            # Status display
             active = '✅ Активна' if not sub_dict['is_paused'] else '⏸️ Зупинена'
 
-            # Build text
-            text = f"Підписка #{sub_id}\n" \
-                   f"🏷 Тип нерухомості: {ua_lang_property_type}\n" \
-                   f"🏙️ Місто: {city}\n" \
-                   f"💰 Ціна: {sub_dict['price_min']} - {sub_dict['price_max']} грн.\n" \
-                   f"{active}"
+            # Build text with all information
+            text = (
+                f"Підписка #{sub_id}\n"
+                f"🏷 Тип нерухомості: {ua_lang_property_type}\n"
+                f"🏙️ Місто: {city_name}\n"
+                f"🛏️ Кімнати: {rooms_display}\n"
+                f"💰 Ціна: {price_display}\n"
+                f"{active}"
+            )
 
             # Build an inline keyboard with Pause/Resume, Delete, Edit, Back
             kb = InlineKeyboardMarkup()
@@ -372,14 +399,15 @@ async def handle_subs_page(callback_query: types.CallbackQuery):
         await callback_query.answer()
 
 
-@dp.message_handler(lambda msg: msg.text == "📝 Мої підписки")
+@dp.message_handler(lambda msg: msg.text and msg.text.strip() == "📝 Мої підписки")
 @log_operation("show_subscriptions_menu")
 async def show_subscriptions_menu(message: types.Message):
     telegram_id = message.from_user.id
 
     with log_context(logger, telegram_id=telegram_id):
         logger.info("User requested subscriptions menu", extra={
-            "telegram_id": telegram_id
+            "telegram_id": telegram_id,
+            "message_text": message.text
         })
 
         with db_session() as db:
@@ -807,3 +835,4 @@ async def handle_my_subscription(message: types.Message):
             text,
             reply_markup=subscription_menu_keyboard()
         )
+

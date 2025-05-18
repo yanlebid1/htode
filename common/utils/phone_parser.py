@@ -2,6 +2,7 @@
 
 import os
 import re
+import time
 import urllib.parse
 import random
 import asyncio
@@ -11,6 +12,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Page, Browser
+from camoufox import CamouFox  # Import Camoufox
 
 from common.utils.unified_request_utils import make_request
 from common.utils.logging_config import log_operation, log_context, LogAggregator
@@ -277,6 +279,166 @@ async def olx_js_fetch_phone_via_proxies(browser: Browser, resource_url: str, sk
     return None
 
 
+@log_operation("parse_olx_with_camoufox")
+async def parse_olx_with_camoufox(resource_url: str) -> ExtractionResult:
+    """
+    Extract phone number from OLX using Camoufox library by:
+    1. Navigate to the OLX ad page
+    2. Click on the phone contact button using XPath //button[@data-testid="ad-contact-phone"]
+    3. Extract phone from href attribute using XPath //div[@data-testid="ad-action-box"]//a[@data-testid="contact-phone"]/@href
+    4. Process by removing "tel:" prefix
+    """
+    with log_context(logger, resource_url=resource_url):
+        logger.info(f"Using Camoufox to extract OLX phone number: {resource_url}")
+
+        # Define browser configurations
+        os_choices = ['windows', 'macos', 'linux']
+        selected_os = random.choice(os_choices)
+
+        # Select a proxy if available
+        proxy_config = None
+        if BRIGHTDATA_PROXIES:
+            proxy_url = random.choice(BRIGHTDATA_PROXIES)
+            proxy_config = parse_proxy(proxy_url)
+            logger.info(f"Using proxy: {proxy_url[:20]}...")
+
+        try:
+            # Initialize Camoufox with advanced anti-detection features
+            async with CamouFox(
+                # Browser fingerprinting
+                os=selected_os,
+                screen={"width": random.randint(1024, 1920), "height": random.randint(768, 1080)},
+
+                # Proxy settings if available
+                proxy=proxy_config,
+
+                # Humanization and anti-detection
+                humanize=True,
+                block_webrtc=True,
+                headless=True,
+
+                # Timeout settings
+                timeout=REQUEST_TIMEOUT * 1000  # Convert seconds to milliseconds
+            ) as fox:
+                # Configure page settings
+                page = await fox.new_page()
+                await page.set_default_timeout(20000)  # 20 seconds timeout
+
+                # Set additional headers to mimic real browser
+                await page.set_extra_http_headers({
+                    "Cache-Control": "max-age=0",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1"
+                })
+
+                # Navigate to the OLX ad page
+                logger.info(f"Navigating to OLX ad page: {resource_url}")
+                response = await page.goto(resource_url)
+
+                # Wait for the page to load completely
+                await page.wait_for_load_state('networkidle')
+
+                # Check response status
+                status = response.status
+                if status != 200:
+                    logger.warning(f"OLX page returned status code: {status}")
+                    if status >= 400:
+                        return ExtractionResult([], None)
+
+                # Check if the phone contact button exists
+                logger.info("Checking for phone contact button")
+                contact_button_exists = await fox.exists('//button[@data-testid="ad-contact-phone"]')
+                if not contact_button_exists:
+                    logger.warning("Phone contact button not found on the page")
+                    return ExtractionResult([], None)
+
+                # Click on the phone contact button
+                logger.info("Clicking on phone contact button")
+                await fox.click('//button[@data-testid="ad-contact-phone"]')
+
+                # Wait for the phone number to appear with timeout
+                try:
+                    logger.info("Waiting for phone element to appear")
+                    await fox.wait_for_selector('//div[@data-testid="ad-action-box"]//a[@data-testid="contact-phone"]', timeout=5000)
+                except Exception as wait_error:
+                    logger.warning(f"Timeout waiting for phone element: {wait_error}")
+                    return ExtractionResult([], None)
+
+                # Extract phone number from the href attribute
+                phone_href = await fox.get_attribute('//div[@data-testid="ad-action-box"]//a[@data-testid="contact-phone"]', 'href')
+
+                if not phone_href:
+                    logger.warning("Phone href attribute not found after clicking button")
+                    return ExtractionResult([], None)
+
+                logger.info(f"Found phone href: {phone_href}")
+
+                # Process the phone number by removing "tel:" prefix
+                if phone_href.startswith('tel:'):
+                    phone_number = phone_href[4:]  # Remove "tel:" prefix
+                    # Clean up the phone number (remove any non-digit characters)
+                    phone_number = re.sub(r'\D', '', phone_number)
+                    logger.info(f"Extracted phone number: {phone_number}")
+                    return ExtractionResult([phone_number], None)
+                else:
+                    logger.warning(f"Unexpected phone href format: {phone_href}")
+                    return ExtractionResult([], None)
+
+        except Exception as e:
+            logger.exception(f"Error extracting OLX phone with Camoufox: {e}", extra={
+                'error_type': type(e).__name__,
+                'resource_url': resource_url
+            })
+            return ExtractionResult([], None)
+
+
+@log_operation("extract_phone_numbers_for_olx")
+async def extract_phone_numbers_for_olx(resource_url: str) -> ExtractionResult:
+    """
+    Special handling for OLX URLs to extract phone numbers using Camoufox.
+    If Camoufox method fails, falls back to the original method.
+    """
+    with log_context(logger, resource_url=resource_url):
+        # First try with the new Camoufox method
+        logger.info("Attempting to extract OLX phone with Camoufox")
+        try:
+            result = await parse_olx_with_camoufox(resource_url)
+            if result.phone_numbers:
+                logger.info("Successfully extracted phone number with Camoufox", extra={
+                    'phone': result.phone_numbers[0]
+                })
+                return result
+        except Exception as e:
+            logger.warning(f"Camoufox extraction failed: {e}", extra={
+                'error_type': type(e).__name__
+            })
+
+        # If Camoufox failed, try with the old method
+        logger.info("Falling back to original OLX phone extraction method")
+        browser = await create_optimized_browser()
+        try:
+            # Create context and page
+            ctx = await browser.new_context(java_script_enabled=True)
+            page = await ctx.new_page()
+
+            # Load the page
+            await page.goto(resource_url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
+            html = await page.content()
+
+            # Use the original method
+            result = await parse_olx_playwright(html, page, browser, resource_url)
+            await ctx.close()
+            return result
+        except Exception as e:
+            logger.exception(f"Failed to extract OLX phone with fallback method: {e}")
+            return ExtractionResult([], None)
+        finally:
+            await browser.close()
+
+
 async def parse_olx_playwright(html: str, page: Page, browser: Browser, resource_url: str) -> ExtractionResult:
     """
     1) parse HTML => find SKU
@@ -323,7 +485,7 @@ async def _domain_parse_final(html: str, original_url: str, page: Page, browser:
     logger.info(f"Canonical for {original_url}: {canonical_url}")
 
     if "olx.ua" in canonical_url:
-        return await parse_olx_playwright(html, page, browser, original_url)
+        return await extract_phone_numbers_for_olx(original_url)
     elif "real-estate.lviv.ua" in canonical_url:
         return _parse_real_estate_lviv(canonical_url)
     elif "rieltor.ua" in canonical_url:
@@ -572,3 +734,4 @@ if __name__ == "__main__":
     for u in test_urls:
         result = extract_phone_numbers_from_resource(u)
         print(f"\nURL: {u}\nPhones: {result.phone_numbers}\nViber: {result.viber_link}")
+

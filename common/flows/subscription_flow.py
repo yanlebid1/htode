@@ -647,10 +647,15 @@ async def save_subscription(context: FlowContext):
         # Convert city name to geo_id if needed
         geo_id = get_key_by_value(city, GEO_ID_MAPPING) if city else None
 
+        logger.info("Converting city to geo_id", extra={
+            'city': city,
+            'geo_id': geo_id
+        })
+
         # Prepare filters for database
         filters = {
             'property_type': property_type,
-            'city': city,
+            'city': geo_id,  # Use geo_id instead of the original city name
             'rooms': rooms,
             'price_min': price_min,
             'price_max': price_max,

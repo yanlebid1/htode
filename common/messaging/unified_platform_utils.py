@@ -94,7 +94,12 @@ def resolve_user_id(user_id: Union[int, str], platform: Optional[str] = None) ->
             elif platform_ids.get("whatsapp_id"):
                 result = (db_user_id, "whatsapp", platform_ids["whatsapp_id"])
             else:
-                result = (db_user_id, None, None)
+                # Default to telegram if no platform information is found
+                # This prevents the "No messenger implementation registered for platform" error
+                logger.warning("No platform information found for user, defaulting to telegram", extra={
+                    'db_user_id': db_user_id
+                })
+                result = (db_user_id, "telegram", str(db_user_id))  # Use DB ID as telegram_id as fallback
 
             logger.info("Resolved database user ID", extra={
                 'db_user_id': db_user_id,
@@ -673,3 +678,4 @@ async def delete_message_safe_telegram(
                 'error_type': type(e).__name__
             })
             return False
+
