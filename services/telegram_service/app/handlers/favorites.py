@@ -224,59 +224,6 @@ async def handle_rm_fav_from_ad(callback_query: types.CallbackQuery):
             await callback_query.answer("Помилка при видаленні з обраних.", show_alert=True)
 
 
-@dp.message_handler(lambda msg: msg.text == "Мої обрані")
-@log_operation("show_favorites_list")
-async def show_favorites(message: types.Message):
-    telegram_id = message.from_user.id
-
-    with log_context(logger, telegram_id=telegram_id):
-        with db_session() as db:
-            # Get database user ID
-            db_user = UserRepository.get_by_messenger_id(db, str(telegram_id), "telegram")
-            if not db_user:
-                logger.warning("User not found for favorites view", extra={
-                    "telegram_id": telegram_id
-                })
-                await message.answer("Користувач не знайдений.")
-                return
-
-            db_user_id = db_user.id
-
-            # Try to get favorites from the cache first
-            cached_favorites = FavoriteCacheManager.get_user_favorites(db_user_id)
-
-            if cached_favorites:
-                favs = cached_favorites
-                logger.info("Favorites retrieved from cache", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "favorites_count": len(favs)
-                })
-            else:
-                # Not in cache, get from a repository
-                favs = FavoriteRepository.list_favorites(db, db_user_id)
-                # Cache is updated in the repository
-                logger.info("Favorites retrieved from database", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "favorites_count": len(favs)
-                })
-
-        if not favs:
-            logger.info("No favorites found", extra={
-                "telegram_id": telegram_id,
-                "db_user_id": db_user_id
-            })
-            await message.answer("Немає обраних оголошень.")
-            return
-
-        for f in favs:
-            text = build_ad_text(f)  # reuse your function
-            buttons = InlineKeyboardMarkup()
-            buttons.add(InlineKeyboardButton("Видалити з обраних", callback_data=f"rm_fav:{f['ad_id']}"))
-            await message.answer(text, reply_markup=buttons)
-
-
 @dp.callback_query_handler(lambda c: c.data.startswith("rm_fav:"))
 @log_operation("remove_favorite")
 async def handle_remove_fav(callback_query: types.CallbackQuery):
@@ -406,50 +353,72 @@ async def show_favorites_carousel(message: types.Message, state: FSMContext):
 @log_operation("show_favorite_at_index")
 async def show_favorite_at_index(chat_id, favorites, index):
     """Helper function to show a favorite ad at a specific index"""
-    with log_context(logger, chat_id=chat_id, index=index, total_favorites=len(favorites)):
+    # Make sure we're working with integers for telegram_id
+    telegram_id = int(chat_id) if isinstance(chat_id, str) and chat_id.isdigit() else chat_id
+    
+    with log_context(logger, chat_id=telegram_id, index=index, total_favorites=len(favorites)):
         if not favorites or index < 0 or index >= len(favorites):
             logger.warning("Invalid index for favorite display", extra={
-                "chat_id": chat_id,
+                "chat_id": telegram_id,
                 "index": index,
                 "total_favorites": len(favorites) if favorites else 0
             })
-            await safe_send_message(chat_id=chat_id, text="Помилка: Оголошення не знайдено.")
+            await safe_send_message(chat_id=telegram_id, text="Помилка: Оголошення не знайдено.")
             return
 
         ad = favorites[index]
         ad_id = ad.get('ad_id')
 
         logger.info("Showing favorite at index", extra={
-            "chat_id": chat_id,
+            "chat_id": telegram_id,
             "index": index,
-            "ad_id": ad_id
+            "ad_id": ad_id,
+            "telegram_id": telegram_id,
+            "total_favorites": len(favorites)
         })
 
-        # Get all necessary data for the ad using a repository pattern
-        with db_session() as db:
+        try:
             # Try to get from the cache first
             full_ad = AdCacheManager.get_full_ad_data(ad_id)
 
             if not full_ad:
-                # Not in cache, get from a repository
-                full_ad = AdRepository.get_full_ad_data(db, ad_id)
-                # AdRepository handles caching
+                # Not in cache, get from operations (which already handles db_session)
+                from common.db.operations import get_full_ad_data
+                full_ad = get_full_ad_data(ad_id)
+                
+                if not full_ad:
+                    # Fallback to repository with fixed joinedload
+                    with db_session() as db:
+                        full_ad = AdRepository.get_full_ad_data(db, ad_id)
+                
                 logger.info("Full ad data retrieved from database", extra={
-                    "chat_id": chat_id,
-                    "ad_id": ad_id
+                    "chat_id": telegram_id,
+                    "ad_id": ad_id,
+                    "telegram_id": telegram_id,
+                    "index": index,
+                    "total_favorites": len(favorites)
                 })
             else:
                 logger.info("Full ad data retrieved from cache", extra={
-                    "chat_id": chat_id,
-                    "ad_id": ad_id
+                    "chat_id": telegram_id,
+                    "ad_id": ad_id,
+                    "telegram_id": telegram_id,
+                    "index": index,
+                    "total_favorites": len(favorites)
                 })
+        except Exception as e:
+            logger.error(f"Error retrieving full ad data: {str(e)}", exc_info=True, extra={
+                "chat_id": telegram_id, 
+                "ad_id": ad_id
+            })
+            full_ad = None
 
         if not full_ad:
             logger.error("Full ad data not found", extra={
-                "chat_id": chat_id,
+                "chat_id": telegram_id,
                 "ad_id": ad_id
             })
-            await safe_send_message(chat_id=chat_id, text="Помилка: Оголошення не знайдено в базі даних.")
+            await safe_send_message(chat_id=telegram_id, text="Помилка: Оголошення не знайдено в базі даних.")
             return
 
         # Get image for the ad
@@ -485,9 +454,13 @@ async def show_favorite_at_index(chat_id, favorites, index):
             gallery_url = "https://f3cc-178-150-42-6.ngrok-free.app/gallery?images="
 
         # Get phone numbers
-        with db_session() as db:
-            phones = AdRepository.get_ad_phones(db, ad_id)
-            phone_list = [phone["phone"] for phone in phones if phone["phone"]]
+        try:
+            with db_session() as db:
+                phones = AdRepository.get_ad_phones(db, ad_id)
+                phone_list = [phone["phone"] for phone in phones if phone["phone"]]
+        except Exception as e:
+            logger.error(f"Error getting ad phones: {str(e)}", exc_info=True)
+            phone_list = []
 
         if phone_list:
             phone_str = ",".join(phone_list)
@@ -512,21 +485,35 @@ async def show_favorite_at_index(chat_id, favorites, index):
         )
 
         # Send the message with a photo
-        if s3_image_url:
-            await safe_send_photo(
-                chat_id=chat_id,
-                photo=s3_image_url,
-                caption=text,
-                parse_mode='Markdown',
-                reply_markup=kb
-            )
-        else:
-            await safe_send_message(
-                chat_id=chat_id,
-                text=text,
-                parse_mode='Markdown',
-                reply_markup=kb
-            )
+        try:
+            if s3_image_url:
+                await safe_send_photo(
+                    chat_id=telegram_id,
+                    photo=s3_image_url,
+                    caption=text,
+                    parse_mode='Markdown',
+                    reply_markup=kb
+                )
+            else:
+                await safe_send_message(
+                    chat_id=telegram_id,
+                    text=text,
+                    parse_mode='Markdown',
+                    reply_markup=kb
+                )
+        except Exception as e:
+            logger.error(f"Error sending favorite message: {str(e)}", exc_info=True, extra={
+                "chat_id": telegram_id,
+                "ad_id": ad_id
+            })
+            # Try sending just text without formatting if photo fails
+            try:
+                await safe_send_message(
+                    chat_id=telegram_id,
+                    text=f"Оголошення {ad_id}. Помилка при відображенні повної інформації."
+                )
+            except:
+                pass
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith("fav_next:"))

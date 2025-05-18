@@ -4,7 +4,7 @@ from common.utils.logging_config import setup_logging
 from common.utils.log_management import setup_file_logging
 
 # Initialize repository logger
-logger = setup_logging('db_repositories', log_level='INFO', log_format='text')
+logger = setup_logging('db_repositories', log_level='WARNING', log_format='text')
 
 # Add file logging if we're in production
 if os.getenv('ENVIRONMENT', 'development') == 'production':
