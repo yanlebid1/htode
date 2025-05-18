@@ -279,7 +279,7 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
                 "error": str(e)
             })
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="Помилка при збереженні фільтрів. Спробуйте ще раз."
             )
             await safe_answer_callback_query(callback_query.id)
@@ -287,7 +287,7 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
 
         # 1) Let user know subscription is set
         await safe_send_message(
-            user_id=user_db_id,
+            chat_id=telegram_id,
             text="Ви успішно підписалися на пошук оголошень!"
         )
 
@@ -312,7 +312,7 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
             # We found >=3 ads in last days_limit
             message_ending = 'день' if days_limit == 1 else 'днів'
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text=f"Ось вам актуальні оголошення за останні {days_limit} {message_ending}:"
             )
 
@@ -351,7 +351,7 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
                 "filters": filters
             })
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="Ваші параметри фільтру настільки унікальні, що майже немає оголошень навіть за останній місяць.\n"
                      "Спробуйте розширити параметри пошуку або зачекайте. Ми сповістимо, щойно з'являться нові оголошення."
             )
@@ -371,7 +371,7 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
         )
 
         await safe_send_message(
-            user_id=user_db_id,
+            chat_id=telegram_id,
             text="Ми будемо надсилати вам нові оголошення, щойно вони з'являтимуться!",
             reply_markup=main_menu_keyboard()
         )
@@ -572,3 +572,4 @@ async def add_subscription(message: types.Message):
             text="Оберіть параметр для редагування:",
             reply_markup=edit_parameters_keyboard()
         )
+

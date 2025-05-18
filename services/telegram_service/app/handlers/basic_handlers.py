@@ -44,7 +44,7 @@ async def start_command(message: types.Message, state: FSMContext):
 
         # Use safe_send_message instead of message.answer
         await safe_send_message(
-            user_id=user_db_id,
+            chat_id=telegram_id,
             text="Привіт!👋 Я бот з пошуку оголошень.\n"
                  "Зі мною легко і швидко знайти квартиру, будинок або кімнату для оренди.\n"
                  "У тебе зараз активний безкоштовний період 7 днів.\n"
@@ -87,7 +87,7 @@ async def process_property_type(callback_query: types.CallbackQuery, state: FSMC
 
         # Use safe_send_message
         await safe_send_message(
-            user_id=user_db_id,
+            chat_id=telegram_id,
             text="🏙️ Оберіть місто:",
             reply_markup=city_keyboard(AVAILABLE_CITIES)
         )
@@ -119,7 +119,7 @@ async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
             })
             # Use safe_send_message
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="Будь ласка, оберіть місто зі списку."
             )
             return
@@ -131,7 +131,7 @@ async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
         })
 
         await safe_send_message(
-            user_id=user_db_id,
+            chat_id=telegram_id,
             text="🛏️ Виберіть кількість кімнат (можна обрати декілька):",
             reply_markup=rooms_keyboard()
         )
@@ -164,7 +164,7 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
                 })
 
                 await safe_send_message(
-                    user_id=user_db_id,
+                    chat_id=telegram_id,
                     text="Ви не обрали кількість кімнат."
                 )
                 return
@@ -174,7 +174,7 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
                 "selected_rooms": selected_rooms
             })
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="💰 Виберіть діапазон цін (грн):",
                 reply_markup=price_keyboard(city=city)
             )
@@ -187,7 +187,7 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
                 "telegram_id": telegram_id
             })
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="💰 Виберіть діапазон цін (грн):",
                 reply_markup=price_keyboard(city=city)
             )
@@ -229,7 +229,7 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
                     "error": str(e)
                 })
                 await safe_send_message(
-                    user_id=user_db_id,
+                    chat_id=telegram_id,
                     text="Виникла помилка при виборі кількості кімнат."
                 )
                 await safe_answer_callback_query(callback_query.id)
@@ -239,7 +239,7 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
                 "callback_data": data
             })
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="Невідома команда."
             )
             await safe_answer_callback_query(callback_query.id)
@@ -277,7 +277,7 @@ async def process_price(callback_query: types.CallbackQuery, state: FSMContext):
         })
 
         await safe_send_message(
-            user_id=user_db_id,
+            chat_id=telegram_id,
             text=f"Ви обрали діапазон: {text_range}"
         )
 
@@ -317,14 +317,14 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
 
         if edit_field == "property_type":
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="🏷 Оберіть тип нерухомості:",
                 reply_markup=property_type_keyboard()
             )
             await FilterStates.waiting_for_property_type.set()
         elif edit_field == "city":
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="🏙️ Оберіть місто:",
                 reply_markup=city_keyboard(AVAILABLE_CITIES)
             )
@@ -333,14 +333,14 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
             user_data = await state.get_data()
             selected_rooms = user_data.get('rooms', [])
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="🛏️ Виберіть кількість кімнат (можна вибрати декілька):",
                 reply_markup=rooms_keyboard(selected_rooms)
             )
             await FilterStates.waiting_for_rooms.set()
         elif edit_field == "price":
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="💰 Виберіть діапазон цін (грн):",
                 reply_markup=price_keyboard(city=city)
             )
@@ -348,14 +348,14 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
         elif edit_field == "floor":
             # call your function to handle floor editing
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="🏢 Налаштуйте поверх:",
                 reply_markup=floor_keyboard()
             )
             # optionally change state, etc.
         elif edit_field == "cancel_edit":
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="Редагування скасовано.",
                 reply_markup=confirmation_keyboard()
             )
@@ -366,7 +366,7 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
                 "edit_field": edit_field
             })
             await safe_send_message(
-                user_id=user_db_id,
+                chat_id=telegram_id,
                 text="Невідомий параметр редагування."
             )
 
@@ -430,13 +430,25 @@ async def process_basic_params(callback_query: types.CallbackQuery, state: FSMCo
         summary_escaped = escape_md(summary).replace('\\', '')
 
         await safe_send_message(
-            user_id=user_db_id,
+            chat_id=telegram_id,
             text=summary_escaped,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=confirmation_keyboard()
         )
         await FilterStates.waiting_for_confirmation.set()
         await safe_answer_callback_query(callback_query.id)
+
+
+@dp.message_handler(lambda msg: msg.text == "📝 Мої підписки", state=None)
+@log_operation("forward_to_subscriptions")
+async def forward_to_subscriptions(message: types.Message, state: FSMContext):
+    """Forward subscriptions button to the proper handler"""
+    from .subscription import show_subscriptions_menu
+    logger.info("Forwarding to subscriptions menu", extra={
+        "telegram_id": message.from_user.id,
+        "message_text": message.text
+    })
+    await show_subscriptions_menu(message)
 
 
 @dp.callback_query_handler(Text(startswith="edit_parameters"), state=FilterStates.waiting_for_confirmation)
@@ -457,7 +469,7 @@ async def edit_parameters(callback_query: types.CallbackQuery, state: FSMContext
         })
 
         await safe_send_message(
-            user_id=user_db_id,
+            chat_id=telegram_id,
             text="Оберіть параметр для редагування:",
             reply_markup=edit_parameters_keyboard()
         )
@@ -521,3 +533,4 @@ async def forward_to_favorites(message: types.Message, state: FSMContext):
     """Forward favorites button to the proper handler"""
     from .favorites import show_favorites_carousel
     await show_favorites_carousel(message, state)
+

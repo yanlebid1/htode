@@ -95,18 +95,32 @@ def make_subscriptions_page_kb(user_id, page, subscriptions, total_count, per_pa
     # 1) Add each subscription as a separate button:
     for sub in subscriptions:
         sub_id = sub["id"]
-        city = GEO_ID_MAPPING.get(sub['city'])
+        city = GEO_ID_MAPPING.get(sub['city'], "Невідомо")
         mapping_property = {"apartment": "квартира", "house": "будинок"}
         ua_lang_property_type = mapping_property.get(sub['property_type'], "")
-        rooms_list = sub["rooms_count"]
+
+        # Handle rooms_list being None
+        rooms_list = sub["rooms_count"] or []
+        if not isinstance(rooms_list, list):
+            rooms_list = [rooms_list]  # Convert single value to list
+
         rooms = []
         for el in rooms_list:
-            rooms += str(el)
-        rooms = '-'.join(rooms)
-        price_min = sub["price_min"] / 1000 if sub["price_min"] else 0
-        price_max = sub["price_max"] / 1000 if sub["price_max"] else 0
-        paused_str = "(Призупинена)" if sub["is_paused"] else ""
-        button_text = f"м.{city}, {ua_lang_property_type}, {rooms} к., {price_min}-{price_max} тис.грн.,{paused_str}"
+            if el is not None:  # Check for None values in the list
+                rooms.append(str(el))
+
+        rooms_text = '-'.join(rooms) if rooms else "Будь-яка"
+
+        # Handle price values safely
+        price_min = sub.get("price_min", 0)
+        price_max = sub.get("price_max", 0)
+        if price_min:
+            price_min = price_min / 1000
+        if price_max:
+            price_max = price_max / 1000
+
+        paused_str = " (Призупинена)" if sub.get("is_paused") else ""
+        button_text = f"м.{city}, {ua_lang_property_type}, {rooms_text} к., {price_min}-{price_max} тис.грн.{paused_str}"
         kb.add(InlineKeyboardButton(button_text, callback_data=f"sub_open:{sub_id}:{page}"))
 
     # 2) Build the navigation row (Prev / Next) if needed
@@ -182,3 +196,4 @@ def verification_success_keyboard():
         InlineKeyboardButton("Повернутися до головного меню", callback_data="return_to_main_menu")
     )
     return keyboard
+

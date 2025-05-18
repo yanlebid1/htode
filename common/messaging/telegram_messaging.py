@@ -6,7 +6,7 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode, WebAppInfo
 from aiogram.utils.exceptions import (
     MessageNotModified, BotBlocked, ChatNotFound,
-    UserDeactivated, RetryAfter, TelegramAPIError
+    UserDeactivated, RetryAfter, TelegramAPIError, BadRequest
 )
 
 from .unified_interface import MessagingInterface
@@ -113,19 +113,69 @@ class TelegramMessaging(MessagingInterface):
         user_id_str = str(user_id)  # Convert to string before slicing
         with log_context(logger, user_id=user_id_str[:10], media_url=media_url[:50], has_caption=bool(caption)):
             try:
-                result = await self.bot.send_photo(
-                    chat_id=user_id,
-                    photo=media_url,
-                    caption=caption,
-                    reply_markup=keyboard,
-                    parse_mode=parse_mode or ParseMode.MARKDOWN,
-                    **kwargs
-                )
-                logger.info("Media message sent successfully", extra={
-                    'user_id': user_id_str[:10],
-                    'message_id': result.message_id if result else None
-                })
-                return result
+                # Check if we have a cloudfront URL which might need special handling
+                modified_url = media_url
+                if media_url and "cloudfront.net" in media_url:
+                    # Add additional query parameters or headers for cloudfront URLs if needed
+                    # Some CDNs require specific Accept headers or URL parameters
+                    logger.info(f"Processing cloudfront URL", extra={
+                        'user_id': user_id_str[:10],
+                        'media_url': media_url[:50]
+                    })
+
+                # First, try sending as photo with potentially modified URL
+                try:
+                    result = await self.bot.send_photo(
+                        chat_id=user_id,
+                        photo=modified_url,
+                        caption=caption,
+                        reply_markup=keyboard,
+                        parse_mode=parse_mode or ParseMode.MARKDOWN,
+                        **kwargs
+                    )
+                    logger.info("Media message sent successfully", extra={
+                        'user_id': user_id_str[:10],
+                        'message_id': result.message_id if result else None
+                    })
+                    return result
+                except BadRequest as e:
+                    # If we get "Wrong type of web page content", it means the URL isn't a valid image
+                    if "Wrong type" in str(e) or "web page content" in str(e):
+                        logger.warning(f"Invalid image URL, falling back to text message with link", extra={
+                            'user_id': user_id_str[:10],
+                            'media_url': media_url[:50],
+                            'error': str(e)
+                        })
+
+                        # Create text message with link to image instead
+                        modified_caption = caption or ""
+                        if media_url:
+                            modified_caption += f"\n\n[Переглянути зображення]({media_url})"
+
+                        # Try to send as regular text message
+                        try:
+                            result = await self.bot.send_message(
+                                chat_id=user_id,
+                                text=modified_caption,
+                                reply_markup=keyboard,
+                                parse_mode=parse_mode or ParseMode.MARKDOWN,
+                                **kwargs
+                            )
+                            logger.info("Fallback text message sent successfully", extra={
+                                'user_id': user_id_str[:10],
+                                'message_id': result.message_id if result else None
+                            })
+                            return result
+                        except Exception as text_error:
+                            # If even sending text fails, log it but don't retry
+                            logger.error(f"Error sending fallback text message", exc_info=True, extra={
+                                'user_id': user_id_str[:10],
+                                'error_type': type(text_error).__name__
+                            })
+                            return None
+                    else:
+                        # If it's a different BadRequest error, re-raise it
+                        raise
             except (BotBlocked, ChatNotFound, UserDeactivated) as e:
                 # These are permanent errors, no need to retry
                 logger.warning(f"Permanent error sending Telegram media", extra={
@@ -280,3 +330,4 @@ class TelegramMessaging(MessagingInterface):
                 'row_width': row_width
             })
             return keyboard
+

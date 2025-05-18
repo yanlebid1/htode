@@ -299,6 +299,8 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
     Consolidated task to send an ad with platform-specific buttons.
     Can be called directly with a platform-specific ID or database user ID.
 
+    If a database ID is provided, it will send the ad to ALL platforms the user is registered on.
+
     Args:
         user_id: User's platform-specific ID or database user ID
         text: Ad description text
@@ -330,55 +332,46 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
         })
         
         async def send():
+            # Make the platform variable from the outer scope accessible
+            nonlocal platform
+
             logger.info(f"Sending ad with extra buttons", extra={
                 'user_id': user_id,
                 'ad_id': ad_id,
                 'platform': platform
             })
 
-            # First, try to determine if we have a telegram ID
-            telegram_id = None
+            # First, determine the database user ID
             db_user_id = None
             
-            # Check if user_id is a database ID or telegram ID
+            # Check if user_id is a database ID or platform-specific ID
             if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
-                # First try treating it as a database user ID
+                # Treat it as a potential database user ID first
                 db_user_id = int(user_id)
-                platform_ids = get_platform_ids_for_user(db_user_id)
-                if platform_ids.get('telegram_id'):
-                    telegram_id = platform_ids.get('telegram_id')
-                    logger.info(f"Resolved telegram_id from db_user_id", extra={
-                        'db_user_id': db_user_id,
-                        'telegram_id': telegram_id
-                    })
-                else:
-                    # It might be a telegram ID directly
-                    telegram_id = user_id
-                    # Try to find the user by telegram ID
-                    with db_session() as db:
-                        user = UserRepository.get_by_messenger_id(db, str(telegram_id), messenger_type="telegram")
-                        if user:
-                            db_user_id = user.id
-                            logger.info(f"Resolved db_user_id from telegram_id", extra={
-                                'db_user_id': db_user_id,
-                                'telegram_id': telegram_id
-                            })
-            else:
-                # This looks like a platform-specific ID
-                telegram_id = user_id
-                # Check explicitly with telegram ID
+
+                # Verify if this db_user_id actually exists
                 with db_session() as db:
-                    user = UserRepository.get_by_messenger_id(db, str(telegram_id), messenger_type="telegram")
-                    if user:
-                        db_user_id = user.id
-                        logger.info(f"Resolved db_user_id from telegram_id", extra={
-                            'db_user_id': db_user_id,
-                            'telegram_id': telegram_id
-                        })
-            
-            if not db_user_id and not telegram_id:
-                logger.error(f"Could not resolve any user ID", extra={'input_user_id': user_id})
-                return
+                    user = db.query(User).get(db_user_id)
+                    if not user:
+                        # Doesn't exist as db_user_id, might be a platform ID
+                        db_user_id = None
+
+                if not db_user_id:
+                    # Try to find the user by platform ID
+                    db_user_id = get_db_user_id_by_telegram_id(user_id, messenger_type=platform)
+                    logger.info(f"Resolved db_user_id from platform ID", extra={
+                        'db_user_id': db_user_id,
+                        'platform_id': user_id,
+                        'platform': platform
+                    })
+            else:
+                # This is definitely a platform-specific ID
+                db_user_id = get_db_user_id_by_telegram_id(user_id, messenger_type=platform)
+                logger.info(f"Resolved db_user_id from platform ID", extra={
+                    'db_user_id': db_user_id,
+                    'platform_id': user_id,
+                    'platform': platform
+                })
 
             # Fetch images, phones for the ad using the repository
             with db_session() as db:
@@ -407,30 +400,146 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                 "total_floors": text.split("з ")[1].split("\n")[0] if "з " in text else ""
             }
 
-            # Try sending via messaging service if we have database ID
+            # Track if we successfully sent the message to any platform
+            success = False
+
+            # If we have a database user ID, try to send to all the user's platforms
             if db_user_id:
-                try:
-                    success = await messaging_service.send_ad(
-                        user_id=db_user_id,
-                        ad_data=ad_data,
-                        image_url=s3_image_url
-                    )
-                    
-                    if success:
-                        logger.info(f"Successfully sent ad via messaging service", extra={
-                            'ad_id': ad_id,
-                            'db_user_id': db_user_id
-                        })
-                        return
-                except Exception as e:
-                    logger.error(f"Error sending ad via messaging service", exc_info=True, extra={
-                        'ad_id': ad_id,
-                        'db_user_id': db_user_id,
-                        'error_type': type(e).__name__
-                    })
-            
-            # If we have telegram ID, try direct sending
-            if telegram_id:
+                # Get all platform IDs for this user
+                platform_ids = get_platform_ids_for_user(db_user_id)
+                logger.info(f"Retrieved platform IDs for user", extra={
+                    'db_user_id': db_user_id,
+                    'platforms': list(platform_ids.keys()) if platform_ids else []
+                })
+
+                if platform_ids:
+                    # Send to each platform the user is registered on
+                    for platform_name, platform_id_key in [
+                        ("telegram", "telegram_id"),
+                        ("viber", "viber_id"),
+                        ("whatsapp", "whatsapp_id")
+                    ]:
+                        if platform_ids.get(platform_id_key):
+                            platform_id = platform_ids[platform_id_key]
+
+                            logger.info(f"Attempting to send ad to platform", extra={
+                                'db_user_id': db_user_id,
+                                'platform': platform_name,
+                                'platform_id': platform_id
+                            })
+
+                            # Get the messenger for this platform
+                            try:
+                                if platform_name == "telegram":
+                                    from .telegram_messaging import TelegramMessaging
+                                    from services.telegram_service.app.bot import bot
+                                    messenger = TelegramMessaging(bot)
+                                elif platform_name == "viber":
+                                    from .viber_messaging import ViberMessaging
+                                    from services.viber_service.app.bot import viber
+                                    messenger = ViberMessaging(viber)
+                                elif platform_name == "whatsapp":
+                                    from .whatsapp_messaging import WhatsAppMessaging
+                                    from services.whatsapp_service.app.bot import client
+                                    messenger = WhatsAppMessaging(client)
+                                else:
+                                    logger.warning(f"Unknown platform", extra={'platform': platform_name})
+                                    continue
+
+                                # Send the ad using platform-specific formatting and buttons
+                                if platform_name == "telegram":
+                                    # Create Telegram-specific buttons
+                                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+
+                                    markup = InlineKeyboardMarkup(row_width=2)
+
+                                    # Process images for gallery button
+                                    gallery_url = None
+                                    if image_urls:
+                                        image_str = ",".join(image_urls)
+                                        gallery_url = f"https://f3cc-178-150-42-6.ngrok-free.app/gallery?images={image_str}"
+
+                                    # Process phone numbers for call button
+                                    phone_webapp_url = None
+                                    if phone_list:
+                                        phone_str = ",".join(phone_list)
+                                        phone_webapp_url = f"https://f3cc-178-150-42-6.ngrok-free.app/phones?numbers={phone_str}"
+
+                                    if gallery_url:
+                                        markup.add(InlineKeyboardButton(
+                                            text="🖼 Більше фото",
+                                            web_app=WebAppInfo(url=gallery_url)
+                                        ))
+
+                                    if phone_webapp_url:
+                                        markup.add(InlineKeyboardButton(
+                                            text="📲 Подзвонити",
+                                            web_app=WebAppInfo(url=phone_webapp_url)
+                                        ))
+
+                                    markup.add(
+                                        InlineKeyboardButton("❤️ Додати в обрані", callback_data=f"add_fav:{ad_id}"),
+                                        InlineKeyboardButton("ℹ️ Повний опис", callback_data=f"show_more:{resource_url}")
+                                    )
+
+                                    # Send media message with buttons
+                                    await messenger.send_media(
+                                        user_id=platform_id,
+                                        media_url=s3_image_url,
+                                        caption=text,
+                                        keyboard=markup,
+                                        parse_mode="Markdown"
+                                    )
+                                else:
+                                    # For other platforms, use a simpler approach
+                                    caption_with_link = f"{text}\n\n🔗 {resource_url}"
+                                    await messenger.send_media(
+                                        user_id=platform_id,
+                                        media_url=s3_image_url,
+                                        caption=caption_with_link
+                                    )
+
+                                logger.info(f"Media message sent successfully to platform", extra={
+                                    'platform': platform_name,
+                                    'platform_id': platform_id,
+                                    'ad_id': ad_id
+                                })
+
+                                success = True
+
+                            except Exception as e:
+                                logger.error(f"Error sending ad to platform", exc_info=True, extra={
+                                    'platform': platform_name,
+                                    'platform_id': platform_id,
+                                    'error_type': type(e).__name__,
+                                    'error_message': str(e)
+                                })
+
+                                if platform_name == "telegram":
+                                    # For Telegram, try sending as a fallback text message
+                                    try:
+                                        fallback_text = f"{text}\n\n🔗 {resource_url}"
+                                        await messenger.send_text(
+                                            user_id=platform_id,
+                                            text=fallback_text,
+                                            parse_mode="Markdown"
+                                        )
+                                        logger.info(f"Fallback text message sent successfully", extra={
+                                            'platform': platform_name,
+                                            'platform_id': platform_id
+                                        })
+                                        success = True
+                                    except Exception as text_err:
+                                        logger.error(f"Failed to send fallback text", exc_info=True, extra={
+                                            'error_type': type(text_err).__name__
+                                        })
+                else:
+                    logger.warning(f"No platform IDs found for user", extra={'db_user_id': db_user_id})
+
+            # If we failed to resolve user or couldn't send to any platform, try direct approach
+            if not success and platform == "telegram":
+                # Use the direct telegram ID approach as a last resort
+                telegram_id = user_id
                 try:
                     from .telegram_messaging import TelegramMessaging
                     from services.telegram_service.app.bot import bot
@@ -443,20 +552,16 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                     
                     # Process images for gallery button
                     gallery_url = None
-                    if "images" in ad_data and ad_data["images"]:
-                        images = ad_data["images"]
-                        if isinstance(images, list) and images:
-                            image_str = ",".join(images)
-                            gallery_url = f"https://f3cc-178-150-42-6.ngrok-free.app/gallery?images={image_str}"
+                    if image_urls:
+                        image_str = ",".join(image_urls)
+                        gallery_url = f"https://f3cc-178-150-42-6.ngrok-free.app/gallery?images={image_str}"
 
                     # Process phone numbers for call button
                     phone_webapp_url = None
-                    if "phones" in ad_data and ad_data["phones"]:
-                        phones = ad_data["phones"]
-                        if isinstance(phones, list) and phones:
-                            phone_str = ",".join(phones)
-                            phone_webapp_url = f"https://f3cc-178-150-42-6.ngrok-free.app/phones?numbers={phone_str}"
-                        
+                    if phone_list:
+                        phone_str = ",".join(phone_list)
+                        phone_webapp_url = f"https://f3cc-178-150-42-6.ngrok-free.app/phones?numbers={phone_str}"
+
                     if gallery_url:
                         markup.add(InlineKeyboardButton(
                             text="🖼 Більше фото",
@@ -516,6 +621,12 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                                 'error': str(e)
                             })
 
+                    # Check for cloudfront URLs and handle special cases
+                    if isinstance(s3_image_url, str) and 'cloudfront.net' in s3_image_url:
+                        logger.info(f"Processing cloudfront URL", extra={
+                            'image_url': s3_image_url
+                        })
+
                     # Send text with first image
                     await messenger.send_media(
                         user_id=telegram_id,
@@ -525,702 +636,93 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                         parse_mode="Markdown"
                     )
                     
+                    logger.info(f"Media message sent successfully", extra={
+                        'ad_id': ad_id,
+                        'telegram_id': telegram_id
+                    })
                     logger.info(f"Successfully sent ad directly", extra={
                         'ad_id': ad_id,
                         'telegram_id': telegram_id
                     })
-                    return
+                    success = True
                 except Exception as e:
                     logger.error(f"Error sending ad directly", exc_info=True, extra={
                         'ad_id': ad_id,
                         'telegram_id': telegram_id,
-                        'error_type': type(e).__name__
-                    })
-            
-            logger.error(f"Failed to send ad through any method", extra={
-                'ad_id': ad_id,
-                'user_id': user_id
-            })
-
-        # Run the async function
-        try:
-            return asyncio.run(send())
-        except RuntimeError as e:
-            # Handle case where there's already an event loop
-            logger.warning(f"RuntimeError in send_ad_with_extra_buttons", extra={
-                'error_type': type(e).__name__
-            })
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(send())
-            finally:
-                loop.close()
-
-
-@celery_app.task(name='common.messaging.tasks.send_subscription_notification')
-@log_operation("send_subscription_notification")
-def send_subscription_notification(user_id, notification_type, data):
-    """
-    Consolidated task to send subscription-related notifications across platforms.
-
-    Args:
-        user_id: Database user ID
-        notification_type: Type of notification (payment_success, expiration_reminder, etc.)
-        data: Dictionary with notification data
-    """
-    with log_context(logger, user_id=user_id, notification_type=notification_type):
-        async def send():
-            try:
-                # Prepare message content
-                if notification_type == "payment_success":
-                    message_text = (
-                        f"✅ Оплату успішно отримано!\n\n"
-                        f"🧾 Замовлення: {data['order_id']}\n"
-                        f"💰 Сума: {data['amount']} грн.\n"
-                        f"📅 Ваша підписка дійсна до: {data['subscription_until']}\n\n"
-                        f"Дякуємо за підтримку нашого сервісу! 🙏"
-                    )
-                elif notification_type == "expiration_reminder":
-                    message_text = (
-                        f"⚠️ Нагадування про підписку\n\n"
-                        f"Ваша підписка закінчується через {data['days_left']} "
-                        f"{'день' if data['days_left'] == 1 else 'дні' if data['days_left'] < 5 else 'днів'}.\n"
-                        f"Дата закінчення: {data['subscription_until']}\n\n"
-                        f"Щоб продовжити користуватися сервісом, оновіть підписку."
-                    )
-                elif notification_type == "expiration_today":
-                    message_text = (
-                        f"⚠️ Ваша підписка закінчується сьогодні!\n\n"
-                        f"Час закінчення: {data['subscription_until']}\n\n"
-                        f"Щоб не втратити доступ до сервісу, оновіть підписку зараз."
-                    )
-                else:
-                    message_text = "Системне повідомлення."
-
-                # Send notification using the unified messaging service
-                success = await messaging_service.send_notification(
-                    user_id=user_id,
-                    text=message_text
-                )
-
-                if not success:
-                    logger.error(f"Failed to send notification", extra={
-                        'user_id': user_id,
-                        'notification_type': notification_type
+                        'error_type': type(e).__name__,
+                        'error_message': str(e)
                     })
 
-                logger.info("Subscription notification sent", extra={
-                    'user_id': user_id,
-                    'notification_type': notification_type,
-                    'success': success
-                })
-                return success
-
-            except Exception as e:
-                logger.error(f"Error in send_subscription_notification", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
-                return False
-
-        # Run the async function
-        try:
-            asyncio.run(send())
-        except RuntimeError as e:
-            logger.warning(f"RuntimeError in send_subscription_notification", extra={
-                'error_type': type(e).__name__
-            })
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(send())
-            finally:
-                loop.close()
-
-
-@celery_app.task(name='common.messaging.tasks.check_expiring_subscriptions')
-@log_operation("check_expiring_subscriptions")
-def check_expiring_subscriptions():
-    """
-    Check for expiring subscriptions and send reminders.
-    Replaces duplicate implementations across platform-specific modules.
-    """
-    with log_context(logger):
-        aggregator = LogAggregator(logger, "check_expiring_subscriptions")
-
-        try:
-            reminders_sent = 0
-
-            # Check for subscriptions expiring in 3, 2, and 1 days
-            for days in [3, 2, 1]:
-                # Find users whose subscription expires in exactly `days` days
-                with db_session() as db:
-                    users = UserRepository.get_users_with_expiring_subscription(db, days)
-
-                for user in users:
-                    user_id = user.id
-                    end_date = user.subscription_until.strftime("%d.%m.%Y")
-
-                    # Determine the template based on days remaining
-                    if days == 1:
-                        template = (
-                            "⚠️ Ваша підписка закінчується завтра!\n\n"
-                            "Дата закінчення: {end_date}\n\n"
-                            "Щоб не втратити доступ до сервісу, оновіть підписку зараз."
-                        )
-                    else:
-                        # Determine plural form
-                        days_word = "день" if days == 1 else "дні" if days < 5 else "днів"
-                        template = (
-                            "⚠️ Нагадування про підписку\n\n"
-                            "Ваша підписка закінчується через {days} "
-                            "{days_word}.\n"
-                            "Дата закінчення: {end_date}\n\n"
-                            "Щоб продовжити користуватися сервісом, оновіть підписку."
-                        )
-
-                    # Send notification using the consolidated task
-                    send_notification.delay(
-                        user_id=user_id,
-                        template=template,
-                        data={
-                            "days": days,
-                            "days_word": days_word,
-                            "end_date": end_date
-                        }
-                    )
-                    reminders_sent += 1
-                    aggregator.add_item({'user_id': user_id, 'days': days}, success=True)
-
-            # Also notify on the day of expiration
-            with db_session() as db:
-                from datetime import date
-                users_today = db.query(User).filter(
-                    User.subscription_until.isnot(None),
-                    func.date(User.subscription_until) == date.today()
-                ).all()
-
-            for user in users_today:
-                user_id = user.id
-                end_date = user.subscription_until.strftime("%d.%m.%Y %H:%M")
-
-                # Send notification
-                send_notification.delay(
-                    user_id=user_id,
-                    template=(
-                        "⚠️ Ваша підписка закінчується сьогодні!\n\n"
-                        "Час закінчення: {end_date}\n\n"
-                        "Щоб не втратити доступ до сервісу, оновіть підписку зараз."
-                    ),
-                    data={"end_date": end_date}
-                )
-                reminders_sent += 1
-                aggregator.add_item({'user_id': user_id, 'days': 0}, success=True)
-
-            aggregator.log_summary()
-
-            logger.info("Subscription reminders check completed", extra={
-                'reminders_sent': reminders_sent
-            })
-            return {"status": "success", "reminders_sent": reminders_sent}
-        except Exception as e:
-            logger.error(f"Error checking expiring subscriptions", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
-            return {"status": "error", "error": str(e)}
-
-
-@celery_app.task(name='common.messaging.tasks.send_batch_notifications')
-@log_operation("send_batch_notifications")
-def send_batch_notifications(user_ids: List[int], template: str, data: Dict[str, Any] = None,
-                             batch_size: int = 50, **kwargs):
-    """
-    Send notifications to a batch of users.
-
-    Args:
-        user_ids: List of database user IDs
-        template: Template name or direct text
-        data: Data to format the template with
-        batch_size: How many users to process in each batch
-        **kwargs: Additional options for the messages
-    """
-    with log_context(logger, total_users=len(user_ids), batch_size=batch_size):
-        aggregator = LogAggregator(logger, "send_batch_notifications")
-
-        results = {
-            "total": len(user_ids),
-            "success": 0,
-            "failed": 0
-        }
-
-        # Process in batches to avoid overwhelming the system
-        for i in range(0, len(user_ids), batch_size):
-            batch = user_ids[i:i + batch_size]
-
-            for user_id in batch:
-                try:
-                    send_notification.delay(
-                        user_id=user_id,
-                        template=template,
-                        data=data,
-                        **kwargs
-                    )
-                    results["success"] += 1
-                    aggregator.add_item({'user_id': user_id}, success=True)
-                except Exception as e:
-                    logger.error(f"Error sending notification", exc_info=True, extra={
-                        'user_id': user_id,
-                        'error_type': type(e).__name__
-                    })
-                    results["failed"] += 1
-                    aggregator.add_error(str(e), {'user_id': user_id})
-
-        aggregator.log_summary()
-
-        logger.info("Batch notifications completed", extra={
-            'total': results['total'],
-            'success': results['success'],
-            'failed': results['failed']
-        })
-        return results
-
-
-@celery_app.task(name='common.messaging.tasks.get_description_and_notify')
-@log_operation("get_description_and_notify")
-def get_description_and_notify(user_id: Union[int, str], resource_url: str, platform: str = None):
-    """
-    Get the full description of an ad and send it to the user.
-
-    Args:
-        user_id: User ID (database ID or platform-specific ID)
-        resource_url: URL of the ad to get description for
-        platform: Optional platform identifier
-    """
-    with log_context(logger, user_id=user_id, resource_url=resource_url, platform=platform):
-        async def process():
-            try:
-                # Get the full description using repository
-                with db_session() as db:
-                    # First get the ad by resource URL
-                    from common.db.repositories.ad_repository import AdRepository
-                    ad = AdRepository.get_by_resource_url(db, resource_url)
-                    description = ad.description if ad else None
-
-                if not description:
-                    logger.warning(f"No description found", extra={'resource_url': resource_url})
-                    from common.messaging.unified_platform_utils import safe_send_message
-                    await safe_send_message(
-                        user_id=user_id,
-                        text="Немає додаткового опису.",
-                        platform=platform
-                    )
-                    return False
-
-                # Send the description
-                from common.messaging.unified_platform_utils import safe_send_message
-                success = await safe_send_message(
-                    user_id=user_id,
-                    text=description,
-                    platform=platform
-                )
-
-                logger.info("Description sent", extra={
-                    'user_id': user_id,
-                    'resource_url': resource_url,
-                    'success': success
-                })
-                return success
-            except Exception as e:
-                logger.error(f"Error getting and sending description", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
-                return False
-
-        # Run the async function
-        try:
-            return asyncio.run(process())
-        except RuntimeError as e:
-            # Handle case where there's already an event loop
-            logger.warning(f"RuntimeError in get_description_and_notify", extra={
-                'error_type': type(e).__name__
-            })
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(process())
-            finally:
-                loop.close()
-
-
-@celery_app.task(name='common.messaging.tasks.process_new_listings')
-@log_operation("process_new_listings")
-def process_new_listings(ad_ids: List[int], max_notifications_per_user: int = 5):
-    """
-    Process new listings and send notifications to matching users.
-
-    Args:
-        ad_ids: List of new ad IDs
-        max_notifications_per_user: Maximum notifications to send to each user
-    """
-    with log_context(logger, ad_count=len(ad_ids), max_notifications=max_notifications_per_user):
-        aggregator = LogAggregator(logger, "process_new_listings")
-
-        try:
-            # Find matching users for all ads
-            matching_users = {}
-
-            with db_session() as db:
-                for ad_id in ad_ids:
-                    ad = db.query(Ad).get(ad_id)
-                    if ad:
-                        # Use the repository to find users for this ad
-                        from common.db.repositories.ad_repository import AdRepository
-                        matching_users[ad_id] = AdRepository.find_users_for_ad(db, ad)
-
-            # Track notifications sent to each user to avoid spamming
-            notifications_sent = {}
-            sent_count = 0
-
-            # Process each ad
-            for ad_id in ad_ids:
-                user_ids = matching_users.get(ad_id, [])
-
-                for user_id in user_ids:
-                    # Check if user has reached maximum notifications
-                    if notifications_sent.get(user_id, 0) >= max_notifications_per_user:
-                        continue
-
-                    # Send notification
-                    from common.messaging.consolidated_tasks import send_property_notification
-                    send_property_notification.delay(user_id=user_id, ad_id=ad_id)
-
-                    # Increment counter
-                    notifications_sent[user_id] = notifications_sent.get(user_id, 0) + 1
-                    sent_count += 1
-                    aggregator.add_item({'ad_id': ad_id, 'user_id': user_id}, success=True)
-
-            aggregator.log_summary()
-
-            logger.info("New listings processed", extra={
-                'ads_processed': len(ad_ids),
-                'notifications_sent': sent_count,
-                'users_notified': len(notifications_sent)
-            })
-            return {
-                "status": "success",
-                "ads_processed": len(ad_ids),
-                "notifications_sent": sent_count,
-                "users_notified": len(notifications_sent)
-            }
-        except Exception as e:
-            logger.error(f"Error processing new listings", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
-            return {"status": "error", "error": str(e)}
-
-
-@celery_app.task(name='common.messaging.tasks.process_show_more_description')
-@log_operation("process_show_more_description")
-def process_show_more_description(user_id: Union[int, str], resource_url: str, message_id=None, platform=None):
-    """
-    Consolidated task to handle "show more" functionality across platforms.
-
-    Args:
-        user_id: User's platform-specific ID or database user ID
-        resource_url: URL of the ad to get description for
-        message_id: Optional message ID (for platforms that support editing)
-        platform: Optional platform identifier
-    """
-    with log_context(logger, user_id=user_id, resource_url=resource_url, platform=platform):
-        async def process():
-            try:
-                # Get the full description
-                full_description = get_full_ad_description(resource_url)
-                if not full_description:
-                    logger.warning(f"No description found", extra={'resource_url': resource_url})
-                    from common.messaging.unified_platform_utils import safe_send_message
-                    await safe_send_message(
-                        user_id=user_id,
-                        text="Немає додаткового опису.",
-                        platform=platform
-                    )
-                    return False
-
-                # Use the platform_utils to resolve user ID and platform info
-                from common.messaging.unified_platform_utils import resolve_user_id, get_messenger_instance
-
-                # Get database user ID, platform and platform-specific ID
-                db_user_id, platform_name, platform_id = resolve_user_id(user_id, platform)
-
-                # If we have a database user ID, try to use the unified messaging service
-                if db_user_id:
+                    # Try sending as text only as a last resort
                     try:
-                        success = await messaging_service.send_notification(
-                            user_id=db_user_id,
-                            text=full_description
+                        from .telegram_messaging import TelegramMessaging
+                        from services.telegram_service.app.bot import bot
+                        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+                        messenger = TelegramMessaging(bot)
+
+                        # Create buttons for the ad
+                        markup = InlineKeyboardMarkup(row_width=2)
+                        markup.add(
+                            InlineKeyboardButton("❤️ Додати в обрані", callback_data=f"add_fav:{ad_id}"),
+                            InlineKeyboardButton("ℹ️ Повний опис", callback_data=f"show_more:{resource_url}")
                         )
-                        if success:
-                            logger.info("Description sent via messaging service", extra={
-                                'user_id': db_user_id,
-                                'resource_url': resource_url
-                            })
-                            return True
-                    except Exception as e:
-                        logger.warning(f"Error using messaging service", exc_info=True, extra={
-                            'db_user_id': db_user_id,
-                            'error_type': type(e).__name__
+
+                        fallback_text = f"{text}\n\n🔗 {resource_url}"
+                        await messenger.send_text(
+                            user_id=telegram_id,
+                            text=fallback_text,
+                            keyboard=markup,
+                            parse_mode="Markdown"
+                        )
+
+                        logger.info(f"Fallback text message sent successfully", extra={
+                            'ad_id': ad_id,
+                            'telegram_id': telegram_id
+                        })
+                        success = True
+                    except Exception as text_e:
+                        logger.error(f"Failed to send fallback text message", exc_info=True, extra={
+                            'ad_id': ad_id,
+                            'telegram_id': telegram_id,
+                            'error_type': type(text_e).__name__
                         })
 
-                # If no success with unified service, try platform-specific approach
-                if platform_name and platform_id:
-                    # For Telegram and if we have a message_id, try to edit the message
-                    if platform_name == "telegram" and message_id:
-                        try:
-                            from common.messaging.unified_platform_utils import safe_edit_message_telegram
-                            from services.telegram_service.app.bot import bot
-
-                            # Try to get the original message
-                            message = await bot.get_message(
-                                chat_id=platform_id,
-                                message_id=message_id
-                            )
-                            original_content = message.caption or message.text or ""
-
-                            # Add the full description to the original content
-                            new_content = original_content + "\n\n" + full_description
-
-                            # Try to edit the message
-                            await safe_edit_message_telegram(
-                                chat_id=platform_id,
-                                message_id=message_id,
-                                text=new_content,
-                                parse_mode='Markdown',
-                                reply_markup=message.reply_markup
-                            )
-                            logger.info("Description added via message edit", extra={
-                                'platform': platform_name,
-                                'message_id': message_id
-                            })
-                            return True
-                        except Exception as e:
-                            logger.warning(f"Failed to edit Telegram message", exc_info=True, extra={
-                                'error_type': type(e).__name__
-                            })
-
-                # If editing failed or not applicable, send as a new message
-                from common.messaging.unified_platform_utils import safe_send_message
-                success = await safe_send_message(
-                    user_id=user_id,
-                    text=full_description,
-                    platform=platform
-                )
-
-                logger.info("Description sent as new message", extra={
-                    'user_id': user_id,
-                    'platform': platform,
-                    'success': success
+            if not success:
+                logger.error(f"Failed to send ad through any method", extra={
+                    'ad_id': ad_id,
+                    'user_id': user_id
                 })
-                return success
 
-            except Exception as e:
-                logger.error(f"Error processing show more description", exc_info=True, extra={
-                    'error_type': type(e).__name__
+        # Improved way to handle asyncio with Celery
+        try:
+            # First try to get the existing loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    raise RuntimeError("Loop is closed")
+            except RuntimeError:
+                # Create a new loop if no loop is available or if it's closed
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # Run the async function and return the result
+            if loop.is_running():
+                # If loop is already running, we need to use a future
+                future = asyncio.run_coroutine_threadsafe(send(), loop)
+                return future.result()
+            else:
+                return loop.run_until_complete(send())
+        except Exception as e:
+            logger.error(f"Error in event loop handling", exc_info=True, extra={
+                'error_type': type(e).__name__,
+                'error_message': str(e)
+            })
+            # As a last resort, try asyncio.run()
+            try:
+                return asyncio.run(send())
+            except Exception as run_error:
+                logger.error(f"Failed with asyncio.run()", exc_info=True, extra={
+                    'error_type': type(run_error).__name__
                 })
                 return False
-
-        # Run the async function
-        try:
-            return asyncio.run(process())
-        except RuntimeError as e:
-            # Handle case where there's already an event loop
-            logger.warning(f"RuntimeError in process_show_more_description", extra={
-                'error_type': type(e).__name__
-            })
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(process())
-            finally:
-                loop.close()
-
-
-# --- Support-Related Tasks ---
-
-@celery_app.task(name='common.messaging.tasks.start_support_conversation')
-@log_operation("start_support_conversation")
-def start_support_conversation(user_id, platform=None):
-    """
-    Start a support conversation with a user.
-    Works with any platform (telegram, viber, whatsapp).
-
-    Args:
-        user_id: User's platform-specific ID or database ID
-        platform: Optional platform identifier
-    """
-    with log_context(logger, user_id=user_id, platform=platform):
-        async def execute():
-            try:
-                # Call the unified handler
-                success = await handle_support_command(user_id, platform)
-                logger.info("Support conversation started", extra={
-                    'user_id': user_id,
-                    'platform': platform,
-                    'success': success
-                })
-                return {"success": success}
-            except Exception as e:
-                logger.error(f"Error starting support conversation", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
-                return {"success": False, "error": str(e)}
-
-        # Run the async function
-        try:
-            return asyncio.run(execute())
-        except RuntimeError as e:
-            # Handle case where there's already an event loop
-            logger.warning(f"RuntimeError in start_support_conversation", extra={
-                'error_type': type(e).__name__
-            })
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(execute())
-            finally:
-                loop.close()
-
-
-@celery_app.task(name='common.messaging.tasks.process_support_category')
-@log_operation("process_support_category")
-def process_support_category(user_id, category, platform=None):
-    """
-    Process a selected support category.
-    Works with any platform (telegram, viber, whatsapp).
-
-    Args:
-        user_id: User's platform-specific ID or database ID
-        category: Selected support category
-        platform: Optional platform identifier
-    """
-    with log_context(logger, user_id=user_id, category=category, platform=platform):
-        async def execute():
-            try:
-                # Call the unified handler
-                success = await handle_support_category(user_id, category, platform)
-                logger.info("Support category processed", extra={
-                    'user_id': user_id,
-                    'category': category,
-                    'platform': platform,
-                    'success': success
-                })
-                return {"success": success}
-            except Exception as e:
-                logger.error(f"Error processing support category", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
-                return {"success": False, "error": str(e)}
-
-        # Run the async function
-        try:
-            return asyncio.run(execute())
-        except RuntimeError as e:
-            # Handle case where there's already an event loop
-            logger.warning(f"RuntimeError in process_support_category", extra={
-                'error_type': type(e).__name__
-            })
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(execute())
-            finally:
-                loop.close()
-
-
-@celery_app.task(name='common.messaging.tasks.forward_to_support')
-@log_operation("forward_to_support")
-def forward_to_support(user_id, message, category, platform=None):
-    """
-    Forward a user message to the support system.
-
-    Args:
-        user_id: User's platform-specific ID or database ID
-        message: User's message to forward
-        category: Support category for context
-        platform: Optional platform identifier
-    """
-    with log_context(logger, user_id=user_id, category=category, platform=platform):
-        async def execute():
-            try:
-                # Get user information for context
-                db_user_id = None
-                if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
-                    db_user_id = int(user_id)
-                elif platform:
-                    db_user_id = get_db_user_id_by_telegram_id(user_id, messenger_type=platform)
-
-                if not db_user_id:
-                    logger.warning(f"Could not resolve database user ID", extra={'user_id': user_id})
-
-                # Get platform information
-                platform_ids = get_platform_ids_for_user(db_user_id) if db_user_id else {}
-
-                # Prepare data for the support system
-                support_data = {
-                    "user_id": db_user_id,
-                    "message": message,
-                    "category": category,
-                    "platform": platform,
-                    "platform_ids": platform_ids,
-                    "timestamp": datetime.now().isoformat()
-                }
-
-                # Store in database or send to support system
-                # This is just a placeholder - implement your actual support system integration
-                logger.info(f"Support request received", extra=support_data)
-
-                # Generate ticket ID
-                ticket_id = str(uuid.uuid4())
-
-                logger.info("Support request forwarded", extra={
-                    'user_id': user_id,
-                    'ticket_id': ticket_id,
-                    'category': category
-                })
-                # Return success
-                return {"success": True, "support_ticket_id": ticket_id}
-            except Exception as e:
-                logger.error(f"Error forwarding to support", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
-                return {"success": False, "error": str(e)}
-
-        # Run the async function
-        try:
-            return asyncio.run(execute())
-        except RuntimeError as e:
-            # Handle case where there's already an event loop
-            logger.warning(f"RuntimeError in forward_to_support", extra={
-                'error_type': type(e).__name__
-            })
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(execute())
-            finally:
-                loop.close()
-
-
-# Helper function to get the template for a support category
-def get_support_template(category, lang='uk'):
-    """
-    Get the template message for a support category.
-
-    Args:
-        category: Support category (payment, technical, other)
-        lang: Language code ('uk' for Ukrainian, 'en' for English)
-
-    Returns:
-        Template message string
-    """
-    category_data = SUPPORT_CATEGORIES.get(category, SUPPORT_CATEGORIES['other'])
-    return category_data['template']

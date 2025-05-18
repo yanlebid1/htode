@@ -1,7 +1,7 @@
 # common/messaging/service.py
 
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from .unified_interface import MessagingInterface
 from common.utils.logging_config import log_operation, log_context
@@ -75,6 +75,114 @@ class MessagingService:
             })
 
             return platform_name, platform_id
+
+    @log_operation("get_messenger_for_user")
+    async def get_messenger_for_user(self, user_id: int) -> tuple[Optional[str], Optional[str], Optional[MessagingInterface]]:
+        """
+        Get the messenger for a specific user based on their preferred platform.
+
+        Args:
+            user_id: Database user ID
+
+        Returns:
+            Tuple of (platform_name, platform_specific_id, messenger) or (None, None, None)
+        """
+        from common.messaging.unified_platform_utils import resolve_user_id
+
+        with log_context(logger, user_id=user_id):
+            # Get the platform and platform ID for this user
+            platform_name, platform_id = await self.get_user_platform(user_id)
+
+            if not platform_name:
+                logger.warning("Could not determine user's platform", extra={
+                    'user_id': user_id
+                })
+                return None, None, None
+
+            if not platform_id:
+                logger.warning("No platform ID found for user", extra={
+                    'user_id': user_id,
+                    'platform': platform_name
+                })
+                return platform_name, None, None
+
+            # Get the messenger for this platform
+            messenger = self.get_messenger(platform_name)
+
+            if not messenger:
+                # Try to fallback to Telegram if available
+                if platform_name != "telegram":
+                    telegram_messenger = self.get_messenger("telegram")
+                    if telegram_messenger:
+                        logger.warning(f"No messenger for {platform_name}, falling back to telegram", extra={
+                            'user_id': user_id,
+                            'original_platform': platform_name
+                        })
+                        return "telegram", platform_id, telegram_messenger
+
+                # If we get here, no messenger is available
+                logger.warning("No messenger implementation for platform", extra={
+                    'user_id': user_id,
+                    'platform': platform_name,
+                    'available_messengers': list(self._messengers.keys())
+                })
+                return platform_name, platform_id, None
+
+            logger.debug("Found messenger for user", extra={
+                'user_id': user_id,
+                'platform': platform_name
+            })
+
+            return platform_name, platform_id, messenger
+
+    @log_operation("get_all_messengers_for_user")
+    async def get_all_messengers_for_user(self, user_id: int) -> List[Tuple[str, str, MessagingInterface]]:
+        """
+        Get all available messengers for a user who may have multiple platforms.
+
+        Args:
+            user_id: Database user ID
+
+        Returns:
+            List of tuples, each containing (platform_name, platform_id, messenger)
+        """
+        from common.db.operations import get_platform_ids_for_user
+
+        with log_context(logger, user_id=user_id):
+            # Get all platform IDs for this user
+            platform_ids = get_platform_ids_for_user(user_id)
+            results = []
+
+            logger.debug("Retrieved platform IDs", extra={
+                'user_id': user_id,
+                'platform_count': len([k for k in platform_ids.keys() if k.endswith('_id') and platform_ids[k]]),
+                'has_telegram': bool(platform_ids.get('telegram_id')),
+                'has_viber': bool(platform_ids.get('viber_id')),
+                'has_whatsapp': bool(platform_ids.get('whatsapp_id')),
+            })
+
+            # Check each platform
+            if platform_ids.get('telegram_id'):
+                messenger = self.get_messenger('telegram')
+                if messenger:
+                    results.append(('telegram', str(platform_ids['telegram_id']), messenger))
+
+            if platform_ids.get('viber_id'):
+                messenger = self.get_messenger('viber')
+                if messenger:
+                    results.append(('viber', platform_ids['viber_id'], messenger))
+
+            if platform_ids.get('whatsapp_id'):
+                messenger = self.get_messenger('whatsapp')
+                if messenger:
+                    results.append(('whatsapp', platform_ids['whatsapp_id'], messenger))
+
+            logger.info(f"Found {len(results)} messenger(s) for user", extra={
+                'user_id': user_id,
+                'platforms': [r[0] for r in results]
+            })
+
+            return results
 
     @log_operation("send_notification")
     async def send_notification(
@@ -302,3 +410,4 @@ messaging_service = MessagingService()
 
 # Add it to the exports
 __all__ = ['MessagingService', 'messaging_service']
+
