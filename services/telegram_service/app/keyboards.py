@@ -171,7 +171,7 @@ def phone_request_keyboard():
         KeyboardButton(text="Поділитися номером телефону", request_contact=True)
     )
     keyboard.add(
-        KeyboardButton(text="Скасувати")
+        KeyboardButton(text="Назад")
     )
     return keyboard
 
@@ -182,7 +182,7 @@ def verification_code_keyboard():
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(
-        KeyboardButton(text="Скасувати")
+        KeyboardButton(text="Назад")
     )
     return keyboard
 
@@ -196,4 +196,3 @@ def verification_success_keyboard():
         InlineKeyboardButton("Повернутися до головного меню", callback_data="return_to_main_menu")
     )
     return keyboard
-

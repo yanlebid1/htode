@@ -62,6 +62,30 @@ async def start_phone_verification(message: types.Message, state: FSMContext):
         })
 
 
+@dp.message_handler(lambda msg: msg.text == "Назад", state=PhoneVerificationStates.waiting_for_phone)
+@log_operation("back_from_phone_verification")
+async def back_from_phone_verification(message: types.Message, state: FSMContext):
+    """
+    Handle back navigation from phone verification process
+    """
+    user_id = message.from_user.id
+
+    with log_context(logger, user_id=user_id, action="back_from_phone_verification"):
+        logger.info("User returned from phone verification", extra={
+            "user_id": user_id,
+            "username": message.from_user.username
+        })
+
+        await safe_send_message(
+            chat_id=message.from_user.id,
+            text="Повернення до головного меню",
+            reply_markup=main_menu_keyboard()
+        )
+
+        # Clear the state and go back to the main flow
+        await state.finish()
+
+
 @dp.message_handler(content_types=types.ContentType.CONTACT, state=PhoneVerificationStates.waiting_for_phone)
 @log_operation("handle_contact")
 async def handle_contact(message: types.Message, state: FSMContext):
@@ -152,6 +176,37 @@ async def process_phone_number(message: types.Message, state: FSMContext, phone_
             "user_id": user_id,
             "phone_number": phone_number
         })
+
+
+@dp.message_handler(lambda msg: msg.text == "Назад", state=PhoneVerificationStates.waiting_for_code)
+@log_operation("back_from_code_verification")
+async def back_from_code_verification(message: types.Message, state: FSMContext):
+    """
+    Handle back navigation from code verification to phone number entry
+    """
+    user_id = message.from_user.id
+
+    with log_context(logger, user_id=user_id, action="back_from_code_verification"):
+        user_data = await state.get_data()
+        phone_number = user_data.get('phone_number')
+
+        logger.info("User returned from code verification to phone entry", extra={
+            "user_id": user_id,
+            "phone_number": phone_number,
+            "username": message.from_user.username
+        })
+
+        await safe_send_message(
+            chat_id=message.from_user.id,
+            text=(
+                "Повернення до введення номера телефону.\n\n"
+                "Будь ласка, надайте свій номер телефону в міжнародному форматі (наприклад, +380991234567)."
+            ),
+            reply_markup=phone_request_keyboard()
+        )
+
+        # Go back to phone entry state
+        await PhoneVerificationStates.waiting_for_phone.set()
 
 
 @dp.message_handler(state=PhoneVerificationStates.waiting_for_code)
@@ -435,3 +490,4 @@ async def handle_account_linking(message: types.Message, state: FSMContext, phon
         )
 
         await state.finish()
+

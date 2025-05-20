@@ -478,7 +478,7 @@ async def edit_parameters(callback_query: types.CallbackQuery, state: FSMContext
 
 @dp.message_handler(lambda message: message.text != "❤️ Обрані", content_types=['text'], state=None)
 @log_operation("debug_all_messages")
-async def debug_all_messages(message: types.Message):
+async def debug_all_messages(message: types.Message, state: FSMContext):
     """Debug handler that logs all text messages when not in any state, except favorites"""
     telegram_id = message.from_user.id
 
@@ -492,7 +492,7 @@ async def debug_all_messages(message: types.Message):
         # If the message is /start, try to respond directly
         if message.text == '/start':
             try:
-                await start_command(message)
+                await start_command(message, state)
             except Exception as e:
                 logger.error("Error handling /start in debug handler", exc_info=True, extra={
                     "telegram_id": telegram_id,
@@ -503,7 +503,13 @@ async def debug_all_messages(message: types.Message):
             await show_main_menu(message)
         elif message.text == "📱 Додати номер телефону":
             from .phone_verification import start_phone_verification
-            await start_phone_verification(message)
+            await start_phone_verification(message, state)
+        elif message.text == "💳 Оплатити підписку":
+            from .payment import payment_handler
+            await payment_handler(message)
+        elif message.text == "🧑‍💻 Техпідтримка":
+            from .support import handle_support_command_telegram
+            await handle_support_command_telegram(message, state)
 
 
 @dp.message_handler(commands=['menu'])
@@ -533,4 +539,3 @@ async def forward_to_favorites(message: types.Message, state: FSMContext):
     """Forward favorites button to the proper handler"""
     from .favorites import show_favorites_carousel
     await show_favorites_carousel(message, state)
-
