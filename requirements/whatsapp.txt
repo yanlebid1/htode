@@ -12,7 +12,7 @@ uvicorn
 SQLAlchemy==1.4.46
 jmespath
 viberbot==1.0.12
-playwright
+camoufox
 lxml
 aiodns
 beautifulsoup4

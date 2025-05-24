@@ -14,3 +14,4 @@ boto3
 fake_useragent
 beautifulsoup4
 python-dotenv
+camoufox

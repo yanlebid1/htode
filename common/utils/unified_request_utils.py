@@ -155,67 +155,6 @@ def make_request(
                 raise
             return None
 
-@log_operation("fetch_with_retry")
-def fetch_with_retry(
-        url: str,
-        method: str = 'get',
-        max_retries: int = DEFAULT_RETRIES,
-        retry_delay: float = DEFAULT_BACKOFF_FACTOR,
-        retry_status_codes: tuple = DEFAULT_STATUS_FORCELIST,
-        **kwargs
-) -> Optional[requests.Response]:
-    """
-    Fetch with retry logic but simpler interface than make_request.
-    """
-    with log_context(logger, url=url, method=method, max_retries=max_retries):
-        for attempt in range(max_retries + 1):
-            try:
-                if method.lower() == 'get':
-                    response = requests.get(url, **kwargs)
-                elif method.lower() == 'post':
-                    response = requests.post(url, **kwargs)
-                elif method.lower() == 'put':
-                    response = requests.put(url, **kwargs)
-                elif method.lower() == 'delete':
-                    response = requests.delete(url, **kwargs)
-                else:
-                    logger.error("Unsupported HTTP method", extra={'method': method})
-                    return None
-
-                response.raise_for_status()
-
-                logger.debug("Request successful", extra={
-                    'url': url,
-                    'attempt': attempt + 1,
-                    'status_code': response.status_code
-                })
-
-                return response
-
-            except (requests.exceptions.RequestException) as e:
-                if attempt < max_retries:
-                    # Calculate delay with exponential backoff and jitter
-                    delay = retry_delay * (2 ** attempt)
-                    delay *= random.uniform(0.8, 1.2)  # Add jitter
-
-                    logger.warning("Request failed, retrying", extra={
-                        'url': url,
-                        'attempt': attempt + 1,
-                        'max_retries': max_retries + 1,
-                        'delay': delay,
-                        'error': str(e)
-                    })
-                    time.sleep(delay)
-                    return None
-                else:
-                    logger.error("Request failed after all retries", exc_info=True, extra={
-                        'url': url,
-                        'attempts': max_retries + 1,
-                        'error_type': type(e).__name__
-                    })
-                    return None
-        return None
-
 
 # ===== API-Specific Utility Functions =====
 

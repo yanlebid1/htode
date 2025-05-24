@@ -34,51 +34,41 @@ class PlatformRouter:
         """
         with log_context(logger, platform=platform):
             try:
+                # Platform-specific configuration
+                platform_configs = {
+                    "telegram": {"module": "services.telegram_service.app.bot", "attr": "bot"},
+                    "viber": {"module": "services.viber_service.app.bot", "attr": "viber"},
+                    "whatsapp": {"module": "services.whatsapp_service.app.bot", "attr": "client"}
+                }
+
+                # Check if platform is supported
+                if platform not in platform_configs:
+                    logger.error("Unsupported platform", extra={'platform': platform})
+                    return
+
+                config = platform_configs[platform]
                 messenger = None
 
-                # Get the messenger instance
-                if platform == "telegram":
-                    try:
-                        from services.telegram_service.app.bot import bot
-                        if bot:
-                            messenger = messenger_class(bot)
-                        else:
-                            logger.error(f"Bot instance is None for platform", extra={'platform': platform})
-                    except ImportError as e:
-                        logger.error(f"Failed to import bot for platform", exc_info=True, extra={
-                            'platform': platform,
-                            'error_type': type(e).__name__
-                        })
+                # Import the bot/client instance
+                try:
+                    module = importlib.import_module(config["module"])
+                    client_instance = getattr(module, config["attr"], None)
 
-                elif platform == "viber":
-                    try:
-                        from services.viber_service.app.bot import viber
-                        if viber:
-                            messenger = messenger_class(viber)
-                        else:
-                            logger.error(f"Viber instance is None for platform", extra={'platform': platform})
-                    except ImportError as e:
-                        logger.error(f"Failed to import viber for platform", exc_info=True, extra={
+                    if client_instance:
+                        messenger = messenger_class(client_instance)
+                    else:
+                        logger.error(f"Instance is None for platform", extra={
                             'platform': platform,
-                            'error_type': type(e).__name__
+                            'attr': config["attr"]
                         })
+                except ImportError as e:
+                    logger.error(f"Failed to import for platform", exc_info=True, extra={
+                        'platform': platform,
+                        'module': config["module"],
+                        'error_type': type(e).__name__
+                    })
 
-                elif platform == "whatsapp":
-                    try:
-                        from services.whatsapp_service.app.bot import client
-                        if client:
-                            messenger = messenger_class(client)
-                        else:
-                            logger.error(f"Client instance is None for platform", extra={'platform': platform})
-                    except ImportError as e:
-                        logger.error(f"Failed to import client for platform", exc_info=True, extra={
-                            'platform': platform,
-                            'error_type': type(e).__name__
-                        })
-                else:
-                    logger.error(f"Unknown platform", extra={'platform': platform})
-
-                # Now the else clause can actually be reached
+                # Register the messenger if available
                 if messenger:
                     self.messengers[platform] = messenger
                     logger.info(f"Registered messenger for platform", extra={'platform': platform})
