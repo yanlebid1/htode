@@ -142,17 +142,64 @@ async def parse_olx_content(page: Page) -> ExtractionResult:
     Parse OLX ad page content to extract the phone number.
     Uses the page context to perform a fetch call to OLX's phone API.
     """
-    await page.click('xpath=//button[@data-cy="ad-contact-phone"]')
-    await page.wait_for_selector('//div[@data-testid="ad-action-box"]', timeout=10000)  # Wait for the phone number to be displayed
-    phone_number_data = await page.query_selector('xpath=//div[@data-testid="ad-action-box"]//a[@data-testid="contact-phone"]')
-    if phone_number_data:
-        phone_number_data = await phone_number_data.get_attribute("href")
-        phone_number = phone_number_data.replace('tel:', '')
-        logger.info(f"Extracted phone number: {phone_number}")
-        return ExtractionResult([phone_number], None)
-    else:
-        logger.warning(f"OLX phone number not found on the page {page.url}.")
-        return ExtractionResult([], None)
+    """Extract phone number from OLX ad page using Playwright ``page`` instance.
+
+    OLX HTML/CSS changes rather often, тому тримаємо кілька запасних селекторів
+    і намагаємося знайти будь-який <a href="tel:…"> елемент після кліку на
+    кнопку «Показати телефон».
+    """
+
+    # 1. Спробувати натиснути кнопку «Показати телефон» (кілька можливих селекторів).
+    show_phone_selectors = [
+        '[data-cy="ad-contact-phone"]',                  # актуальний (2024)
+        '[data-testid="show-contact"]',                  # можливий варіант
+        'button:has([name="show_phone"])',               # запасний css4 селектор
+    ]
+
+    clicked = False
+    for sel in show_phone_selectors:
+        try:
+            await page.click(sel, timeout=3000)
+            clicked = True
+            break
+        except Exception:  # noqa: BLE001 – Playwright throws variety of errors
+            continue
+
+    if not clicked:
+        logger.warning("OLX phone button not found or could not be clicked – %s", page.url)
+
+    # 2. Дочекаймося появи будь-якого tel:-посилання на сторінці.
+    try:
+        await page.wait_for_selector('a[href^="tel:"]', timeout=10000)
+    except Exception:
+        # Не дочекався; продовжимо – можливо посилання зʼявилося вже без wait
+        pass
+
+    # 3. Збери всі tel-посилання
+    phone_links = await page.query_selector_all('a[href^="tel:"]')
+    phone_numbers = []
+    for link in phone_links:
+        href = await link.get_attribute("href")
+        if href:
+            phone_numbers.append(href.replace("tel:", ""))
+
+    if phone_numbers:
+        logger.info("Extracted %d phone number(s) from %s", len(phone_numbers), page.url)
+        return ExtractionResult(phone_numbers, None)
+
+    # 4. Якщо <a> немає, OLX іноді відображає номер у <span>. Шукаємо regex.
+    page_content = await page.content()
+    import re
+    raw_numbers = re.findall(r"\+?\d[\d\s\-]{8,}\d", page_content)
+    cleaned = [re.sub(r"[^\d]", "", n) for n in raw_numbers]
+    cleaned = [n for n in cleaned if len(n) >= 9]
+
+    if cleaned:
+        logger.info("Extracted phone number(s) without tel: link from %s", page.url)
+        return ExtractionResult(cleaned, None)
+
+    logger.warning("OLX phone number not found on the page %s", page.url)
+    return ExtractionResult([], None)
 
 
 # ===========================
