@@ -10,7 +10,7 @@ from common.utils.cache import redis_cache
 from ..bot import dp
 from ..states.basis_states import FilterStates
 from common.db.operations import update_user_filter, start_free_subscription_of_user, get_db_user_id_by_telegram_id, \
-    get_or_create_user, Ad
+    get_or_create_user, Ad, add_subscription as add_user_subscription
 from common.db.database import execute_query
 from common.config import GEO_ID_MAPPING, get_key_by_value, build_ad_text
 from common.celery_app import celery_app
@@ -272,8 +272,19 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
 
         # Збереження фільтрів у базі даних
         try:
-            update_user_filter(user_db_id, filters)
-            logger.info('Filters updated successfully', extra={
+            # Convert city name to geo_id
+            city_name = filters.get('city')
+            geo_id = get_key_by_value(city_name, GEO_ID_MAPPING) if city_name else None
+
+            add_user_subscription(
+                user_db_id,
+                filters.get('property_type'),
+                geo_id,
+                filters.get('rooms'),
+                filters.get('price_min'),
+                filters.get('price_max')
+            )
+            logger.info('Subscription added successfully', extra={
                 "user_db_id": user_db_id
             })
             start_free_subscription_of_user(user_db_id)
@@ -584,8 +595,8 @@ async def handle_back(message: types.Message):
 
 
 @dp.message_handler(lambda msg: msg.text == "➕ Додати підписку")
-@log_operation("add_subscription")
-async def add_subscription(message: types.Message):
+@log_operation("add_subscription_prompt")
+async def add_subscription_prompt(message: types.Message):
     """
     Handles the text button for adding a new subscription
     """

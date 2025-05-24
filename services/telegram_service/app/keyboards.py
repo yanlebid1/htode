@@ -134,6 +134,9 @@ def make_subscriptions_page_kb(user_id, page, subscriptions, total_count, per_pa
     if nav_row:
         kb.row(*nav_row)
 
+    # NEW: Add button to create a brand-new subscription
+    kb.add(InlineKeyboardButton("➕ Додати підписку", callback_data="subs_new"))
+
     # Optionally add a "Close" or "Back" button
     kb.add(InlineKeyboardButton("Закрити", callback_data="subs_close"))
     return kb

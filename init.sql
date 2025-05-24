@@ -57,9 +57,9 @@ CREATE TABLE IF NOT EXISTS user_filters (
     without_broker BOOLEAN
 );
 
--- Add the unique constraint so that ON CONFLICT(user_id) works
+-- Drop the unique constraint
 ALTER TABLE user_filters
-  ADD CONSTRAINT user_filters_user_id_unique UNIQUE (user_id);
+  DROP CONSTRAINT IF EXISTS user_filters_user_id_unique;
 
 CREATE TABLE subscriptions (
     id SERIAL PRIMARY KEY,
@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS payment_history (
 -- Create tables for verification
 CREATE TABLE verification_codes (
     id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     phone_number VARCHAR(20) NOT NULL,
     code VARCHAR(6) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
