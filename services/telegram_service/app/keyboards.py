@@ -17,9 +17,9 @@ def property_type_keyboard():
     return KeyboardFactory.create_keyboard("telegram", "property_type")
 
 
-def city_keyboard(cities):
-    """Create keyboard for city selection"""
-    return KeyboardFactory.create_keyboard("telegram", "city", cities=cities)
+def city_keyboard(cities, page=0):
+    """Create keyboard for city selection with pagination"""
+    return KeyboardFactory.create_keyboard("telegram", "city", cities=cities, page=page)
 
 
 def rooms_keyboard(selected_rooms=None):

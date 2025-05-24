@@ -123,7 +123,8 @@ class TelegramKeyboardFactory:
                 return cls.create_property_type_keyboard()
             elif keyboard_type == "city":
                 cities = kwargs.get('cities', AVAILABLE_CITIES)
-                return cls.create_city_keyboard(cities)
+                page = kwargs.get('page', 0)
+                return cls.create_city_keyboard(cities, page)
             elif keyboard_type == "rooms":
                 selected_rooms = kwargs.get('selected_rooms', [])
                 return cls.create_rooms_keyboard(selected_rooms)
@@ -181,19 +182,29 @@ class TelegramKeyboardFactory:
 
     @staticmethod
     @log_operation("create_city_keyboard")
-    def create_city_keyboard(cities):
-        """Create keyboard for city selection"""
+    def create_city_keyboard(cities, page=0):
+        """Create keyboard for city selection with pagination (3x2 grid, 6 per page)"""
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-        with log_context(logger, cities_count=len(cities)):
-            keyboard = InlineKeyboardMarkup(row_width=2)
-            for city in cities:
-                keyboard.add(
-                    InlineKeyboardButton(city, callback_data=f"city_{city.lower()}")
-                )
-
-            logger.debug("Created Telegram city keyboard", extra={'cities_count': len(cities)})
-            return keyboard
+        per_page = 6
+        row_width = 3
+        start = page * per_page
+        end = start + per_page
+        page_cities = cities[start:end]
+        keyboard = InlineKeyboardMarkup(row_width=row_width)
+        # Add cities in 3x2 grid
+        for i in range(0, len(page_cities), row_width):
+            row = [InlineKeyboardButton(city, callback_data=f"city_{city}") for city in page_cities[i:i+row_width]]
+            keyboard.row(*row)
+        # Pagination controls
+        total_pages = (len(cities) - 1) // per_page + 1
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("⬅️", callback_data=f"city_page_{page-1}"))
+        if page < total_pages - 1:
+            nav_buttons.append(InlineKeyboardButton("➡️", callback_data=f"city_page_{page+1}"))
+        if nav_buttons:
+            keyboard.row(*nav_buttons)
+        return keyboard
 
     @staticmethod
     @log_operation("create_rooms_keyboard")

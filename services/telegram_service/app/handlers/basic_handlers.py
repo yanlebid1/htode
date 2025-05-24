@@ -16,7 +16,7 @@ from ..keyboards import (
 from common.db.operations import get_or_create_user, get_db_user_id_by_telegram_id
 from ..utils.message_utils import (
     safe_send_message, safe_answer_callback_query,
-    safe_edit_message
+    safe_edit_message, delete_message_safe
 )
 
 # Import service logger and logging utilities
@@ -42,69 +42,37 @@ async def start_command(message: types.Message, state: FSMContext):
             "username": message.from_user.username
         })
 
-        # Use safe_send_message instead of message.answer
+        # Use safe_send_message to send welcome
         await safe_send_message(
             chat_id=telegram_id,
             text="Привіт!👋 Я бот з пошуку оголошень.\n"
-                 "Зі мною легко і швидко знайти квартиру, будинок або кімнату для оренди.\n"
+                 "Зі мною легко і швидко знайти квартиру для оренди.\n"
                  "У тебе зараз активний безкоштовний період 7 днів.\n"
                  "Давайте налаштуємо твої параметри пошуку.\n"
-                 "Обери те, що тебе цікавить:\n",
-            reply_markup=property_type_keyboard()
+                 "Оберіть місто:",
         )
-        await FilterStates.waiting_for_property_type.set()
-
-        # Сохраняем user_db_id в состоянии, чтобы использовать его позже
-        await state.update_data(user_db_id=user_db_id, telegram_id=telegram_id)
+        city_msg = await safe_send_message(
+            chat_id=telegram_id,
+            text="🏙️ Оберіть місто:",
+            reply_markup=city_keyboard(AVAILABLE_CITIES, page=0)
+        )
+        await FilterStates.waiting_for_city.set()
+        await state.update_data(user_db_id=user_db_id, telegram_id=telegram_id, city_panel_msg_id=city_msg.message_id, city_panel_page=0)
         logger.info("User started conversation", extra={
             "telegram_id": telegram_id,
             "db_id": user_db_id,
-            "new_state": "waiting_for_property_type"
+            "new_state": "waiting_for_city"
         })
 
 
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('property_type_'),
-                           state=FilterStates.waiting_for_property_type)
-@log_operation("process_property_type")
-async def process_property_type(callback_query: types.CallbackQuery, state: FSMContext):
-    telegram_id = callback_query.from_user.id
-    property_type = callback_query.data.split('_')[-1]
-
-    with log_context(logger, telegram_id=telegram_id, property_type=property_type):
-        await state.update_data(property_type=property_type)
-        logger.info("Property type selected", extra={
-            "telegram_id": telegram_id,
-            "property_type": property_type
-        })
-
-        # Get the database user ID from state
-        user_data = await state.get_data()
-        user_db_id = user_data.get('user_db_id')
-
-        # If we don't have it in state, get it from database
-        if not user_db_id:
-            user_db_id = get_db_user_id_by_telegram_id(telegram_id)
-
-        # Use safe_send_message
-        await safe_send_message(
-            chat_id=telegram_id,
-            text="🏙️ Оберіть місто:",
-            reply_markup=city_keyboard(AVAILABLE_CITIES)
-        )
-        await FilterStates.waiting_for_city.set()
-
-        # Use safe_answer_callback_query
-        await safe_answer_callback_query(callback_query.id)
-
-
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('city_'), state=FilterStates.waiting_for_city)
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('city_') and not c.data.startswith('city_page_'), state=FilterStates.waiting_for_city)
 @log_operation("process_city")
 async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id
-    city = callback_query.data.split('_', 1)[1].capitalize()
-    # Get the database user ID from state
+    city = callback_query.data.split('_', 1)[1]
     user_data = await state.get_data()
     user_db_id = user_data.get('user_db_id')
+    city_panel_msg_id = user_data.get('city_panel_msg_id')
 
     # If we don't have it in state, get it from database
     if not user_db_id:
@@ -117,7 +85,6 @@ async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
                 "city": city,
                 "available_cities": AVAILABLE_CITIES
             })
-            # Use safe_send_message
             await safe_send_message(
                 chat_id=telegram_id,
                 text="Будь ласка, оберіть місто зі списку."
@@ -130,11 +97,22 @@ async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
             "city": city
         })
 
+        # Delete city selection panel
+        if city_panel_msg_id:
+            await delete_message_safe(telegram_id, city_panel_msg_id)
+
+        # Show confirmation and proceed
         await safe_send_message(
+            chat_id=telegram_id,
+            text=f"Місто {city} обрано."
+        )
+        rooms_msg = await safe_send_message(
             chat_id=telegram_id,
             text="🛏️ Виберіть кількість кімнат (можна обрати декілька):",
             reply_markup=rooms_keyboard()
         )
+        if rooms_msg:
+            await state.update_data(rooms_panel_msg_id=rooms_msg.message_id)
         await FilterStates.waiting_for_rooms.set()
         await safe_answer_callback_query(callback_query.id)
 
@@ -173,11 +151,26 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
                 "telegram_id": telegram_id,
                 "selected_rooms": selected_rooms
             })
+
+            # Delete rooms panel
+            rooms_panel_msg_id = user_data.get('rooms_panel_msg_id')
+            if rooms_panel_msg_id:
+                await delete_message_safe(telegram_id, rooms_panel_msg_id)
+
+            rooms_text = ', '.join(str(r) for r in selected_rooms)
             await safe_send_message(
+                chat_id=telegram_id,
+                text=f"Кількість кімнат: {rooms_text}"
+            )
+
+            price_msg = await safe_send_message(
                 chat_id=telegram_id,
                 text="💰 Виберіть діапазон цін (грн):",
                 reply_markup=price_keyboard(city=city)
             )
+            if price_msg:
+                await state.update_data(price_panel_msg_id=price_msg.message_id)
+
             await FilterStates.waiting_for_price.set()
             await safe_answer_callback_query(callback_query.id)
 
@@ -186,11 +179,24 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
             logger.info("Any rooms selected", extra={
                 "telegram_id": telegram_id
             })
+
+            # Delete rooms panel
+            rooms_panel_msg_id = user_data.get('rooms_panel_msg_id')
+            if rooms_panel_msg_id:
+                await delete_message_safe(telegram_id, rooms_panel_msg_id)
+
             await safe_send_message(
+                chat_id=telegram_id,
+                text="Кількість кімнат: Будь-яка"
+            )
+
+            price_msg = await safe_send_message(
                 chat_id=telegram_id,
                 text="💰 Виберіть діапазон цін (грн):",
                 reply_markup=price_keyboard(city=city)
             )
+            if price_msg:
+                await state.update_data(price_panel_msg_id=price_msg.message_id)
             await FilterStates.waiting_for_price.set()
             await safe_answer_callback_query(callback_query.id)
 
@@ -276,6 +282,11 @@ async def process_price(callback_query: types.CallbackQuery, state: FSMContext):
             "price_range_text": text_range
         })
 
+        # Delete price panel
+        price_panel_msg_id = user_data.get('price_panel_msg_id')
+        if price_panel_msg_id:
+            await delete_message_safe(telegram_id, price_panel_msg_id)
+
         await safe_send_message(
             chat_id=telegram_id,
             text=f"Ви обрали діапазон: {text_range}"
@@ -315,18 +326,11 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
             "current_data": user_data
         })
 
-        if edit_field == "property_type":
-            await safe_send_message(
-                chat_id=telegram_id,
-                text="🏷 Оберіть тип нерухомості:",
-                reply_markup=property_type_keyboard()
-            )
-            await FilterStates.waiting_for_property_type.set()
-        elif edit_field == "city":
+        if edit_field == "city":
             await safe_send_message(
                 chat_id=telegram_id,
                 text="🏙️ Оберіть місто:",
-                reply_markup=city_keyboard(AVAILABLE_CITIES)
+                reply_markup=city_keyboard(AVAILABLE_CITIES, page=0)
             )
             await FilterStates.waiting_for_city.set()
         elif edit_field == "rooms":
@@ -539,3 +543,21 @@ async def forward_to_favorites(message: types.Message, state: FSMContext):
     """Forward favorites button to the proper handler"""
     from .favorites import show_favorites_carousel
     await show_favorites_carousel(message, state)
+
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('city_page_'), state=FilterStates.waiting_for_city)
+@log_operation("city_page_navigation")
+async def city_page_navigation(callback_query: types.CallbackQuery, state: FSMContext):
+    telegram_id = callback_query.from_user.id
+    user_data = await state.get_data()
+    page = int(callback_query.data.split('_')[-1])
+    msg_id = user_data.get('city_panel_msg_id')
+    if msg_id:
+        await safe_edit_message(
+            chat_id=telegram_id,
+            message_id=msg_id,
+            text="🏙️ Оберіть місто:",
+            reply_markup=city_keyboard(AVAILABLE_CITIES, page=page)
+        )
+        await state.update_data(city_panel_page=page)
+    await safe_answer_callback_query(callback_query.id)
