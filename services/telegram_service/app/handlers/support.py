@@ -5,10 +5,14 @@ from aiogram.dispatcher import FSMContext
 from ..bot import dp
 from ..states.support_states import SupportStates
 from common.messaging.handlers.support_handler import handle_support_command, handle_support_category
+from ..utils.message_utils import safe_answer_callback_query, delete_message_safe
 
 # Import service logger and logging utilities
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
+
+# store trigger info for support menu
+SUPPORT_TRIGGER = {}
 
 
 @dp.message_handler(lambda msg: msg.text == "🧑‍💻 Техпідтримка")
@@ -24,8 +28,13 @@ async def handle_support_command_telegram(message: types.Message, state: FSMCont
         # Set the state first since we have direct access to the state manager
         await SupportStates.waiting_for_category.set()
 
-        # Use the unified handler for showing category options
-        await handle_support_command(message.from_user.id, platform="telegram")
+        bot_msg = await handle_support_command(message.from_user.id, platform="telegram")
+
+        # Save trigger and bot msg ids
+        SUPPORT_TRIGGER[user_id] = {
+            'trigger_id': message.message_id,
+            'bot_id': getattr(bot_msg, 'message_id', None)
+        }
         logger.info("Support conversation started", extra={"user_id": user_id})
 
 
@@ -50,6 +59,64 @@ async def process_support_category_telegram(message: types.Message, state: FSMCo
             "user_id": user_id,
             "category": category
         })
+
+
+@dp.callback_query_handler(lambda c: c.data in ["support_payment", "support_technical", "support_other", "back_to_menu"], state=SupportStates.waiting_for_category)
+@log_operation("process_support_category_telegram_cb")
+async def process_support_category_telegram_cb(callback_query: types.CallbackQuery, state: FSMContext):
+    """Handle support category selected via inline keyboard callback."""
+    user_id = callback_query.from_user.id
+    data = callback_query.data
+
+    # If user tapped back, simply finish state and return to main menu
+    if data == "back_to_menu":
+        await state.finish()
+
+        # delete trigger and menu messages
+        info = SUPPORT_TRIGGER.pop(user_id, None)
+        if info:
+            if info.get('bot_id'):
+                await delete_message_safe(user_id, info['bot_id'])
+            if info.get('trigger_id'):
+                await delete_message_safe(user_id, info['trigger_id'])
+
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+
+        from ..keyboards import main_menu_keyboard
+        await safe_send_message(chat_id=user_id, text="Головне меню:", reply_markup=main_menu_keyboard())
+        await safe_answer_callback_query(callback_query.id)
+        return
+
+    # Map callback data to category string expected by handler
+    category_mapping = {
+        "support_payment": "payment",
+        "support_technical": "technical",
+        "support_other": "other"
+    }
+    category = category_mapping.get(data, "other")
+
+    # Finish state before proceeding
+    await state.finish()
+
+    # Delegate to unified handler
+    await handle_support_category(user_id, category, platform="telegram")
+
+    # Clean up menu and trigger messages
+    info = SUPPORT_TRIGGER.pop(user_id, None)
+    if info:
+        if info.get('bot_id'):
+            await delete_message_safe(user_id, info['bot_id'])
+        if info.get('trigger_id'):
+            await delete_message_safe(user_id, info['trigger_id'])
+
+    try:
+        await callback_query.message.delete()
+    except Exception:
+        pass
+    await safe_answer_callback_query(callback_query.id)
 
 
 # Optional helper function for Telegram-specific support redirect functionality

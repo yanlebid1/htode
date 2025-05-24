@@ -21,6 +21,9 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
+# Map telegram_id to message_id of user trigger for subs list
+TRIGGER_MSG_MAP = {}
+
 
 @dp.callback_query_handler(lambda c: c.data.startswith("sub_open:"))
 @log_operation("handle_sub_open")
@@ -392,9 +395,11 @@ async def handle_subs_page(callback_query: types.CallbackQuery):
                     "count": len(subs)
                 })
 
+        # Store user's trigger message id
+        TRIGGER_MSG_MAP[telegram_id] = callback_query.message.message_id
+
         # Create keyboard
         kb = make_subscriptions_page_kb(db_user_id, page, subs, total)
-
         await callback_query.message.edit_text("Ваші підписки:", reply_markup=kb)
         await callback_query.answer()
 
@@ -461,6 +466,9 @@ async def show_subscriptions_menu(message: types.Message):
                     "db_user_id": db_user_id,
                     "count": len(subs)
                 })
+
+        # Store user's trigger message id
+        TRIGGER_MSG_MAP[telegram_id] = message.message_id
 
         # Create keyboard
         kb = make_subscriptions_page_kb(db_user_id, page, subs, total)
@@ -835,4 +843,25 @@ async def handle_my_subscription(message: types.Message):
             text,
             reply_markup=subscription_menu_keyboard()
         )
+
+
+@dp.callback_query_handler(lambda c: c.data == "subs_close")
+@log_operation("handle_subs_close")
+async def handle_subs_close(callback_query: types.CallbackQuery):
+    """Close the subscriptions list by deleting the message."""
+    telegram_id = callback_query.from_user.id
+    try:
+        await callback_query.message.delete()
+    except Exception:
+        try:
+            await callback_query.message.edit_text(" ")
+        except Exception:
+            pass
+
+    # Also delete user's trigger message if stored
+    from ..utils.message_utils import delete_message_safe
+    trigger_msg_id = TRIGGER_MSG_MAP.pop(telegram_id, None)
+    if trigger_msg_id:
+        await delete_message_safe(telegram_id, trigger_msg_id)
+    await callback_query.answer()
 
