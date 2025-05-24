@@ -94,16 +94,15 @@ def update_user_filter(user_id, filters):
                 # Extract filter data
                 property_type = filters.get('property_type')
                 city = filters.get('city')
-                geo_id = get_key_by_value(city, GEO_ID_MAPPING)
                 rooms_count = filters.get('rooms')  # List or None
                 price_min = filters.get('price_min')
                 price_max = filters.get('price_max')
 
-                # Create filter data dictionary
+                # Pass city name; repository will convert to geo_id
                 filter_data = {
                     'property_type': property_type,
-                    'city': geo_id,
-                    'rooms_count': rooms_count,
+                    'city': city,
+                    'rooms': rooms_count,
                     'price_min': price_min,
                     'price_max': price_max
                 }
@@ -112,7 +111,7 @@ def update_user_filter(user_id, filters):
                 user_filter = SubscriptionRepository.update_user_filter(db, user_id, filter_data)
 
                 logger.info(
-                    f"Updated filters: [{user_id}, {property_type}, {geo_id}, {rooms_count}, {price_min}, {price_max}]",
+                    f"Updated filters: [{user_id}, {property_type}, {city}, {rooms_count}, {price_min}, {price_max}]",
                     extra={
                         'user_id': user_id,
                         'filter_data': filter_data
@@ -588,7 +587,7 @@ def add_subscription(user_id, property_type, city_id, rooms_count, price_min, pr
             filter_data = {
                 'property_type': property_type,
                 'city': city_id,
-                'rooms_count': rooms_count,
+                'rooms': rooms_count,
                 'price_min': price_min,
                 'price_max': price_max
             }
