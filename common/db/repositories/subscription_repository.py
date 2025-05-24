@@ -104,9 +104,11 @@ class SubscriptionRepository:
                 user_filter.city = geo_id
                 updated_fields.append('city')
 
-            if 'rooms' in filters_data:
-                user_filter.rooms_count = filters_data.get('rooms')
-                updated_fields.append('rooms_count')
+            rooms_count = filters_data.get('rooms_count')
+            if rooms_count is None:
+                rooms_count = filters_data.get('rooms')
+            user_filter.rooms_count = rooms_count
+            updated_fields.append('rooms_count')
 
             if 'price_min' in filters_data:
                 user_filter.price_min = filters_data.get('price_min')

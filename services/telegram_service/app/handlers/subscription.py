@@ -1,6 +1,7 @@
 # services/telegram_service/app/handlers/subscription.py
 
 from aiogram import types
+from aiogram.dispatcher import FSMContext
 
 from common.db.session import db_session
 from common.db.repositories.subscription_repository import SubscriptionRepository
@@ -13,13 +14,21 @@ from ..bot import dp, bot
 from common.config import GEO_ID_MAPPING
 from ..keyboards import (
     main_menu_keyboard,
-    subscription_menu_keyboard, make_subscriptions_page_kb
+    subscription_menu_keyboard,
+    make_subscriptions_page_kb,
+    city_keyboard,
 )
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Import service logger and logging utilities
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
+
+# Extra utilities for starting a new subscription flow
+from ..utils.message_utils import safe_send_message, safe_answer_callback_query
+from common.db.operations import get_or_create_user
+from common.messaging.keyboard_utils import AVAILABLE_CITIES
+from ..states.basis_states import FilterStates
 
 # Map telegram_id to message_id of user trigger for subs list
 TRIGGER_MSG_MAP = {}
@@ -441,7 +450,11 @@ async def show_subscriptions_menu(message: types.Message):
                 "telegram_id": telegram_id,
                 "db_user_id": db_user_id
             })
-            await message.answer("У вас немає підписок.", reply_markup=main_menu_keyboard())
+
+            page = 0
+            subs = []
+            kb = make_subscriptions_page_kb(db_user_id, page, subs, total)
+            await message.answer("У вас немає підписок.", reply_markup=kb)
             return
 
         with db_session() as db:
@@ -864,4 +877,34 @@ async def handle_subs_close(callback_query: types.CallbackQuery):
     if trigger_msg_id:
         await delete_message_safe(telegram_id, trigger_msg_id)
     await callback_query.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data == "subs_new")
+@log_operation("handle_new_subscription")
+async def handle_new_subscription(callback_query: types.CallbackQuery, state: FSMContext):
+    telegram_id = callback_query.from_user.id
+    with log_context(logger, telegram_id=telegram_id):
+        # Ensure the user exists in our DB
+        user_db_id = get_or_create_user(telegram_id)
+
+        # Inform the user and ask for the first parameter (city)
+        intro_text = "Створюємо нову підписку.\n🏙️ Оберіть місто:"
+        city_msg = await safe_send_message(
+            chat_id=telegram_id,
+            text=intro_text,
+            reply_markup=city_keyboard(AVAILABLE_CITIES, page=0)
+        )
+
+        # Save needed data to FSM
+        if city_msg:
+            await state.update_data(
+                user_db_id=user_db_id,
+                telegram_id=telegram_id,
+                city_panel_msg_id=city_msg.message_id,
+                city_panel_page=0
+            )
+
+        # Set state so that the existing city handler continues the flow
+        await FilterStates.waiting_for_city.set()
+        await safe_answer_callback_query(callback_query.id)
 

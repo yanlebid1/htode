@@ -102,7 +102,7 @@ def update_user_filter(user_id, filters):
                 filter_data = {
                     'property_type': property_type,
                     'city': city,
-                    'rooms': rooms_count,
+                    'rooms_count': rooms_count,
                     'price_min': price_min,
                     'price_max': price_max
                 }
@@ -587,7 +587,7 @@ def add_subscription(user_id, property_type, city_id, rooms_count, price_min, pr
             filter_data = {
                 'property_type': property_type,
                 'city': city_id,
-                'rooms': rooms_count,
+                'rooms_count': rooms_count,
                 'price_min': price_min,
                 'price_max': price_max
             }
