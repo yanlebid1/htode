@@ -726,3 +726,40 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                     'error_type': type(run_error).__name__
                 })
                 return False
+
+
+@celery_app.task(name='common.messaging.tasks.process_show_more_description')
+@log_operation("process_show_more_description")
+def process_show_more_description(user_id: int, resource_url: str, message_id: int = None, platform: str = "telegram"):
+    """Fetch full description and send/edit message to user."""
+    from common.messaging.unified_platform_utils import safe_send_message, safe_edit_message_telegram
+    from common.db.operations import get_full_ad_description
+
+    with log_context(logger, user_id=user_id, resource_url=resource_url[:100], platform=platform):
+        async def run():
+            # Fetch description
+            description = get_full_ad_description(resource_url)
+            if not description:
+                description = "Повний опис недоступний. Спробуйте пізніше."
+
+            text = f"ℹ️ Повний опис оголошення:\n\n{description}"
+
+            if platform == "telegram" and message_id:
+                # Try to edit original message first
+                try:
+                    await safe_edit_message_telegram(user_id, message_id, text)
+                    return
+                except Exception:
+                    pass
+            # Fallback: send new message
+            await safe_send_message(user_id, text, platform=platform)
+
+        try:
+            return asyncio.run(run())
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(run())
+            finally:
+                loop.close()

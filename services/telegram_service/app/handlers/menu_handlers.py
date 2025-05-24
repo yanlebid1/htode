@@ -16,7 +16,7 @@ from common.config import GEO_ID_MAPPING, get_key_by_value, build_ad_text
 from common.celery_app import celery_app
 from common.utils.ad_utils import get_ad_images
 from ..utils.message_utils import (
-    safe_send_message, safe_answer_callback_query
+    safe_send_message, safe_answer_callback_query, delete_message_safe
 )
 from ..keyboards import (
     main_menu_keyboard,
@@ -28,6 +28,8 @@ from ..keyboards import (
 # Import service logger and logging utilities
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
+
+TRIGGER_INFO = {}
 
 
 @dp.message_handler(commands=['menu'])
@@ -122,12 +124,18 @@ async def how_to_use_handler(callback_query: types.CallbackQuery):
             "3. Отримуйте сповіщення.\n\n"
             "Якщо у вас є додаткові питання, зверніться до служби підтримки!"
         )
-        await safe_send_message(
+        bot_msg = await safe_send_message(
             chat_id=callback_query.message.chat.id,
             text=text,
             reply_markup=how_to_use_keyboard()
         )
         await safe_answer_callback_query(callback_query.id)
+
+        # store trigger and bot msg ids
+        TRIGGER_INFO[user_id] = {
+            'trigger_id': callback_query.message.message_id,
+            'bot_id': bot_msg.message_id if bot_msg else None
+        }
 
 
 @dp.callback_query_handler(lambda c: c.data == 'contact_support')
@@ -528,11 +536,17 @@ async def handle_how_to_use(message: types.Message):
             "3. Отримуйте сповіщення.\n\n"
             "Якщо у вас є додаткові питання, зверніться до служби підтримки!"
         )
-        await safe_send_message(
+        bot_msg = await safe_send_message(
             chat_id=message.from_user.id,
             text=text,
             reply_markup=how_to_use_keyboard()
         )
+
+        # store trigger and bot msg ids
+        TRIGGER_INFO[user_id] = {
+            'trigger_id': message.message_id,
+            'bot_id': bot_msg.message_id if bot_msg else None
+        }
 
 
 @dp.message_handler(lambda msg: msg.text == "↪️ Назад")
@@ -547,6 +561,20 @@ async def handle_back(message: types.Message):
         logger.info("User going back to main menu", extra={
             "user_id": user_id
         })
+
+        # delete stored messages if present
+        info = TRIGGER_INFO.pop(user_id, None)
+        if info:
+            if info.get('bot_id'):
+                await delete_message_safe(user_id, info['bot_id'])
+            if info.get('trigger_id'):
+                await delete_message_safe(user_id, info['trigger_id'])
+
+        # also delete current back message
+        try:
+            await delete_message_safe(user_id, message.message_id)
+        except Exception:
+            pass
 
         await safe_send_message(
             chat_id=message.from_user.id,

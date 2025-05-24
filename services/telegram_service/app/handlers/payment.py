@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from ..bot import dp
 from common.db.operations import get_db_user_id_by_telegram_id
 from ..payment.wayforpay import create_payment_form_url
+from ..utils.message_utils import delete_message_safe, safe_answer_callback_query
 
 # Import service logger and logging utilities
 from .. import logger
@@ -38,20 +39,26 @@ async def payment_handler(message: types.Message):
         })
 
         # Create payment keyboard with options
-        keyboard = InlineKeyboardMarkup()
+        keyboard = InlineKeyboardMarkup(row_width=2)
         keyboard.add(
-            InlineKeyboardButton("1 місяць - 99 грн", callback_data="pay_99_1month"),
-            InlineKeyboardButton("3 місяці - 269 грн", callback_data="pay_269_3months")
+            InlineKeyboardButton("1 тиждень - 49 грн", callback_data="pay_49_1week"),
+            InlineKeyboardButton("2 тижні - 60 грн", callback_data="pay_60_2weeks")
         )
         keyboard.add(
-            InlineKeyboardButton("6 місяців - 499 грн", callback_data="pay_499_6months"),
-            InlineKeyboardButton("1 рік - 899 грн", callback_data="pay_899_12months")
+            InlineKeyboardButton("1 місяць - 99 грн", callback_data="pay_99_1month")
+        )
+        keyboard.add(
+            InlineKeyboardButton("↪️ Назад", callback_data="payment_back")
         )
 
-        await message.answer(
+        bot_msg = await message.answer(
             "Оберіть тарифний план для оплати підписки:",
             reply_markup=keyboard
         )
+        PAY_TRIGGER[telegram_id] = {
+            'trigger_id': message.message_id,
+            'bot_id': bot_msg.message_id if bot_msg else None
+        }
         logger.info("Payment options presented successfully", extra={
             "telegram_id": telegram_id,
             "db_user_id": db_user_id
@@ -145,3 +152,26 @@ async def process_payment(callback_query: types.CallbackQuery):
             })
             await callback_query.message.answer("Виникла помилка при створенні платежу. Спробуйте пізніше.")
             await callback_query.answer()
+
+
+# store trigger ids for payment menu
+PAY_TRIGGER = {}
+
+@dp.callback_query_handler(lambda c: c.data == "payment_back")
+@log_operation("payment_back_handler")
+async def payment_back_handler(callback_query: types.CallbackQuery):
+    telegram_id = callback_query.from_user.id
+
+    info = PAY_TRIGGER.pop(telegram_id, None)
+    if info:
+        if info.get('bot_id'):
+            await delete_message_safe(telegram_id, info['bot_id'])
+        if info.get('trigger_id'):
+            await delete_message_safe(telegram_id, info['trigger_id'])
+
+    try:
+        await callback_query.message.delete()
+    except Exception:
+        pass
+
+    await safe_answer_callback_query(callback_query.id)

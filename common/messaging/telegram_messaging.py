@@ -207,7 +207,7 @@ class TelegramMessaging(MessagingInterface):
             return await self.send_text(
                 user_id=user_id,
                 text=text,
-                keyboard=keyboard,
+                reply_markup=keyboard,
                 parse_mode=parse_mode,
                 **kwargs
             )

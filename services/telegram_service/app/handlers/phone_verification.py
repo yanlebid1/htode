@@ -4,7 +4,7 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from ..bot import dp
-from ..utils.message_utils import safe_send_message, safe_answer_callback_query
+from ..utils.message_utils import safe_send_message, safe_answer_callback_query, delete_message_safe
 from common.verification.phone_service import (
     create_verification_code,
     verify_code,
@@ -31,6 +31,9 @@ class PhoneVerificationStates(StatesGroup):
     waiting_for_confirmation = State()
 
 
+BACK_INFO = {}
+
+
 @dp.message_handler(lambda msg: msg.text == "📱 Додати номер телефону")
 @log_operation("start_phone_verification")
 async def start_phone_verification(message: types.Message, state: FSMContext):
@@ -45,7 +48,7 @@ async def start_phone_verification(message: types.Message, state: FSMContext):
             "username": message.from_user.username
         })
 
-        await safe_send_message(
+        bot_msg = await safe_send_message(
             chat_id=message.from_user.id,
             text=(
                 "Для додавання номера телефону і єдиного входу з різних пристроїв, "
@@ -61,8 +64,13 @@ async def start_phone_verification(message: types.Message, state: FSMContext):
             "new_state": "waiting_for_phone"
         })
 
+        BACK_INFO[user_id] = {
+            'trigger_id': message.message_id,
+            'bot_id': bot_msg.message_id if bot_msg else None
+        }
 
-@dp.message_handler(lambda msg: msg.text == "Назад", state=PhoneVerificationStates.waiting_for_phone)
+
+@dp.message_handler(lambda msg: msg.text in ["Назад", "↪️ Назад"], state=PhoneVerificationStates.waiting_for_phone)
 @log_operation("back_from_phone_verification")
 async def back_from_phone_verification(message: types.Message, state: FSMContext):
     """
@@ -75,6 +83,14 @@ async def back_from_phone_verification(message: types.Message, state: FSMContext
             "user_id": user_id,
             "username": message.from_user.username
         })
+
+        # delete stored messages
+        info = BACK_INFO.pop(user_id, None)
+        if info:
+            if info.get('bot_id'):
+                await delete_message_safe(user_id, info['bot_id'])
+            if info.get('trigger_id'):
+                await delete_message_safe(user_id, info['trigger_id'])
 
         await safe_send_message(
             chat_id=message.from_user.id,
@@ -178,7 +194,7 @@ async def process_phone_number(message: types.Message, state: FSMContext, phone_
         })
 
 
-@dp.message_handler(lambda msg: msg.text == "Назад", state=PhoneVerificationStates.waiting_for_code)
+@dp.message_handler(lambda msg: msg.text in ["Назад", "↪️ Назад"], state=PhoneVerificationStates.waiting_for_code)
 @log_operation("back_from_code_verification")
 async def back_from_code_verification(message: types.Message, state: FSMContext):
     """
