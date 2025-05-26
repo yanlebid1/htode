@@ -56,8 +56,9 @@ async def start_command(message: types.Message, state: FSMContext):
             text="🏙️ Оберіть місто:",
             reply_markup=city_keyboard(AVAILABLE_CITIES, page=0)
         )
+        if city_msg:
+            await state.update_data(city_panel_msg_id=city_msg.message_id, city_panel_page=0)
         await FilterStates.waiting_for_city.set()
-        await state.update_data(user_db_id=user_db_id, telegram_id=telegram_id, city_panel_msg_id=city_msg.message_id, city_panel_page=0)
         logger.info("User started conversation", extra={
             "telegram_id": telegram_id,
             "db_id": user_db_id,
@@ -96,6 +97,31 @@ async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
             "telegram_id": telegram_id,
             "city": city
         })
+
+        # Check if we are editing city via edit menu
+        current_edit = (await state.get_data()).get("current_edit")
+
+        if current_edit == "city":
+            # Delete the selection panel message (current callback message)
+            await delete_message_safe(telegram_id, callback_query.message.message_id)
+
+            await safe_send_message(
+                chat_id=telegram_id,
+                text="Місто оновлено."
+            )
+
+            await safe_send_message(
+                chat_id=telegram_id,
+                text="Оберіть параметр для редагування:",
+                reply_markup=edit_parameters_keyboard()
+            )
+
+            await state.update_data(current_edit=None)
+            await FilterStates.waiting_for_confirmation.set()
+            await safe_answer_callback_query(callback_query.id)
+            return
+
+        # Not in edit mode – continue usual flow
 
         # Delete city selection panel
         if city_panel_msg_id:
@@ -152,27 +178,44 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
                 "selected_rooms": selected_rooms
             })
 
-            # Delete rooms panel
-            rooms_panel_msg_id = user_data.get('rooms_panel_msg_id')
-            if rooms_panel_msg_id:
-                await delete_message_safe(telegram_id, rooms_panel_msg_id)
+            # Check if we are editing rooms via edit menu or initial flow
+            current_edit = (await state.get_data()).get("current_edit")
 
-            rooms_text = ', '.join(str(r) for r in selected_rooms)
-            await safe_send_message(
-                chat_id=telegram_id,
-                text=f"Кількість кімнат: {rooms_text}"
-            )
+            if current_edit == "rooms":
+                # Delete the rooms keyboard panel message
+                await delete_message_safe(telegram_id, callback_query.message.message_id)
 
-            price_msg = await safe_send_message(
-                chat_id=telegram_id,
-                text="💰 Виберіть діапазон цін (грн):",
-                reply_markup=price_keyboard(city=city)
-            )
-            if price_msg:
-                await state.update_data(price_panel_msg_id=price_msg.message_id)
+                await safe_send_message(
+                    chat_id=telegram_id,
+                    text="Кількість кімнат оновлено."
+                )
 
-            await FilterStates.waiting_for_price.set()
-            await safe_answer_callback_query(callback_query.id)
+                await safe_send_message(
+                    chat_id=telegram_id,
+                    text="Оберіть параметр для редагування:",
+                    reply_markup=edit_parameters_keyboard()
+                )
+
+                await state.update_data(current_edit=None)
+                await FilterStates.waiting_for_confirmation.set()
+                await safe_answer_callback_query(callback_query.id)
+            else:
+                rooms_text = ', '.join('5+' if int(r)==5 else str(r) for r in selected_rooms)
+                await safe_send_message(
+                    chat_id=telegram_id,
+                    text=f"Кількість кімнат: {rooms_text}"
+                )
+
+                price_msg = await safe_send_message(
+                    chat_id=telegram_id,
+                    text="💰 Виберіть діапазон цін (грн):",
+                    reply_markup=price_keyboard(city=city)
+                )
+                if price_msg:
+                    await state.update_data(price_panel_msg_id=price_msg.message_id)
+
+                await FilterStates.waiting_for_price.set()
+                await safe_answer_callback_query(callback_query.id)
 
         elif data == 'rooms_any':
             await state.update_data(rooms=None)
@@ -282,6 +325,28 @@ async def process_price(callback_query: types.CallbackQuery, state: FSMContext):
             "price_range_text": text_range
         })
 
+        # Check if we are in edit mode
+        current_edit = (await state.get_data()).get("current_edit")
+        if current_edit == "price":
+            # Delete the price keyboard panel message
+            await delete_message_safe(telegram_id, callback_query.message.message_id)
+
+            await safe_send_message(
+                chat_id=telegram_id,
+                text="Діапазон цін оновлено."
+            )
+
+            await safe_send_message(
+                chat_id=telegram_id,
+                text="Оберіть параметр для редагування:",
+                reply_markup=edit_parameters_keyboard()
+            )
+
+            await state.update_data(current_edit=None)
+            await FilterStates.waiting_for_confirmation.set()
+            await safe_answer_callback_query(callback_query.id)
+            return
+
         # Delete price panel
         price_panel_msg_id = user_data.get('price_panel_msg_id')
         if price_panel_msg_id:
@@ -304,7 +369,7 @@ async def process_price(callback_query: types.CallbackQuery, state: FSMContext):
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(Text(startswith="edit_"), state=FilterStates.waiting_for_confirmation)
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('edit_') and c.data != 'edit_parameters', state=FilterStates.waiting_for_confirmation)
 @log_operation("handle_edit")
 async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id
@@ -326,6 +391,9 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
             "current_data": user_data
         })
 
+        # Remember what we are editing so that downstream handlers know
+        await state.update_data(current_edit=edit_field)
+
         if edit_field == "city":
             await safe_send_message(
                 chat_id=telegram_id,
@@ -339,7 +407,7 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
             await safe_send_message(
                 chat_id=telegram_id,
                 text="🛏️ Виберіть кількість кімнат (можна вибрати декілька):",
-                reply_markup=rooms_keyboard(selected_rooms)
+                reply_markup=rooms_keyboard(selected_rooms, done_label="↪️ Назад")
             )
             await FilterStates.waiting_for_rooms.set()
         elif edit_field == "price":
@@ -396,9 +464,11 @@ async def process_basic_params(callback_query: types.CallbackQuery, state: FSMCo
         property_type = user_data.get('property_type')
         mapping_property = {"apartment": "Квартира", "house": "Будинок"}
         ua_lang_property_type = mapping_property.get(property_type, "")
+        if not ua_lang_property_type:
+            ua_lang_property_type = "Квартира"  # Default to apartment when unspecified
 
         city = user_data.get('city')
-        rooms = ', '.join(map(str, user_data.get('rooms'))) if user_data.get('rooms') else 'Не важливо'
+        rooms = ', '.join('5+' if int(r)==5 else str(r) for r in user_data.get('rooms')) if user_data.get('rooms') else 'Не важливо'
 
         # Определение диапазона цен
         price_min = user_data.get('price_min')
@@ -560,4 +630,19 @@ async def city_page_navigation(callback_query: types.CallbackQuery, state: FSMCo
             reply_markup=city_keyboard(AVAILABLE_CITIES, page=page)
         )
         await state.update_data(city_panel_page=page)
+    await safe_answer_callback_query(callback_query.id)
+
+
+@dp.callback_query_handler(lambda c: c.data == "cancel_edit", state=FilterStates.waiting_for_confirmation)
+@log_operation("cancel_edit")
+async def cancel_edit_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    telegram_id = callback_query.from_user.id
+    with log_context(logger, telegram_id=telegram_id):
+        await safe_send_message(
+            chat_id=telegram_id,
+            text="Редагування скасовано.",
+            reply_markup=confirmation_keyboard()
+        )
+        await state.update_data(current_edit=None)
+        await FilterStates.waiting_for_confirmation.set()
     await safe_answer_callback_query(callback_query.id)

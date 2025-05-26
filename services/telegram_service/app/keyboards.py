@@ -22,9 +22,9 @@ def city_keyboard(cities, page=0):
     return KeyboardFactory.create_keyboard("telegram", "city", cities=cities, page=page)
 
 
-def rooms_keyboard(selected_rooms=None):
+def rooms_keyboard(selected_rooms=None, done_label="Далі"):
     """Create keyboard for room selection"""
-    return KeyboardFactory.create_keyboard("telegram", "rooms", selected_rooms=selected_rooms)
+    return KeyboardFactory.create_keyboard("telegram", "rooms", selected_rooms=selected_rooms, done_label=done_label)
 
 
 def price_keyboard(city="Київ"):

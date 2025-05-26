@@ -6,7 +6,7 @@ from aiogram.types import ParseMode, MediaGroup, InlineKeyboardMarkup, InlineKey
 from aiogram.utils.exceptions import MessageNotModified
 from ..bot import dp, bot
 from ..states.basis_states import FilterStates
-from ..keyboards import floor_keyboard
+from ..keyboards import floor_keyboard, edit_parameters_keyboard
 from common.db.operations import get_extra_images
 
 # Import service logger and logging utilities
@@ -152,8 +152,25 @@ async def set_pets_allowed(callback_query: types.CallbackQuery, state: FSMContex
         await state.update_data(pets_allowed_full=value)
 
         logger.info("Pet preference set", extra={"user_id": user_id, "pets_allowed": value})
+
+        # Delete selection panel
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+
         await callback_query.message.answer(f'Обрано: "{ua_lang_value}"')
-        await show_advanced_options(callback_query.message, state)
+
+        current_edit = (await state.get_data()).get("current_edit")
+        if current_edit == "pets_allowed":
+            await callback_query.message.answer(
+                "Оберіть параметр для редагування:",
+                reply_markup=edit_parameters_keyboard()
+            )
+            await state.update_data(current_edit=None)
+        else:
+            await show_advanced_options(callback_query.message, state)
+
         await callback_query.answer()
 
 
@@ -167,7 +184,7 @@ async def edit_without_broker_handler(callback_query: types.CallbackQuery, state
             InlineKeyboardButton("Від власника", callback_data="without_broker_owner"),
             InlineKeyboardButton("Усі оголошення", callback_data="without_broker_all")
         )
-        keyboard.add(InlineKeyboardButton("До списку параметрів", callback_data="return_to_advanced_menu"))
+        keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu"))
 
         await callback_query.message.answer("Виберіть вид оголошень:", reply_markup=keyboard)
         await callback_query.answer()
@@ -187,8 +204,27 @@ async def set_without_broker(callback_query: types.CallbackQuery, state: FSMCont
             text = "Усі оголошення"
 
         logger.info("Broker preference set", extra={"user_id": user_id, "without_broker": choice})
+
+        # Delete the selection panel to keep chat clean
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+
         await callback_query.message.answer(f'Обрано: "{text}"')
-        await show_advanced_options(callback_query.message, state)
+
+        # Determine if we are in edit flow
+        current_edit = (await state.get_data()).get("current_edit")
+        if current_edit == "without_broker":
+            await callback_query.message.answer(
+                "Оберіть параметр для редагування:",
+                reply_markup=edit_parameters_keyboard()
+            )
+            await state.update_data(current_edit=None)
+        else:
+            # advanced flow
+            await show_advanced_options(callback_query.message, state)
+
         await callback_query.answer()
 
 
@@ -418,7 +454,7 @@ def build_full_summary(data: dict) -> str:
     lines = []
     lines.append(f"🏷 Тип нерухомості: {ua_lang_property_type}")
     lines.append(f"🏙️ Місто: {city}")
-    lines.append(f"🛏️ Кількість кімнат: {', '.join(map(str, rooms)) if rooms else 'Не важливо'}")
+    lines.append(f"🛏️ Кількість кімнат: {', '.join('5+' if int(r)==5 else str(r) for r in rooms) if rooms else 'Не важливо'}")
 
     # Price range
     if price_min and price_max:

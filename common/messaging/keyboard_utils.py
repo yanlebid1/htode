@@ -127,7 +127,8 @@ class TelegramKeyboardFactory:
                 return cls.create_city_keyboard(cities, page)
             elif keyboard_type == "rooms":
                 selected_rooms = kwargs.get('selected_rooms', [])
-                return cls.create_rooms_keyboard(selected_rooms)
+                done_label = kwargs.get('done_label', "Далі")
+                return cls.create_rooms_keyboard(selected_rooms, done_label)
             elif keyboard_type == "price":
                 city = kwargs.get('city', 'Київ')
                 return cls.create_price_keyboard(city)
@@ -208,7 +209,7 @@ class TelegramKeyboardFactory:
 
     @staticmethod
     @log_operation("create_rooms_keyboard")
-    def create_rooms_keyboard(selected_rooms=None):
+    def create_rooms_keyboard(selected_rooms=None, done_label="Далі"):
         """Create keyboard for room selection"""
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -218,16 +219,16 @@ class TelegramKeyboardFactory:
         with log_context(logger, selected_rooms=selected_rooms):
             keyboard = InlineKeyboardMarkup(row_width=3)
             for rooms in range(1, 6):
+                label = "5+" if rooms == 5 else str(rooms)
                 if rooms in selected_rooms:
-                    button_text = f"✅ {rooms}"
+                    button_text = f"✅ {label}"
                 else:
-                    button_text = str(rooms)
+                    button_text = label
                 keyboard.insert(
                     InlineKeyboardButton(button_text, callback_data=f"rooms_{rooms}")
                 )
             keyboard.add(
-                InlineKeyboardButton("Далі", callback_data="rooms_done"),
-                InlineKeyboardButton("Пропустити", callback_data="rooms_any")
+                InlineKeyboardButton(done_label, callback_data="rooms_done"),
             )
 
             logger.debug("Created Telegram rooms keyboard", extra={'selected_count': len(selected_rooms)})
@@ -288,14 +289,11 @@ class TelegramKeyboardFactory:
 
         keyboard = InlineKeyboardMarkup(row_width=2)
         keyboard.add(
-            InlineKeyboardButton("Тип нерухомості", callback_data="edit_property_type"),
             InlineKeyboardButton("Місто", callback_data="edit_city"),
             InlineKeyboardButton("Кількість кімнат", callback_data="edit_rooms"),
-            InlineKeyboardButton("Діапазон цін", callback_data="edit_price"),
-            InlineKeyboardButton("Поверх", callback_data="edit_floor"),
             InlineKeyboardButton("З тваринами?", callback_data="pets_allowed"),
             InlineKeyboardButton("Від власника?", callback_data="without_broker"),
-            InlineKeyboardButton("Відмінити", callback_data="cancel_edit"),
+            InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"),
         )
 
         logger.debug("Created Telegram edit parameters keyboard")
@@ -499,7 +497,8 @@ class ViberKeyboardFactory:
 
             # Add number buttons 1-5
             for room in range(1, 6):
-                text = f"✅ {room}" if room in selected_rooms else f"{room}"
+                label = "5+" if room == 5 else str(room)
+                text = f"✅ {label}" if room in selected_rooms else label
                 buttons.append({
                     "Columns": 1,
                     "Rows": 1,
@@ -619,13 +618,6 @@ class ViberKeyboardFactory:
                 {
                     "Columns": 3,
                     "Rows": 1,
-                    "Text": "Тип нерухомості",
-                    "ActionType": "reply",
-                    "ActionBody": "edit_property_type"
-                },
-                {
-                    "Columns": 3,
-                    "Rows": 1,
                     "Text": "Місто",
                     "ActionType": "reply",
                     "ActionBody": "edit_city"
@@ -640,14 +632,21 @@ class ViberKeyboardFactory:
                 {
                     "Columns": 3,
                     "Rows": 1,
-                    "Text": "Діапазон цін",
+                    "Text": "З тваринами?",
                     "ActionType": "reply",
-                    "ActionBody": "edit_price"
+                    "ActionBody": "pets_allowed"
+                },
+                {
+                    "Columns": 3,
+                    "Rows": 1,
+                    "Text": "Від власника?",
+                    "ActionType": "reply",
+                    "ActionBody": "without_broker"
                 },
                 {
                     "Columns": 6,
                     "Rows": 1,
-                    "Text": "Відмінити",
+                    "Text": "↪️ Назад",
                     "ActionType": "reply",
                     "ActionBody": "cancel_edit"
                 }
@@ -754,7 +753,7 @@ class WhatsAppKeyboardFactory:
             "2. 2 кімнати\n"
             "3. 3 кімнати\n"
             "4. 4 кімнати\n"
-            "5. 5 кімнат\n"
+            "5. 5+ кімнат\n"
             "6. Будь-яка кількість кімнат\n\n"
             "Ви можете вибрати кілька варіантів, розділивши їх комами, наприклад: 1,2,3"
         )
@@ -810,11 +809,10 @@ class WhatsAppKeyboardFactory:
         """Create parameter editing menu text for WhatsApp"""
         menu_text = (
             "Оберіть параметр для редагування (введіть цифру):\n\n"
-            "1. Тип нерухомості\n"
-            "2. Місто\n"
-            "3. Кількість кімнат\n"
-            "4. Діапазон цін\n"
-            "5. Скасувати редагування"
+            "1. Місто\n"
+            "2. Кількість кімнат\n"
+            "3. Діапазон цін\n"
+            "4. Назад"
         )
 
         logger.debug("Created WhatsApp edit parameters menu")

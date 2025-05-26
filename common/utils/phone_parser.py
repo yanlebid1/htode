@@ -5,10 +5,28 @@ import urllib.parse
 import asyncio
 from dataclasses import dataclass
 from typing import List, Optional
+import os
+from typing import TYPE_CHECKING
 
 from bs4 import BeautifulSoup
-from camoufox.async_api import AsyncCamoufox  # Camoufox async browser context
-from playwright.async_api import Page, Browser  # For type hints (Camoufox uses Playwright under the hood)
+try:
+    if os.getenv("DISABLE_CAMOUFOX", "0") == "1":
+        raise ImportError("Camoufox disabled via environment variable")
+    from camoufox.async_api import AsyncCamoufox  # type: ignore
+except ImportError:  # pragma: no cover
+    class AsyncCamoufox:  # fallback dummy implementation
+        """Stub replacement when Camoufox is not available/disabled."""
+
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("Camoufox support is disabled. Set DISABLE_CAMOUFOX=0 and install camoufox to enable.")
+
+        async def __aenter__(self):  # type: ignore
+            raise RuntimeError("Camoufox support is disabled.")
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):  # type: ignore
+            return False
+
+from playwright.async_api import Page, Browser  # type: ignore  # After fallback stub
 
 from common.utils.unified_request_utils import make_request
 from common.utils.logging_config import log_operation, log_context, LogAggregator
