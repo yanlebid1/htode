@@ -11,6 +11,7 @@ nest_asyncio
 lxml
 boto3
 beautifulsoup4
-camoufox
+playwright
+# camoufox
 aiodns
 zenrows

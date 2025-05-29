@@ -6,7 +6,7 @@ from aiogram.types import ParseMode, MediaGroup, InlineKeyboardMarkup, InlineKey
 from aiogram.utils.exceptions import MessageNotModified
 from ..bot import dp, bot
 from ..states.basis_states import FilterStates
-from ..keyboards import floor_keyboard
+from ..keyboards import floor_keyboard, edit_parameters_keyboard, city_keyboard
 from common.db.operations import get_extra_images
 
 # Import service logger and logging utilities
@@ -28,7 +28,21 @@ async def advanced_search_handler(callback_query: types.CallbackQuery, state: FS
 async def return_to_advanced_menu_handler(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
     with log_context(logger, user_id=user_id, callback_data=callback_query.data):
-        await show_advanced_options(callback_query.message, state)
+        # Remove the inline keyboard message to keep chat clean
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+
+        user_state = await state.get_data()
+        if user_state.get("current_edit"):
+            await callback_query.message.answer(
+                "Оберіть параметр для редагування:",
+                reply_markup=edit_parameters_keyboard()
+            )
+            await state.update_data(current_edit=None, city_panel_msg_id=None, rooms_panel_msg_id=None, price_panel_msg_id=None)
+        else:
+            await show_advanced_options(callback_query.message, state)
         await callback_query.answer()
 
 
@@ -41,7 +55,7 @@ async def edit_floor_max_handler(callback_query: types.CallbackQuery, state: FSM
         floors = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         for f in floors:
             keyboard.insert(InlineKeyboardButton(str(f), callback_data=f"floor_max_{f}"))
-        keyboard.add(InlineKeyboardButton("До списку параметрів", callback_data="return_to_advanced_menu"))
+        keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu"))
 
         await callback_query.message.answer("Виберіть максимальний поверх:", reply_markup=keyboard)
         await callback_query.answer()
@@ -71,7 +85,7 @@ async def edit_is_not_first_floor_handler(callback_query: types.CallbackQuery, s
         keyboard = InlineKeyboardMarkup()
         keyboard.add(InlineKeyboardButton("Так", callback_data="is_not_first_floor_yes"))
         keyboard.add(InlineKeyboardButton("Ні", callback_data="is_not_first_floor_no"))
-        keyboard.add(InlineKeyboardButton("До списку параметрів", callback_data="return_to_advanced_menu"))
+        keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu"))
 
         await callback_query.message.answer("Чи виключати перший поверх?", reply_markup=keyboard)
         await callback_query.answer()
@@ -104,7 +118,7 @@ async def edit_last_floor_handler(callback_query: types.CallbackQuery, state: FS
             InlineKeyboardButton("Так", callback_data="last_floor_yes"),
             InlineKeyboardButton("Ні", callback_data="last_floor_no")
         )
-        keyboard.add(InlineKeyboardButton("До списку параметрів", callback_data="return_to_advanced_menu"))
+        keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu"))
 
         await callback_query.message.answer("Виключати останній поверх?", reply_markup=keyboard)
         await callback_query.answer()
@@ -130,12 +144,14 @@ async def set_last_floor(callback_query: types.CallbackQuery, state: FSMContext)
 async def edit_pets_allowed_handler(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
     with log_context(logger, user_id=user_id, callback_data=callback_query.data):
+        await state.update_data(current_edit="pets_allowed")
+
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
             InlineKeyboardButton("Так", callback_data="pets_allowed_yes"),
             InlineKeyboardButton("Ні", callback_data="pets_allowed_no"),
         )
-        keyboard.add(InlineKeyboardButton("До списку параметрів", callback_data="return_to_advanced_menu"))
+        keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu"))
 
         await callback_query.message.answer("🐶🐈🐹 Чи дозволено з тваринами?", reply_markup=keyboard)
         await callback_query.answer()
@@ -152,8 +168,25 @@ async def set_pets_allowed(callback_query: types.CallbackQuery, state: FSMContex
         await state.update_data(pets_allowed_full=value)
 
         logger.info("Pet preference set", extra={"user_id": user_id, "pets_allowed": value})
+
+        # Delete selection panel
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+
         await callback_query.message.answer(f'Обрано: "{ua_lang_value}"')
-        await show_advanced_options(callback_query.message, state)
+
+        current_edit = (await state.get_data()).get("current_edit")
+        if current_edit == "pets_allowed":
+            await callback_query.message.answer(
+                "Оберіть параметр для редагування:",
+                reply_markup=edit_parameters_keyboard()
+            )
+            await state.update_data(current_edit=None)
+        else:
+            await show_advanced_options(callback_query.message, state)
+
         await callback_query.answer()
 
 
@@ -162,12 +195,15 @@ async def set_pets_allowed(callback_query: types.CallbackQuery, state: FSMContex
 async def edit_without_broker_handler(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
     with log_context(logger, user_id=user_id, callback_data=callback_query.data):
+        # Mark that we are in edit flow so Back returns to edit menu
+        await state.update_data(current_edit="without_broker")
+
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
             InlineKeyboardButton("Від власника", callback_data="without_broker_owner"),
             InlineKeyboardButton("Усі оголошення", callback_data="without_broker_all")
         )
-        keyboard.add(InlineKeyboardButton("До списку параметрів", callback_data="return_to_advanced_menu"))
+        keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu"))
 
         await callback_query.message.answer("Виберіть вид оголошень:", reply_markup=keyboard)
         await callback_query.answer()
@@ -187,8 +223,27 @@ async def set_without_broker(callback_query: types.CallbackQuery, state: FSMCont
             text = "Усі оголошення"
 
         logger.info("Broker preference set", extra={"user_id": user_id, "without_broker": choice})
+
+        # Delete the selection panel to keep chat clean
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+
         await callback_query.message.answer(f'Обрано: "{text}"')
-        await show_advanced_options(callback_query.message, state)
+
+        # Determine if we are in edit flow
+        current_edit = (await state.get_data()).get("current_edit")
+        if current_edit == "without_broker":
+            await callback_query.message.answer(
+                "Оберіть параметр для редагування:",
+                reply_markup=edit_parameters_keyboard()
+            )
+            await state.update_data(current_edit=None)
+        else:
+            # advanced flow
+            await show_advanced_options(callback_query.message, state)
+
         await callback_query.answer()
 
 
@@ -220,6 +275,8 @@ async def advanced_done_handler(callback_query: types.CallbackQuery, state: FSMC
 async def edit_floor_handler(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
     with log_context(logger, user_id=user_id, callback_data=callback_query.data):
+        await state.update_data(current_edit="floor")
+
         user_data = await state.get_data()
         floor_opts = user_data.get("floor_opts", {
             "not_first": False,
@@ -333,9 +390,24 @@ async def floor_done_handler(callback_query: types.CallbackQuery, state: FSMCont
             "floor_settings": advanced_data
         })
 
-        # Return to advanced menu or summary
+        # Delete panel message
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+
         await callback_query.message.answer("💾 Зміни збережено.")
-        await show_advanced_options(callback_query.message, state)
+
+        current_edit = (await state.get_data()).get("current_edit")
+        if current_edit == "floor":
+            await callback_query.message.answer(
+                "Оберіть параметр для редагування:",
+                reply_markup=edit_parameters_keyboard()
+            )
+            await state.update_data(current_edit=None)
+        else:
+            await show_advanced_options(callback_query.message, state)
+
         await callback_query.answer()
 
 
@@ -354,7 +426,7 @@ async def show_advanced_options(message: types.Message, state: FSMContext):
             InlineKeyboardButton("Від власника?", callback_data="without_broker"),
         )
         # "Готово" -> return to summary
-        keyboard.add(InlineKeyboardButton("Повернутись назад", callback_data="advanced_done"))
+        keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="advanced_done"))
 
         await message.answer("Оберіть параметр для зміни:", reply_markup=keyboard)
 
@@ -418,7 +490,7 @@ def build_full_summary(data: dict) -> str:
     lines = []
     lines.append(f"🏷 Тип нерухомості: {ua_lang_property_type}")
     lines.append(f"🏙️ Місто: {city}")
-    lines.append(f"🛏️ Кількість кімнат: {', '.join(map(str, rooms)) if rooms else 'Не важливо'}")
+    lines.append(f"🛏️ Кількість кімнат: {', '.join('5+' if int(r)==5 else str(r) for r in rooms) if rooms else 'Не важливо'}")
 
     # Price range
     if price_min and price_max:
@@ -437,7 +509,7 @@ def build_full_summary(data: dict) -> str:
     if is_not_first_floor == "yes":
         lines.append("🏢 Не перший поверх")
     elif is_not_first_floor == "no":
-        lines.append("🏢 Перший поверх дозволено")
+        lines.append("🏢 Перший поверх дозволений")
 
     if last_floor == "yes":
         lines.append("🏢 Тільки останній поверх")
@@ -451,3 +523,23 @@ def build_full_summary(data: dict) -> str:
         lines.append("😎 Тільки від власника")
 
     return "**Поточні параметри пошуку**\n" + "\n".join(lines)
+
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('city_page_'), state=FilterStates.waiting_for_city)
+@log_operation("handle_city_pagination")
+async def handle_city_pagination(callback_query: types.CallbackQuery, state: FSMContext):
+    user_id = callback_query.from_user.id
+    with log_context(logger, user_id=user_id, callback_data=callback_query.data):
+        _, page = callback_query.data.split('city_page_')
+        page = int(page)
+        kb_city = city_keyboard(AVAILABLE_CITIES, page=page)
+        # if in edit flow add back button
+        if (await state.get_data()).get("current_edit") == "city":
+            kb_city.add(InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"))
+
+        await safe_edit_message(
+            chat_id=user_id,
+            message_id=callback_query.message.message_id,
+            text="🏙️ Оберіть місто:",
+            reply_markup=kb_city
+        )

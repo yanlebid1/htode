@@ -5,10 +5,28 @@ import urllib.parse
 import asyncio
 from dataclasses import dataclass
 from typing import List, Optional
+import os
+from typing import TYPE_CHECKING
 
 from bs4 import BeautifulSoup
-from camoufox.async_api import AsyncCamoufox  # Camoufox async browser context
-from playwright.async_api import Page, Browser  # For type hints (Camoufox uses Playwright under the hood)
+# try:
+#     if os.getenv("DISABLE_CAMOUFOX", "0") == "1":
+#         raise ImportError("Camoufox disabled via environment variable")
+#     from camoufox.async_api import AsyncCamoufox  # type: ignore
+# except ImportError:  # pragma: no cover
+#     class AsyncCamoufox:  # fallback dummy implementation
+#         """Stub replacement when Camoufox is not available/disabled."""
+
+#         def __init__(self, *args, **kwargs):
+#             raise RuntimeError("Camoufox support is disabled. Set DISABLE_CAMOUFOX=0 and install camoufox to enable.")
+
+#         async def __aenter__(self):  # type: ignore
+#             raise RuntimeError("Camoufox support is disabled.")
+
+#         async def __aexit__(self, exc_type, exc_val, exc_tb):  # type: ignore
+#             return False
+
+from playwright.async_api import Page, Browser  # type: ignore  # After fallback stub
 
 from common.utils.unified_request_utils import make_request
 from common.utils.logging_config import log_operation, log_context, LogAggregator
@@ -285,45 +303,46 @@ async def _extract_phone_numbers_async(resource_url: str, proxy: Optional[str] =
     Asynchronously extract phone numbers (and Viber link if present) from the given resource URL.
     Optionally uses a proxy for network requests if provided.
     """
-    aggregator = LogAggregator(logger, f"extract_phone_numbers_async_{resource_url}")
-    camoufox_kwargs = {
-        "headless": True,
-    }
-    if proxy:
-        logger.info(f"Using proxy for extraction: {proxy}")
-        camoufox_kwargs["proxy"] = parse_proxy(proxy)
-    cam = AsyncCamoufox(**camoufox_kwargs)
-    try:
-        browser = await cam.__aenter__()  # Launch Camoufox browser
-    except Exception as e:
-        logger.exception(f"Failed to launch Camoufox browser: {e}")
-        raise
-    try:
-        with log_context(logger, resource_url=resource_url):
-            # html_content = await _fetch_page(resource_url, browser, proxy, attempts=5)
-            parse_context_kwargs = {"java_script_enabled": True}
-            if proxy:
-                parse_context_kwargs["proxy"] = parse_proxy(proxy)
-            page_ctx = await browser.new_context(**parse_context_kwargs)
-            page = await page_ctx.new_page()
-            await page.goto(resource_url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
-            html_content = await page.content()
-            result = await _domain_parse_final(html_content, resource_url, page, browser)
-            await page_ctx.close()
-            method_label = "proxy" if proxy else "no-proxy"
-            aggregator.add_item({'method': method_label}, success=True)
-            return result
-    except Exception as e:
-        logger.warning("Extraction via browser failed", extra={
-            'resource_url': resource_url,
-            'error_type': type(e).__name__
-        })
-        aggregator.add_error("browser_extraction_failed", {'error': str(e)})
-        return ExtractionResult([], None)
-    finally:
-        if browser is not None:
-            await cam.__aexit__(None, None, None)
-        aggregator.log_summary()
+    return ExtractionResult([], None)
+    # aggregator = LogAggregator(logger, f"extract_phone_numbers_async_{resource_url}")
+    # camoufox_kwargs = {
+    #     "headless": True,
+    # }
+    # if proxy:
+    #     logger.info(f"Using proxy for extraction: {proxy}")
+    #     camoufox_kwargs["proxy"] = parse_proxy(proxy)
+    # cam = AsyncCamoufox(**camoufox_kwargs)
+    # try:
+    #     browser = await cam.__aenter__()  # Launch Camoufox browser
+    # except Exception as e:
+    #     logger.exception(f"Failed to launch Camoufox browser: {e}")
+    #     raise
+    # try:
+    #     with log_context(logger, resource_url=resource_url):
+    #         # html_content = await _fetch_page(resource_url, browser, proxy, attempts=5)
+    #         parse_context_kwargs = {"java_script_enabled": True}
+    #         if proxy:
+    #             parse_context_kwargs["proxy"] = parse_proxy(proxy)
+    #         page_ctx = await browser.new_context(**parse_context_kwargs)
+    #         page = await page_ctx.new_page()
+    #         await page.goto(resource_url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
+    #         html_content = await page.content()
+    #         result = await _domain_parse_final(html_content, resource_url, page, browser)
+    #         await page_ctx.close()
+    #         method_label = "proxy" if proxy else "no-proxy"
+    #         aggregator.add_item({'method': method_label}, success=True)
+    #         return result
+    # except Exception as e:
+    #     logger.warning("Extraction via browser failed", extra={
+    #         'resource_url': resource_url,
+    #         'error_type': type(e).__name__
+    #     })
+    #     aggregator.add_error("browser_extraction_failed", {'error': str(e)})
+    #     return ExtractionResult([], None)
+    # finally:
+    #     if browser is not None:
+    #         await cam.__aexit__(None, None, None)
+    #     aggregator.log_summary()
 
 
 @log_operation("extract_phone_numbers_from_resource")

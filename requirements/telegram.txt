@@ -13,7 +13,8 @@ aiohttp
 nest_asyncio
 lxml
 aiodns
-camoufox
+playwright
+# camoufox
 
 # Add dependencies needed for cross-service functionality
 viberbot==1.0.12

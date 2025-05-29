@@ -17,14 +17,14 @@ def property_type_keyboard():
     return KeyboardFactory.create_keyboard("telegram", "property_type")
 
 
-def city_keyboard(cities, page=0):
+def city_keyboard(cities, page=0, show_back=False, show_save=False, selected_city=None):
     """Create keyboard for city selection with pagination"""
-    return KeyboardFactory.create_keyboard("telegram", "city", cities=cities, page=page)
+    return KeyboardFactory.create_keyboard("telegram", "city", cities=cities, page=page, show_back=show_back, show_save=show_save, selected_city=selected_city)
 
 
-def rooms_keyboard(selected_rooms=None):
+def rooms_keyboard(selected_rooms=None, show_back=False, show_save=False):
     """Create keyboard for room selection"""
-    return KeyboardFactory.create_keyboard("telegram", "rooms", selected_rooms=selected_rooms)
+    return KeyboardFactory.create_keyboard("telegram", "rooms", selected_rooms=selected_rooms, show_back=show_back, show_save=show_save)
 
 
 def price_keyboard(city="Київ"):
