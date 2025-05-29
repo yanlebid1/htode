@@ -124,11 +124,15 @@ class TelegramKeyboardFactory:
             elif keyboard_type == "city":
                 cities = kwargs.get('cities', AVAILABLE_CITIES)
                 page = kwargs.get('page', 0)
-                return cls.create_city_keyboard(cities, page)
+                show_back = kwargs.get('show_back', False)
+                show_save = kwargs.get('show_save', False)
+                selected_city = kwargs.get('selected_city', None)
+                return cls.create_city_keyboard(cities, page, show_back, show_save, selected_city)
             elif keyboard_type == "rooms":
                 selected_rooms = kwargs.get('selected_rooms', [])
-                done_label = kwargs.get('done_label', "Далі")
-                return cls.create_rooms_keyboard(selected_rooms, done_label)
+                show_back = kwargs.get('show_back', False)
+                show_save = kwargs.get('show_save', False)
+                return cls.create_rooms_keyboard(selected_rooms, show_back, show_save)
             elif keyboard_type == "price":
                 city = kwargs.get('city', 'Київ')
                 return cls.create_price_keyboard(city)
@@ -183,7 +187,7 @@ class TelegramKeyboardFactory:
 
     @staticmethod
     @log_operation("create_city_keyboard")
-    def create_city_keyboard(cities, page=0):
+    def create_city_keyboard(cities, page=0, show_back=False, show_save=False, selected_city=None):
         """Create keyboard for city selection with pagination (3x2 grid, 6 per page)"""
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         per_page = 6
@@ -193,8 +197,11 @@ class TelegramKeyboardFactory:
         page_cities = cities[start:end]
         keyboard = InlineKeyboardMarkup(row_width=row_width)
         # Add cities in 3x2 grid
-        for i in range(0, len(page_cities), row_width):
-            row = [InlineKeyboardButton(city, callback_data=f"city_{city}") for city in page_cities[i:i+row_width]]
+        for idx in range(0, len(page_cities), row_width):
+            row = []
+            for city in page_cities[idx:idx+row_width]:
+                label = f"✅ {city}" if city == selected_city else city
+                row.append(InlineKeyboardButton(label, callback_data=f"city_{city}"))
             keyboard.row(*row)
         # Pagination controls
         total_pages = (len(cities) - 1) // per_page + 1
@@ -205,11 +212,18 @@ class TelegramKeyboardFactory:
             nav_buttons.append(InlineKeyboardButton("➡️", callback_data=f"city_page_{page+1}"))
         if nav_buttons:
             keyboard.row(*nav_buttons)
+
+        # Save / Back rows (for edit mode)
+        if show_save:
+            keyboard.row(InlineKeyboardButton("💾 Зберегти", callback_data="city_save"))
+        if show_back:
+            keyboard.row(InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"))
+
         return keyboard
 
     @staticmethod
     @log_operation("create_rooms_keyboard")
-    def create_rooms_keyboard(selected_rooms=None, done_label="Далі"):
+    def create_rooms_keyboard(selected_rooms=None, show_back=False, show_save=False):
         """Create keyboard for room selection"""
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -227,9 +241,14 @@ class TelegramKeyboardFactory:
                 keyboard.insert(
                     InlineKeyboardButton(button_text, callback_data=f"rooms_{rooms}")
                 )
-            keyboard.add(
-                InlineKeyboardButton(done_label, callback_data="rooms_done"),
-            )
+
+            if show_save:
+                keyboard.add(InlineKeyboardButton("💾 Зберегти", callback_data="rooms_save"))
+            else:
+                keyboard.add(InlineKeyboardButton("Далі", callback_data="rooms_done"))
+
+            if show_back:
+                keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"))
 
             logger.debug("Created Telegram rooms keyboard", extra={'selected_count': len(selected_rooms)})
             return keyboard

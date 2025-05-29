@@ -13,7 +13,8 @@ jmespath
 beautifulsoup4
 fastapi
 uvicorn
-camoufox
+playwright
+# camoufox
 twilio==7.16.4
 lxml
 aiodns

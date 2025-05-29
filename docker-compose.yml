@@ -356,6 +356,7 @@ services:
     logging: *default-logging
     environment:
       <<: *combined-env
+      DISABLE_CAMOUFOX: "1"
     command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scrape_queue --max-tasks-per-child=50
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@scraper_worker_service" ]
