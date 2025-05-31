@@ -42,9 +42,9 @@ def edit_parameters_keyboard():
     return KeyboardFactory.create_keyboard("telegram", "edit_parameters")
 
 
-def floor_keyboard(floor_opts=None):
+def floor_keyboard(floor_opts=None, show_back=False):
     """Create keyboard for floor selection"""
-    return KeyboardFactory.create_keyboard("telegram", "floor", floor_opts=floor_opts)
+    return KeyboardFactory.create_keyboard("telegram", "floor", floor_opts=floor_opts, show_back=show_back)
 
 
 def subscription_menu_keyboard():
@@ -174,7 +174,7 @@ def phone_request_keyboard():
         KeyboardButton(text="Поділитися номером телефону", request_contact=True)
     )
     keyboard.add(
-        KeyboardButton(text="Назад")
+        KeyboardButton(text="↪️ Назад")
     )
     return keyboard
 
@@ -185,7 +185,7 @@ def verification_code_keyboard():
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(
-        KeyboardButton(text="Назад")
+        KeyboardButton(text="↪️ Назад")
     )
     return keyboard
 

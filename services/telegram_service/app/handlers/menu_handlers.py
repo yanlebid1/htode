@@ -29,7 +29,10 @@ from ..keyboards import (
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
+# Stores ids of trigger messages (how it works)
 TRIGGER_INFO = {}
+# Stores last sent main-menu message id per user so we can delete it before sending a new one
+MAIN_MENU_MESSAGES = {}
 
 
 @dp.message_handler(commands=['menu'])
@@ -45,11 +48,7 @@ async def show_main_menu(message: types.Message):
             "username": message.from_user.username
         })
 
-        await safe_send_message(
-            chat_id=message.from_user.id,
-            text="Головне меню:",
-            reply_markup=main_menu_keyboard()
-        )
+        await send_main_menu(user_id)
 
 
 @dp.callback_query_handler(lambda c: c.data == 'edit_parameters')
@@ -100,11 +99,7 @@ async def subscription_back_handler(callback_query: types.CallbackQuery):
             "user_id": user_id
         })
 
-        await safe_send_message(
-            chat_id=callback_query.message.chat.id,
-            text="Повертаємося до головного меню...",
-            reply_markup=main_menu_keyboard()
-        )
+        await send_main_menu(callback_query.message.chat.id)
         await safe_answer_callback_query(callback_query.id)
 
 
@@ -183,11 +178,7 @@ async def back_to_main_menu_handler(callback_query: types.CallbackQuery):
             "user_id": user_id
         })
 
-        await safe_send_message(
-            chat_id=callback_query.message.chat.id,
-            text="Головне меню:",
-            reply_markup=main_menu_keyboard()
-        )
+        await send_main_menu(user_id)
         await safe_answer_callback_query(callback_query.id)
 
 
@@ -197,6 +188,10 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
     user_data = await state.get_data()
     user_db_id = user_data.get('user_db_id')
     telegram_id = user_data.get('telegram_id')
+
+    if not telegram_id:
+        telegram_id = callback_query.from_user.id
+        await state.update_data(telegram_id=telegram_id)
 
     with log_context(logger, telegram_id=telegram_id, user_db_id=user_db_id):
         logger.info("Subscribe handler started", extra={
@@ -560,20 +555,38 @@ async def handle_how_to_use(message: types.Message):
         }
 
 
-@dp.message_handler(lambda msg: msg.text == "↪️ Назад")
+@dp.message_handler(lambda msg: msg.text == "↪️ Назад", state="*")
 @log_operation("handle_back")
-async def handle_back(message: types.Message):
+async def handle_back(message: types.Message, state: FSMContext):
     """
-    Simple universal 'Back' handler that returns to the main menu.
-    Or you can differentiate if you have multiple sub-levels.
+    Universal handler for the "↪️ Назад" button.
+
+    1. Closes any active FSM state.
+    2. Cleans up messages stored by different sub-flows (TRIGGER_INFO or Phone Verification BACK_INFO).
+    3. Returns the user to the main menu.
     """
+
     user_id = message.from_user.id
+
     with log_context(logger, user_id=user_id):
-        logger.info("User going back to main menu", extra={
-            "user_id": user_id
+        logger.info("User pressed back button", extra={
+            "user_id": user_id,
+            "fsm_state": await state.get_state()
         })
 
-        # delete stored messages if present
+        # 1) Finish any active FSM state so further handlers are reset
+        current_state = await state.get_state()
+        if current_state:
+            try:
+                await state.finish()
+                logger.debug("FSM state finished", extra={"user_id": user_id, "old_state": current_state})
+            except Exception as e:
+                logger.warning("Could not finish FSM state", exc_info=True, extra={
+                    "user_id": user_id,
+                    "error": str(e)
+                })
+
+        # 2) Try to remove any messages stored in TRIGGER_INFO (how-it-works flow)
         info = TRIGGER_INFO.pop(user_id, None)
         if info:
             if info.get('bot_id'):
@@ -581,17 +594,27 @@ async def handle_back(message: types.Message):
             if info.get('trigger_id'):
                 await delete_message_safe(user_id, info['trigger_id'])
 
-        # also delete current back message
+        # 3) Try to remove any messages stored during phone verification (BACK_INFO)
+        try:
+            from .phone_verification import BACK_INFO  # imported lazily to avoid circular deps
+            p_info = BACK_INFO.pop(user_id, None)
+            if p_info:
+                if p_info.get('bot_id'):
+                    await delete_message_safe(user_id, p_info['bot_id'])
+                if p_info.get('trigger_id'):
+                    await delete_message_safe(user_id, p_info['trigger_id'])
+        except Exception as e:
+            # Ignore if module not imported yet
+            logger.debug("BACK_INFO not available or error cleaning", extra={"error": str(e)})
+
+        # 4) Delete the pressed "Back" message itself if possible
         try:
             await delete_message_safe(user_id, message.message_id)
         except Exception:
             pass
 
-        await safe_send_message(
-            chat_id=message.from_user.id,
-            text="Повертаємося в головне меню.",
-            reply_markup=main_menu_keyboard()
-        )
+        # 5) Show the main menu again
+        await send_main_menu(user_id)
 
 
 @dp.message_handler(lambda msg: msg.text == "➕ Додати підписку")
@@ -612,3 +635,27 @@ async def add_subscription_prompt(message: types.Message):
             reply_markup=edit_parameters_keyboard()
         )
 
+
+# ---- Helper -------------------------------------------------------------
+async def send_main_menu(chat_id: int):
+    """Send the main menu, removing the previous menu message if it exists."""
+    # Delete previous main-menu message for this user (if any)
+    prev_menu_id = MAIN_MENU_MESSAGES.get(chat_id)
+    if prev_menu_id:
+        try:
+            await delete_message_safe(chat_id, prev_menu_id)
+        except Exception:
+            pass  # It's okay if the message was already deleted
+
+    # Send a fresh main menu message
+    msg = await safe_send_message(
+        chat_id=chat_id,
+        text="Головне меню:",
+        reply_markup=main_menu_keyboard()
+    )
+
+    # Store its id so we can remove it next time
+    if msg:
+        MAIN_MENU_MESSAGES[chat_id] = msg.message_id
+
+    return msg

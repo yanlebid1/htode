@@ -439,13 +439,11 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
                 await state.update_data(price_panel_msg_id=price_msg.message_id)
             await FilterStates.waiting_for_price.set()
         elif edit_field == "floor":
-            # call your function to handle floor editing
             await safe_send_message(
                 chat_id=telegram_id,
                 text="🏢 Налаштуйте поверх:",
-                reply_markup=floor_keyboard()
+                reply_markup=floor_keyboard(show_back=True)
             )
-            # optionally change state, etc.
         elif edit_field == "cancel_edit":
             await safe_send_message(
                 chat_id=telegram_id,
@@ -659,7 +657,7 @@ async def city_page_navigation(callback_query: types.CallbackQuery, state: FSMCo
     await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(lambda c: c.data == "cancel_edit", state=[FilterStates.waiting_for_city, FilterStates.waiting_for_rooms])
+@dp.callback_query_handler(lambda c: c.data == "cancel_edit", state=[FilterStates.waiting_for_city, FilterStates.waiting_for_rooms, FilterStates.waiting_for_price])
 @log_operation("cancel_edit_any")
 async def cancel_edit_any_handler(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id

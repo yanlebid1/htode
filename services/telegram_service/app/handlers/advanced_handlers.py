@@ -396,7 +396,19 @@ async def floor_done_handler(callback_query: types.CallbackQuery, state: FSMCont
         except Exception:
             pass
 
-        await callback_query.message.answer("💾 Зміни збережено.")
+        # Build summary text of floor settings
+        summary_parts = []
+        if advanced_data.get("is_not_first_floor") == "yes":
+            summary_parts.append("Не перший поверх")
+        if advanced_data.get("last_floor") == "no":
+            summary_parts.append("Не останній поверх")
+        if advanced_data.get("last_floor") == "yes":
+            summary_parts.append("Тільки останній поверх")
+        if advanced_data.get("floor_max"):
+            summary_parts.append(f"Поверхи до {advanced_data['floor_max']}")
+
+        summary_text = "; ".join(summary_parts) if summary_parts else "Без обмежень по поверху"
+        await callback_query.message.answer(f"🏢 {summary_text}")
 
         current_edit = (await state.get_data()).get("current_edit")
         if current_edit == "floor":

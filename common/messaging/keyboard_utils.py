@@ -142,7 +142,8 @@ class TelegramKeyboardFactory:
                 return cls.create_edit_parameters_keyboard()
             elif keyboard_type == "floor":
                 floor_opts = kwargs.get('floor_opts', None)
-                return cls.create_floor_keyboard(floor_opts)
+                show_back = kwargs.get('show_back', False)
+                return cls.create_floor_keyboard(floor_opts, show_back)
             else:
                 logger.warning(f"Unknown keyboard type for Telegram", extra={'keyboard_type': keyboard_type})
                 return None
@@ -312,6 +313,7 @@ class TelegramKeyboardFactory:
             InlineKeyboardButton("Кількість кімнат", callback_data="edit_rooms"),
             InlineKeyboardButton("З тваринами?", callback_data="pets_allowed"),
             InlineKeyboardButton("Від власника?", callback_data="without_broker"),
+            InlineKeyboardButton("Поверх", callback_data="edit_floor"),
             InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"),
         )
 
@@ -320,7 +322,7 @@ class TelegramKeyboardFactory:
 
     @staticmethod
     @log_operation("create_floor_keyboard")
-    def create_floor_keyboard(floor_opts=None):
+    def create_floor_keyboard(floor_opts=None, show_back=False):
         """Create keyboard for floor selection"""
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -366,8 +368,10 @@ class TelegramKeyboardFactory:
                 callback_data="toggle_floor_only_last"
             ))
 
-            # add "Back" or "Done" button
-            kb.add(InlineKeyboardButton("Готово", callback_data="floor_done"))
+            # add Back / Done buttons
+            if show_back:
+                kb.add(InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"))
+            kb.add(InlineKeyboardButton("💾 Зберегти", callback_data="floor_done"))
 
             logger.debug("Created Telegram floor keyboard")
             return kb

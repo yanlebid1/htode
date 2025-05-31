@@ -7,7 +7,9 @@ from . import logger
 from common.utils.logging_config import log_operation, log_context
 
 # Import the bot for the callback handler
-from .bot import dp
+from .bot import dp, bot
+# Import utility to send messages safely
+from .utils.message_utils import safe_send_message
 
 
 # Create the tasks directly without using the task registry
@@ -147,17 +149,47 @@ async def handle_show_more(callback_query: CallbackQuery):
             await callback_query.answer("Невірні дані.", show_alert=True)
             return
 
-        # Acknowledge the callback query immediately
-        await callback_query.answer("Отримання повного опису...")
+        await callback_query.answer("Завантаження опису…")
 
-        # Import here to avoid circular dependency
-        from common.messaging.tasks import process_show_more_description
+        # Fetch description (cache/db) similar to favorites logic
+        from common.utils.cache import get_entity_cache_key
+        from common.db.operations import get_full_ad_description
+        from common.utils.cache_managers import AdCacheManager
+        cache_key = get_entity_cache_key("ad_description", resource_url)
+        full_description = AdCacheManager.get(cache_key)
+        if not full_description:
+            full_description = get_full_ad_description(resource_url)
+            if full_description:
+                AdCacheManager.set(cache_key, full_description, 3600)
 
-        # Call the unified task to handle the show more functionality
-        # Pass both the user_id and message_id so it can edit the message if possible
-        process_show_more_description.delay(
-            user_id=callback_query.from_user.id,
-            resource_url=resource_url,
-            message_id=callback_query.message.message_id,
-            platform="telegram"
-        )
+        if not full_description:
+            await callback_query.answer("Немає додаткового опису.", show_alert=True)
+            return
+
+        original_caption = callback_query.message.caption or ""
+        new_caption = original_caption + "\n\n" + full_description if original_caption else None
+
+        try:
+            if new_caption:
+                await bot.edit_message_caption(
+                    chat_id=callback_query.message.chat.id,
+                    message_id=callback_query.message.message_id,
+                    caption=new_caption,
+                    parse_mode='Markdown',
+                    reply_markup=callback_query.message.reply_markup
+                )
+            else:
+                # message had no caption (text), edit text
+                new_text = (callback_query.message.text or "") + "\n\n" + full_description
+                await bot.edit_message_text(
+                    chat_id=callback_query.message.chat.id,
+                    message_id=callback_query.message.message_id,
+                    text=new_text,
+                    parse_mode='Markdown',
+                    reply_markup=callback_query.message.reply_markup
+                )
+            await callback_query.answer("Повний опис показано!")
+        except Exception as e:
+            # if edit fails send separate message
+            await safe_send_message(chat_id=callback_query.from_user.id, text=full_description)
+            await callback_query.answer("Повний опис надіслано окремим повідомленням!")
