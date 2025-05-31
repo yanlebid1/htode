@@ -110,6 +110,13 @@ class TelegramMessaging(MessagingInterface):
             **kwargs
     ) -> Union[Any, None]:
         """Send a media message via Telegram."""
+        if not user_id:
+            logger.error("Chat_id is empty – cannot send Telegram media", extra={
+                'user_id': user_id,
+                'media_url': media_url[:50]
+            })
+            return None
+
         user_id_str = str(user_id)  # Convert to string before slicing
         with log_context(logger, user_id=user_id_str[:10], media_url=media_url[:50], has_caption=bool(caption)):
             try:

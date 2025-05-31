@@ -17,6 +17,7 @@ from ..keyboards import (
     subscription_menu_keyboard,
     make_subscriptions_page_kb,
     city_keyboard,
+    edit_parameters_keyboard,
 )
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -328,7 +329,7 @@ async def handle_sub_delete(callback_query: types.CallbackQuery):
 
 @dp.callback_query_handler(lambda c: c.data.startswith("sub_edit:"))
 @log_operation("handle_sub_edit")
-async def handle_sub_edit(callback_query: types.CallbackQuery):
+async def handle_sub_edit(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id
 
     with log_context(logger, telegram_id=telegram_id, callback_data=callback_query.data):
@@ -342,8 +343,62 @@ async def handle_sub_edit(callback_query: types.CallbackQuery):
             "page": page
         })
 
-        # Possibly begin an FSM to ask user new city, price, etc.
-        await callback_query.answer("У майбутньому тут можна відредагувати дані.")
+        # Retrieve the subscription details so we can pre-load the edit flow
+        with db_session() as db:
+            user = UserRepository.get_by_messenger_id(db, str(telegram_id), "telegram")
+            if not user:
+                await callback_query.answer("Користувач не знайдений.")
+                return
+
+            db_user_id = user.id
+
+            # Fetch the exact filter by ID
+            sub: UserFilter = db.query(UserFilter).filter(UserFilter.id == sub_id, UserFilter.user_id == db_user_id).first()
+
+            if not sub:
+                await callback_query.answer("Підписка не знайдена.")
+                return
+
+            # Prepare initial data for the FSM (copy values before session closes)
+            property_type_val = sub.property_type
+            city_name = GEO_ID_MAPPING.get(sub.city)
+            rooms_list = sub.rooms_count or []
+            if not isinstance(rooms_list, list):
+                rooms_list = [rooms_list]
+
+            price_min_val = sub.price_min
+            price_max_val = sub.price_max
+
+        # Delete the subscription list message to keep chat tidy
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+
+        state: FSMContext  # type hint
+        await state.update_data(
+            user_db_id=db_user_id,
+            telegram_id=telegram_id,
+            edit_subscription_id=sub_id,
+            property_type=property_type_val,
+            city=city_name,
+            rooms=rooms_list,
+            price_min=price_min_val,
+            price_max=price_max_val,
+            current_edit=None
+        )
+
+        # Show edit parameters keyboard similar to creation flow
+        await safe_send_message(
+            chat_id=telegram_id,
+            text="Оберіть параметр для редагування:",
+            reply_markup=edit_parameters_keyboard()
+        )
+
+        # Set state so that existing edit handlers continue the flow
+        await FilterStates.waiting_for_confirmation.set()
+
+        await callback_query.answer()
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith("subs_page:"))
