@@ -27,39 +27,12 @@ def detect_platform_from_id(user_id: str) -> Tuple[str, str]:
     """
     with log_context(logger, user_id=user_id[:20]):
         user_id_str = str(user_id)
-
-        if user_id_str.startswith("whatsapp:"):
-            result = ("whatsapp", user_id_str)
-        elif len(user_id_str) > 20:  # Viber IDs are typically long UUIDs
-            result = ("viber", user_id_str)
-        else:
-            # Default to Telegram for numeric IDs and other formats
-            result = ("telegram", user_id_str)
-
+        result = ("telegram", user_id_str)
         logger.info("Detected platform from ID", extra={
             'platform': result[0],
             'id_length': len(user_id_str)
         })
         return result
-
-
-def format_user_id_for_platform(user_id: str, platform: str) -> str:
-    """
-    Format a user ID according to platform requirements.
-    Centralized implementation to avoid duplication.
-
-    Args:
-        user_id: Raw user identifier
-        platform: Target platform (telegram, viber, whatsapp)
-
-    Returns:
-        Formatted user identifier
-    """
-    if platform == "whatsapp" and not user_id.startswith("whatsapp:"):
-        return f"whatsapp:{user_id}"
-
-    # Other platforms don't need special formatting
-    return user_id
 
 
 @log_operation("resolve_user_id")
@@ -89,10 +62,6 @@ def resolve_user_id(user_id: Union[int, str], platform: Optional[str] = None) ->
             # Determine which platform to use (priority order)
             if platform_ids.get("telegram_id"):
                 result = (db_user_id, "telegram", str(platform_ids["telegram_id"]))
-            elif platform_ids.get("viber_id"):
-                result = (db_user_id, "viber", platform_ids["viber_id"])
-            elif platform_ids.get("whatsapp_id"):
-                result = (db_user_id, "whatsapp", platform_ids["whatsapp_id"])
             else:
                 # Default to telegram if no platform information is found
                 # This prevents the "No messenger implementation registered for platform" error
@@ -167,7 +136,7 @@ def get_messenger_instance(platform: str):
     Get the appropriate messenger instance for a platform.
 
     Args:
-        platform: Platform name (telegram, viber, whatsapp)
+        platform: Platform name (telegram,)
 
     Returns:
         Messenger instance or None if not found
@@ -178,14 +147,6 @@ def get_messenger_instance(platform: str):
                 from common.messaging.telegram_messaging import TelegramMessaging
                 from services.telegram_service.app.bot import bot
                 return TelegramMessaging(bot)
-            elif platform == "viber":
-                from common.messaging.viber_messaging import ViberMessaging
-                from services.viber_service.app.bot import viber
-                return ViberMessaging(viber)
-            elif platform == "whatsapp":
-                from common.messaging.whatsapp_messaging import WhatsAppMessaging
-                from services.whatsapp_service.app.bot import client
-                return WhatsAppMessaging(client)
             else:
                 logger.warning(f"Unknown platform", extra={'platform': platform})
                 return None
@@ -219,7 +180,7 @@ class MessageFormatter:
 
         Args:
             ad_data: Dictionary with ad information
-            platform: Target platform (telegram, viber, whatsapp)
+            platform: Target platform (telegram,)
 
         Returns:
             Formatted ad text string
@@ -247,16 +208,6 @@ class MessageFormatter:
                     f"🛏️ Кіл-сть кімнат: *{rooms_count}*\n"
                     f"📐 Площа: *{square_feet}* кв.м.\n"
                     f"🏢 Поверх: *{floor}* з *{total_floors}*\n"
-                )
-            elif platform in ["viber", "whatsapp"]:
-                # Standard text formatting for platforms without markdown
-                text = (
-                    f"💰 Ціна: {int(price)} грн.\n"
-                    f"🏙️ Місто: {city_name}\n"
-                    f"📍 Адреса: {address}\n"
-                    f"🛏️ Кіл-сть кімнат: {rooms_count}\n"
-                    f"📐 Площа: {square_feet} кв.м.\n"
-                    f"🏢 Поверх: {floor} з {total_floors}\n"
                 )
             else:
                 # Default format for unknown platforms
@@ -293,7 +244,7 @@ async def safe_send_message(
     Args:
         user_id: Platform-specific user ID or database user ID
         text: Message text
-        platform: Optional platform override ("telegram", "viber", "whatsapp")
+        platform: Optional platform override ("telegram",)
         retry_count: Number of retry attempts
         retry_delay: Initial delay between retries
         **kwargs: Platform-specific parameters (parse_mode, reply_markup, keyboard, etc.)
@@ -331,13 +282,10 @@ async def safe_send_message(
             if platform_name and platform_id:
                 messenger = get_messenger_instance(platform_name)
                 if messenger:
-                    # Format user ID for this platform
-                    formatted_id = format_user_id_for_platform(platform_id, platform_name)
-
                     # Send the message with retry logic
                     for attempt in range(retry_count):
                         try:
-                            result = await messenger.send_text(formatted_id, text, **kwargs)
+                            result = await messenger.send_text(platform_id, text, **kwargs)
                             logger.info("Message sent directly", extra={
                                 'platform': platform_name,
                                 'attempt': attempt + 1
@@ -392,7 +340,7 @@ async def safe_send_media(
         user_id: Platform-specific user ID or database user ID
         media_url: URL of the media to send
         caption: Optional caption text
-        platform: Optional platform override ("telegram", "viber", "whatsapp")
+        platform: Optional platform override ("telegram",)
         retry_count: Number of retry attempts
         retry_delay: Initial delay between retries
         **kwargs: Platform-specific parameters (parse_mode, reply_markup, keyboard, etc.)
@@ -431,13 +379,10 @@ async def safe_send_media(
             if platform_name and platform_id:
                 messenger = get_messenger_instance(platform_name)
                 if messenger:
-                    # Format user ID for this platform
-                    formatted_id = format_user_id_for_platform(platform_id, platform_name)
-
                     # Send the media with retry logic
                     for attempt in range(retry_count):
                         try:
-                            result = await messenger.send_media(formatted_id, media_url, caption=caption, **kwargs)
+                            result = await messenger.send_media(platform_id, media_url, caption=caption, **kwargs)
                             logger.info("Media sent directly", extra={
                                 'platform': platform_name,
                                 'attempt': attempt + 1
@@ -501,7 +446,7 @@ async def safe_send_menu(
         user_id: Platform-specific user ID or database user ID
         text: Menu title/description text
         options: List of option dictionaries with at least 'text' and 'value' keys
-        platform: Optional platform override ("telegram", "viber", "whatsapp")
+        platform: Optional platform override ("telegram",)
         **kwargs: Platform-specific parameters
 
     Returns:
@@ -516,11 +461,8 @@ async def safe_send_menu(
             if platform_name and platform_id:
                 messenger = get_messenger_instance(platform_name)
                 if messenger:
-                    # Format user ID for this platform
-                    formatted_id = format_user_id_for_platform(platform_id, platform_name)
-
                     # Send the menu
-                    result = await messenger.send_menu(formatted_id, text, options, **kwargs)
+                    result = await messenger.send_menu(platform_id, text, options, **kwargs)
                     logger.info("Menu sent", extra={
                         'platform': platform_name,
                         'options_count': len(options)

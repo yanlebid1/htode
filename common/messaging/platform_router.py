@@ -29,7 +29,7 @@ class PlatformRouter:
         Register a messenger implementation for a platform.
 
         Args:
-            platform: Platform name (telegram, viber, whatsapp)
+            platform: Platform name (telegram,)
             messenger_class: MessagingInterface implementation class
         """
         with log_context(logger, platform=platform):
@@ -37,8 +37,6 @@ class PlatformRouter:
                 # Platform-specific configuration
                 platform_configs = {
                     "telegram": {"module": "services.telegram_service.app.bot", "attr": "bot"},
-                    "viber": {"module": "services.viber_service.app.bot", "attr": "viber"},
-                    "whatsapp": {"module": "services.whatsapp_service.app.bot", "attr": "client"}
                 }
 
                 # Check if platform is supported
@@ -313,20 +311,8 @@ class PlatformRouter:
         except ImportError:
             logger.warning("TelegramMessaging not found or could not be imported")
 
-        try:
-            from common.messaging.viber_messaging import ViberMessaging
-            router.register_messenger("viber", ViberMessaging)
-        except ImportError:
-            logger.warning("ViberMessaging not found or could not be imported")
-
-        try:
-            from common.messaging.whatsapp_messaging import WhatsAppMessaging
-            router.register_messenger("whatsapp", WhatsAppMessaging)
-        except ImportError:
-            logger.warning("WhatsAppMessaging not found or could not be imported")
-
         # Auto-load handlers from platform-specific modules
-        platforms = ["telegram", "viber", "whatsapp"]
+        platforms = ["telegram"]
         handler_modules = [
             "services.{}_service.app.handlers.basic_handlers",
             "services.{}_service.app.handlers.advanced_handlers",

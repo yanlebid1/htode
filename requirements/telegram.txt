@@ -14,11 +14,12 @@ nest_asyncio
 lxml
 aiodns
 playwright
-# camoufox
+curl_cffi
+brotlicffi
+httpx[http2]
+pillow
 
 # Add dependencies needed for cross-service functionality
-viberbot==1.0.12
-twilio==7.16.4
 jmespath
 
 aiogram==2.25.1

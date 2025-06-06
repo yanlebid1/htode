@@ -11,7 +11,9 @@ nest_asyncio
 lxml
 boto3
 beautifulsoup4
-playwright
-# camoufox
+#playwright
+httpx[http2]
 aiodns
-zenrows
+curl_cffi
+brotlicffi
+pillow

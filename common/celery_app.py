@@ -47,32 +47,13 @@ celery_app.conf.update(
     },
 )
 
-def route_by_platform(name, args, kwargs, options, task=None, **kw):
-    """Route tasks to appropriate queue based on platform parameter"""
-    platform = kwargs.get('platform')
-    
-    if name == 'common.messaging.tasks.send_ad_with_extra_buttons':
-        # For ad tasks, check the platform parameter
-        if platform == 'viber':
-            return {'queue': 'viber_queue'}
-        elif platform == 'whatsapp':
-            return {'queue': 'whatsapp_queue'}
-        else:
-            # Default to telegram for backward compatibility
-            return {'queue': 'telegram_queue'}
-    
-    # Let the standard routing rules handle other tasks
-    return None
 
 # Service-specific queue routing
 celery_app.conf.update(
     task_routes=[
-        route_by_platform,
         {
             'notifier_service.app.tasks.*': {'queue': 'notify_queue'},
             'telegram_service.app.tasks.*': {'queue': 'telegram_queue'},
-            'viber_service.app.tasks.*': {'queue': 'viber_queue'},
-            'whatsapp_service.app.tasks.*': {'queue': 'whatsapp_queue'},
             'scraper_service.app.tasks.*': {'queue': 'scrape_queue'},
             'system.maintenance.*': {'queue': 'maintenance_queue'},
         }

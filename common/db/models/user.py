@@ -15,8 +15,6 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     telegram_id = Column(String, unique=True, index=True, nullable=True)
-    viber_id = Column(String, unique=True, index=True, nullable=True)
-    whatsapp_id = Column(String, unique=True, index=True, nullable=True)
     email = Column(String, unique=True, index=True, nullable=True)
     email_verified = Column(Boolean, default=False)
     phone_number = Column(String, unique=True, index=True, nullable=True)
@@ -26,14 +24,12 @@ class User(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     last_active = Column(DateTime, default=func.now())
-    viber_conversation_expired = Column(Boolean, default=False)
 
     # Relationships
     filters = relationship("UserFilter", back_populates="user", cascade="all, delete-orphan")
     favorites = relationship("FavoriteAd", back_populates="user", cascade="all, delete-orphan")
     payment_orders = relationship("PaymentOrder", back_populates="user", cascade="all, delete-orphan")
     verification_codes = relationship("VerificationCode", back_populates="user", cascade="all, delete-orphan")
-    media_messages = relationship("WhatsAppMedia", back_populates="user")
 
     @property
     def is_subscription_active(self) -> bool:

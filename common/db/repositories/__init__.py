@@ -24,7 +24,6 @@ from common.db.repositories.subscription_repository import SubscriptionRepositor
 from common.db.repositories.favorite_repository import FavoriteRepository
 from common.db.repositories.payment_repository import PaymentRepository
 from common.db.repositories.verification_repository import VerificationRepository
-from common.db.repositories.media_repository import MediaRepository
 
 # Export logger for use in other modules
 __all__ = [
@@ -35,5 +34,4 @@ __all__ = [
     'FavoriteRepository',
     'PaymentRepository',
     'VerificationRepository',
-    'MediaRepository'
 ]

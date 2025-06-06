@@ -572,14 +572,6 @@ async def process_approved_payment(order_id: str, callback_data: dict):
                     messenger_type = "telegram"
                     messenger_id = user.telegram_id
                     task_name = 'telegram_service.app.tasks.send_subscription_notification'
-                elif user.viber_id:
-                    messenger_type = "viber"
-                    messenger_id = user.viber_id
-                    task_name = 'viber_service.app.tasks.send_subscription_notification'
-                elif user.whatsapp_id:
-                    messenger_type = "whatsapp"
-                    messenger_id = user.whatsapp_id
-                    task_name = 'whatsapp_service.app.tasks.send_subscription_notification'
 
                 if messenger_type and messenger_id and task_name:
                     # Send success notification via Celery task

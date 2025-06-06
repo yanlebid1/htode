@@ -9,7 +9,6 @@ from common.db.models.ad import Ad, AdImage, AdPhone
 from common.db.models.favorite import FavoriteAd
 from common.db.models.payment import PaymentOrder, PaymentHistory
 from common.db.models.verification import VerificationCode
-from common.db.models.media import WhatsAppMedia
 
 logger = logging.getLogger(__name__)
 

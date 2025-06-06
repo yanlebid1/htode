@@ -3,7 +3,6 @@ aiohttp
 nest_asyncio
 lxml
 aiodns
-zenrows
 requests
 scrapy
 celery
@@ -15,4 +14,7 @@ fake_useragent
 beautifulsoup4
 python-dotenv
 playwright
-# camoufox
+curl_cffi
+brotlicffi
+httpx[http2]
+pillow

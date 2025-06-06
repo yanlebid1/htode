@@ -3,8 +3,6 @@
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     telegram_id BIGINT UNIQUE,
-    viber_id VARCHAR(255) UNIQUE,
-    whatsapp_id VARCHAR(255) UNIQUE,
     email VARCHAR(255) UNIQUE,
     email_verified BOOLEAN DEFAULT FALSE,
     phone_number VARCHAR(20) UNIQUE,
@@ -13,8 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     subscription_until TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
-    last_active TIMESTAMP DEFAULT NOW(),
-    viber_conversation_expired BOOLEAN DEFAULT FALSE
+    last_active TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS ads (
@@ -133,19 +130,6 @@ CREATE TABLE email_verification_tokens (
     created_at TIMESTAMP DEFAULT NOW(),
     expires_at TIMESTAMP NOT NULL,
     attempts INT DEFAULT 0
-);
-
--- Create table for WhatsApp media
-CREATE TABLE IF NOT EXISTS whatsapp_media_messages (
-    id SERIAL PRIMARY KEY,
-    whatsapp_id VARCHAR(255) UNIQUE,
-    user_id INTEGER REFERENCES users(id),
-    media_url TEXT NOT NULL,
-    permanent_url TEXT,
-    media_type VARCHAR(50) NOT NULL DEFAULT 'image',
-    processed BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Create a function to sanitize phone numbers

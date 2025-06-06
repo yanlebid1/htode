@@ -26,7 +26,7 @@ class MessagingService:
         Register a messenger implementation for a specific platform.
 
         Args:
-            platform: Platform identifier (telegram, viber, whatsapp)
+            platform: Platform identifier (telegram,)
             messenger: Messenger implementation for that platform
         """
         with log_context(logger, platform=platform):
@@ -157,8 +157,6 @@ class MessagingService:
                 'user_id': user_id,
                 'platform_count': len([k for k in platform_ids.keys() if k.endswith('_id') and platform_ids[k]]),
                 'has_telegram': bool(platform_ids.get('telegram_id')),
-                'has_viber': bool(platform_ids.get('viber_id')),
-                'has_whatsapp': bool(platform_ids.get('whatsapp_id')),
             })
 
             # Check each platform
@@ -166,16 +164,6 @@ class MessagingService:
                 messenger = self.get_messenger('telegram')
                 if messenger:
                     results.append(('telegram', str(platform_ids['telegram_id']), messenger))
-
-            if platform_ids.get('viber_id'):
-                messenger = self.get_messenger('viber')
-                if messenger:
-                    results.append(('viber', platform_ids['viber_id'], messenger))
-
-            if platform_ids.get('whatsapp_id'):
-                messenger = self.get_messenger('whatsapp')
-                if messenger:
-                    results.append(('whatsapp', platform_ids['whatsapp_id'], messenger))
 
             logger.info(f"Found {len(results)} messenger(s) for user", extra={
                 'user_id': user_id,
@@ -206,7 +194,7 @@ class MessagingService:
         Returns:
             True if sent successfully, False otherwise
         """
-        from common.messaging.unified_platform_utils import resolve_user_id, format_user_id_for_platform
+        from common.messaging.unified_platform_utils import resolve_user_id
 
         with log_context(logger, user_id=user_id, has_image=bool(image_url), has_options=bool(options)):
             # Get platform info using resolve_user_id
@@ -222,12 +210,9 @@ class MessagingService:
                 return False
 
             try:
-                # Format the user ID for the specific platform
-                formatted_id = format_user_id_for_platform(platform_id, platform_name)
-
                 logger.debug("Sending notification", extra={
                     'platform': platform_name,
-                    'formatted_id': formatted_id[:10],
+                    'platform_id': platform_id[:10],
                     'text_length': len(text),
                     'has_image': bool(image_url),
                     'has_options': bool(options)
@@ -235,13 +220,13 @@ class MessagingService:
 
                 if options:
                     # Send as a menu
-                    await messenger.send_menu(formatted_id, text, options, **kwargs)
+                    await messenger.send_menu(platform_id, text, options, **kwargs)
                 elif image_url:
                     # Send as media with caption
-                    await messenger.send_media(formatted_id, image_url, caption=text, **kwargs)
+                    await messenger.send_media(platform_id, image_url, caption=text, **kwargs)
                 else:
                     # Send as plain text
-                    await messenger.send_text(formatted_id, text, **kwargs)
+                    await messenger.send_text(platform_id, text, **kwargs)
 
                 logger.info("Notification sent successfully", extra={
                     'user_id': user_id,
@@ -276,7 +261,7 @@ class MessagingService:
         Returns:
             True if sent successfully, False otherwise
         """
-        from common.messaging.unified_platform_utils import resolve_user_id, format_user_id_for_platform
+        from common.messaging.unified_platform_utils import resolve_user_id
 
 
         with log_context(logger, user_id=user_id, ad_id=ad_data.get('id')):
@@ -294,18 +279,15 @@ class MessagingService:
                 return False
 
             try:
-                # Format the user ID for the specific platform
-                formatted_id = format_user_id_for_platform(platform_id, platform_name)
-
                 logger.debug("Sending ad", extra={
                     'platform': platform_name,
-                    'formatted_id': formatted_id[:10],
+                    'formatted_id': platform_id[:10],
                     'ad_id': ad_data.get('id'),
                     'has_image': bool(image_url)
                 })
 
                 # Send the ad using platform-specific formatting
-                await messenger.send_ad(formatted_id, ad_data, image_url, **kwargs)
+                await messenger.send_ad(platform_id, ad_data, image_url, **kwargs)
 
                 logger.info("Ad sent successfully", extra={
                     'user_id': user_id,
@@ -329,78 +311,24 @@ class MessagingService:
         Create a messaging service for a specific service only.
 
         Args:
-            service_name: Name of the service ('telegram', 'viber', 'whatsapp')
+            service_name: Name of the service ('telegram', )
 
         Returns:
             Configured MessagingService instance with only the specified messenger
         """
         with log_context(logger, service_name=service_name):
             service = cls()
-
             try:
-                if service_name == "telegram":
-                    try:
-                        from .telegram_messaging import TelegramMessaging
-                        # Don't import the bot here, let the telegram service do it
-                        logger.info("Telegram messenger type imported successfully")
-                    except ImportError as e:
-                        logger.error(f"Failed to import telegram messaging type", exc_info=True, extra={
-                            'error_type': type(e).__name__
-                        })
-                    except Exception as e:
-                        logger.error(f"Failed to initialize telegram messaging", exc_info=True, extra={
-                            'error_type': type(e).__name__
-                        })
+                from .telegram_messaging import TelegramMessaging
+                # Don't import the bot here, let the telegram service do it
+                logger.info("Telegram messenger type imported successfully")
 
-                elif service_name == "viber":
-                    try:
-                        from .viber_messaging import ViberMessaging
-                        # Check if viber bot exists in the global namespace
-                        try:
-                            from services.viber_service.app.bot import viber as viber_bot
-                            if viber_bot:
-                                service.register_messenger("viber", ViberMessaging(viber_bot))
-                                logger.info("Viber messenger registered successfully")
-                            else:
-                                logger.error("Viber bot is None, check VIBER_AUTH_TOKEN environment variable")
-                        except ImportError:
-                            # This happens when not running in viber service
-                            logger.debug("Viber bot not available in this context")
-                    except ImportError as e:
-                        logger.error(f"Failed to import viber dependencies", exc_info=True, extra={
-                            'error_type': type(e).__name__
-                        })
-                    except Exception as e:
-                        logger.error(f"Failed to initialize viber messaging", exc_info=True, extra={
-                            'error_type': type(e).__name__
-                        })
-
-                elif service_name == "whatsapp":
-                    try:
-                        from .whatsapp_messaging import WhatsAppMessaging
-                        try:
-                            from services.whatsapp_service.app.bot import client as twilio_client
-                            if twilio_client:
-                                service.register_messenger("whatsapp", WhatsAppMessaging(twilio_client))
-                                logger.info("WhatsApp messenger registered successfully")
-                            else:
-                                logger.error("WhatsApp client is None, check Twilio environment variables")
-                        except ImportError:
-                            # This happens when not running in whatsapp service
-                            logger.debug("WhatsApp client not available in this context")
-                    except ImportError as e:
-                        logger.error(f"Failed to import whatsapp dependencies", exc_info=True, extra={
-                            'error_type': type(e).__name__
-                        })
-                    except Exception as e:
-                        logger.error(f"Failed to initialize whatsapp messaging", exc_info=True, extra={
-                            'error_type': type(e).__name__
-                        })
-                else:
-                    logger.warning(f"Unknown service name", extra={'service_name': service_name})
+            except ImportError as e:
+                logger.error(f"Failed to import telegram messaging type", exc_info=True, extra={
+                    'error_type': type(e).__name__
+                })
             except Exception as e:
-                logger.error(f"Error creating messaging service", exc_info=True, extra={
-                    'service_name': service_name,
+                logger.error(f"Failed to initialize telegram messaging", exc_info=True, extra={
                     'error_type': type(e).__name__
                 })
 
