@@ -1,8 +1,7 @@
 # common/db/models/subscription.py
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, JSON
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 
 from common.db.base import Base
 

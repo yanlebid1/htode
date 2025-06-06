@@ -1,6 +1,6 @@
 # common/db/models/payment.py
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -14,7 +14,7 @@ class PaymentOrder(Base):
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
     order_id = Column(String, unique=True, index=True)
     amount = Column(Float, nullable=False)
-    period = Column(String, nullable=False)  # '1month', '3months', '6months', '12months'
+    period = Column(String, nullable=False)
     status = Column(String, default="pending")  # 'pending', 'completed', 'cancelled', 'failed'
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

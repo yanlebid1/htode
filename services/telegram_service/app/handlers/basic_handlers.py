@@ -9,7 +9,7 @@ from aiogram.types import InlineKeyboardButton
 from ..bot import dp
 from ..states.basis_states import FilterStates
 from ..keyboards import (
-    property_type_keyboard, city_keyboard, rooms_keyboard,
+    city_keyboard, rooms_keyboard,
     price_keyboard, confirmation_keyboard,
     edit_parameters_keyboard, floor_keyboard,
     main_menu_keyboard

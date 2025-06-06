@@ -1,9 +1,7 @@
 # common/db/models/user.py
 from datetime import datetime, timedelta
-from typing import List, Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -42,7 +40,7 @@ class User(Base):
     @classmethod
     def get_or_create(cls, db, messenger_id: str, messenger_type: str = "telegram") -> "User":
         """Get or create a user with messenger ID"""
-        # Set the appropriate field based on messenger type
+        # Set the appropriate field based on a messenger type
         filter_kwargs = {f"{messenger_type}_id": messenger_id}
         user = db.query(cls).filter_by(**filter_kwargs).first()
 

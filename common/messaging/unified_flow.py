@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, Union, Callable, List
 
 from .unified_platform_utils import safe_send_message, safe_send_menu
 from common.unified_state_management import state_manager
-from common.utils.logging_config import log_operation, log_context, LogAggregator
+from common.utils.logging_config import log_operation, log_context
 
 # Import the messaging logger
 from . import logger
