@@ -9,7 +9,7 @@ from common.db.session import db_session
 from common.utils.cache import redis_cache
 from ..bot import dp
 from ..states.basis_states import FilterStates
-from common.db.operations import update_user_filter, start_free_subscription_of_user, get_db_user_id_by_telegram_id, \
+from common.db.operations import start_free_subscription_of_user, get_db_user_id_by_telegram_id, \
     get_or_create_user, Ad, add_subscription as add_user_subscription
 from common.db.database import execute_query
 from common.config import GEO_ID_MAPPING, get_key_by_value, build_ad_text

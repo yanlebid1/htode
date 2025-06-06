@@ -32,7 +32,7 @@ def get_ad_images_local(ad):
 
 @log_operation("insert_ad")
 def insert_ad(ad_data, property_type, geo_id):
-    """Insert the ad into the ads table"""
+    """Insert the ad into the ad table"""
     ad_id = ad_data.get('id')
     with log_context(logger, ad_id=ad_id, property_type=property_type, geo_id=geo_id):
         logger.info("Inserting ad", extra={

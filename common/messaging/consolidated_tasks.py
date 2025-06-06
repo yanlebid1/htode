@@ -1,6 +1,5 @@
 # common/messaging/consolidated_tasks.py
 
-import logging
 import asyncio
 
 from typing import Dict, Any, List, Union

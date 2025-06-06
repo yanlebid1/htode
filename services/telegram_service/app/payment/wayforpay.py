@@ -1,7 +1,6 @@
 # services/telegram_service/app/payment/wayforpay.py
 
 import hashlib
-import requests
 import time
 import os
 import hmac

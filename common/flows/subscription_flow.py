@@ -5,7 +5,7 @@ from common.config import GEO_ID_MAPPING, get_key_by_value
 from common.messaging.unified_flow import MessageFlow, FlowContext, flow_library
 from common.db.operations import get_db_user_id_by_telegram_id, update_user_filter, start_free_subscription_of_user, \
     get_or_create_user
-from common.utils.logging_config import log_operation, log_context, LogAggregator
+from common.utils.logging_config import log_operation, log_context
 
 # Import the flows logger
 from . import logger

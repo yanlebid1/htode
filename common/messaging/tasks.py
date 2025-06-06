@@ -1,17 +1,12 @@
 # common/messaging/tasks.py
 
 import asyncio
-import uuid
-from datetime import datetime
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 
-from sqlalchemy import func
 
 from common.celery_app import celery_app
-from common.db.operations import get_platform_ids_for_user, get_db_user_id_by_telegram_id, get_full_ad_description, Ad
+from common.db.operations import get_platform_ids_for_user, get_db_user_id_by_telegram_id, Ad
 from .service import messaging_service
-from .handlers.support_handler import handle_support_command, handle_support_category, SUPPORT_CATEGORIES
-from common.db.repositories.user_repository import UserRepository
 from common.db.session import db_session
 from ..db.models import User
 from common.utils.logging_config import log_operation, log_context, LogAggregator

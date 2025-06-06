@@ -14,14 +14,8 @@ from . import logger
 
 
 @log_operation("process_and_insert_ad")
-def process_and_insert_ad(
-        ad_data: Dict[str, Any],
-        property_type: str,
-        geo_id: int
-) -> Optional[int]:
-    """
-    Process ad data and insert into the database, including image upload and phone extraction.
-    """
+def process_and_insert_ad(ad_data: Dict[str, Any], property_type: str, geo_id: int) -> Optional[int]:
+    """Process ad data and insert into the database, including image upload and phone extraction."""
     ad_unique_id = str(ad_data.get("id", ""))
 
     with log_context(logger, ad_id=ad_unique_id, property_type=property_type, geo_id=geo_id):

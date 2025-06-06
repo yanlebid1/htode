@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from common.db.models.user import User
 from common.utils.cache_managers import UserCacheManager
-from common.utils.logging_config import log_operation, log_context, LogAggregator
+from common.utils.logging_config import log_operation, log_context
 
 # Import the repository logger
 from . import logger

@@ -3,7 +3,6 @@
 from typing import Optional, Union
 from aiogram.types import Message, InputFile
 import aiohttp
-import asyncio
 from urllib.parse import urlparse
 import re
 from io import BytesIO
