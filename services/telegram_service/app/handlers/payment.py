@@ -102,7 +102,7 @@ async def process_payment(callback_query: types.CallbackQuery):
 
         try:
             # Create payment URL
-            payment_url = create_payment_form_url(db_user_id, amount, period)
+            payment_url = await create_payment_form_url(db_user_id, amount, period)
 
             if not payment_url:
                 logger.error("Failed to create payment URL", extra={

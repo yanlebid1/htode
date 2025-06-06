@@ -11,14 +11,14 @@ from . import logger
 class MessagingInterface(ABC):
     """
     Unified messaging interface for all platform-specific implementations.
-    Provides a consistent API for sending messages across different platforms (Telegram, Viber, WhatsApp, etc.).
+    Provides a consistent API for sending messages across different platforms (Telegram, etc.).
     """
 
     @property
     @abstractmethod
     def platform_name(self) -> str:
         """
-        Get the platform identifier (telegram, viber, whatsapp).
+        Get the platform identifier (telegram, ).
 
         Returns:
             String identifier for the platform
@@ -235,7 +235,7 @@ class MessengerFactory:
         Register a messenger implementation for a platform.
 
         Args:
-            platform: Platform name (telegram, viber, whatsapp)
+            platform: Platform name (telegram,)
             messenger_class: MessagingInterface implementation class
         """
         with log_context(logger, platform=platform):
@@ -249,7 +249,7 @@ class MessengerFactory:
         Get a messenger instance for a platform.
 
         Args:
-            platform: Platform name (telegram, viber, whatsapp)
+            platform: Platform name (telegram,)
 
         Returns:
             MessagingInterface instance or None if not found
@@ -264,12 +264,6 @@ class MessengerFactory:
                 if platform == "telegram":
                     from services.telegram_service.app.bot import bot
                     return messenger_class(bot)
-                elif platform == "viber":
-                    from services.viber_service.app.bot import viber
-                    return messenger_class(viber)
-                elif platform == "whatsapp":
-                    from services.whatsapp_service.app.bot import client
-                    return messenger_class(client)
                 else:
                     logger.error("Unknown platform", extra={'platform': platform})
                     return None

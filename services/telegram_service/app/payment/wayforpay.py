@@ -6,6 +6,7 @@ import time
 import os
 import hmac
 from typing import Dict, Any, Optional
+import aiohttp
 
 # Import service logger
 from .. import logger
@@ -88,7 +89,7 @@ def create_payment_request(user_id: int, amount: float, order_id: str, product_n
 
 
 @log_operation("create_payment_form_url")
-def create_payment_form_url(user_id: int, amount: float, period: str = "1 month") -> Optional[str]:
+async def create_payment_form_url(user_id: int, amount: float, period: str = "1 month") -> Optional[str]:
     """
     Create payment URL for the user
 
@@ -115,45 +116,43 @@ def create_payment_form_url(user_id: int, amount: float, period: str = "1 month"
             # Create payment data
             payment_data = create_payment_request(user_id, amount, order_id, product_name)
 
-            # Send request to WayForPay
-            logger.debug("Sending request to WayForPay", extra={
-                "url": f"{API_URL}/payment",
-                "order_id": order_id
-            })
+            # Send request asynchronously
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                logger.debug("Sending request to WayForPay", extra={
+                    "url": f"{API_URL}/payment",
+                    "order_id": order_id
+                })
 
-            response = requests.post(
-                f"{API_URL}/payment",
-                json=payment_data,
-                headers={"Content-Type": "application/json"}
-            )
-
-            logger.debug("WayForPay response received", extra={
-                "status_code": response.status_code,
-                "order_id": order_id
-            })
-
-            if response.status_code == 200:
-                result = response.json()
-                if result.get("reason") == "ok":
-                    # Store order in database for callback handling
-                    store_payment_order(user_id, order_id, amount, period)
-                    invoice_url = result.get("invoiceUrl")
-
-                    logger.info("Payment URL created successfully", extra={
-                        "user_id": user_id,
-                        "order_id": order_id,
-                        "has_invoice_url": bool(invoice_url)
+                async with session.post(f"{API_URL}/payment", json=payment_data) as resp:
+                    status = resp.status
+                    logger.debug("WayForPay response received", extra={
+                                "status_code": status,
+                        "order_id": order_id
                     })
 
-                    return invoice_url
+                    if status == 200:
+                        result = await resp.json()
 
-            logger.error("Payment creation failed", extra={
-                "user_id": user_id,
-                "order_id": order_id,
-                "response_status": response.status_code,
-                "response_text": response.text[:500]  # Truncate long responses
-            })
-            return None
+                        if result.get("reason") == "ok":
+                            # Store order in database for callback handling
+                            store_payment_order(user_id, order_id, amount, period)
+                            invoice_url = result.get("invoiceUrl")
+
+                            logger.info("Payment URL created successfully", extra={
+                                "user_id": user_id,
+                                "order_id": order_id,
+                                "has_invoice_url": bool(invoice_url)
+                            })
+
+                            return invoice_url
+
+                    logger.error("Payment creation failed", extra={
+                        "user_id": user_id,
+                        "order_id": order_id,
+                                "response_status": status
+                    })
+                    return None
 
         except Exception as e:
             logger.error("Error creating payment", exc_info=True, extra={

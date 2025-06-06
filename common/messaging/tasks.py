@@ -207,7 +207,7 @@ def send_cross_platform_message(user_id: int, text: str, platforms: Optional[Lis
     Args:
         user_id: Database user ID
         text: Message text
-        platforms: Optional list of platforms to target (e.g., ["telegram", "viber"])
+        platforms: Optional list of platforms to target (e.g., ["telegram"])
                   If None, will send to all available platforms for the user
         **kwargs: Additional parameters for the message
     """
@@ -224,7 +224,7 @@ def send_cross_platform_message(user_id: int, text: str, platforms: Optional[Lis
                     return False
 
                 # Determine which platforms to send to
-                target_platforms = platforms or ["telegram", "viber", "whatsapp"]
+                target_platforms = platforms or ["telegram"]
                 sent_count = 0
 
                 # Send to each platform that the user has an ID for
@@ -313,17 +313,7 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
     with log_context(logger, user_id=user_id, ad_id=ad_id, platform=platform):
         # If platform is not specified, try to determine it
         if not platform:
-            if isinstance(user_id, str):
-                if user_id.startswith("whatsapp:"):
-                    platform = "whatsapp"
-                elif len(user_id) > 20:  # Viber IDs are typically long UUIDs
-                    platform = "viber"
-                else:
-                    # Default to Telegram for shorter IDs
-                    platform = "telegram"
-            else:
-                # Default to Telegram for numeric IDs
-                platform = "telegram"
+            platform = "telegram"
                 
         logger.info(f"Processing ad with platform: {platform}", extra={
             'user_id': user_id,
@@ -416,8 +406,6 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                     # Send to each platform the user is registered on
                     for platform_name, platform_id_key in [
                         ("telegram", "telegram_id"),
-                        ("viber", "viber_id"),
-                        ("whatsapp", "whatsapp_id")
                     ]:
                         if platform_ids.get(platform_id_key):
                             platform_id = platform_ids[platform_id_key]
@@ -434,14 +422,7 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                                     from .telegram_messaging import TelegramMessaging
                                     from services.telegram_service.app.bot import bot
                                     messenger = TelegramMessaging(bot)
-                                elif platform_name == "viber":
-                                    from .viber_messaging import ViberMessaging
-                                    from services.viber_service.app.bot import viber
-                                    messenger = ViberMessaging(viber)
-                                elif platform_name == "whatsapp":
-                                    from .whatsapp_messaging import WhatsAppMessaging
-                                    from services.whatsapp_service.app.bot import client
-                                    messenger = WhatsAppMessaging(client)
+                                
                                 else:
                                     logger.warning(f"Unknown platform", extra={'platform': platform_name})
                                     continue

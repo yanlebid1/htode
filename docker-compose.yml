@@ -207,144 +207,9 @@ services:
       timeout: 10s
       retries: 3
 
-  viber_service:
-    env_file:
-      - .env
-    container_name: viber_service
-    networks:
-      - app_net
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-    build:
-      context: .
-      dockerfile: services/viber_service/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *common-variables
-      VIBER_TOKEN: "${VIBER_TOKEN}"
-      VIBER_WEBHOOK_URL: "${VIBER_WEBHOOK_URL}"
-      SERVICE_NAME: "viber"
-    ports:
-      - "8001:8000"  # Expose port for webhook
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-
-  viber_worker_service:
-    volumes:
-      - ./services:/app/services  # Mount entire services directory
-      - ./common:/app/common
-    env_file:
-      - .env
-    container_name: viber_worker
-    <<: *combined-settings
-    build:
-      context: .
-      dockerfile: services/viber_service/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *common-variables
-      VIBER_TOKEN: "${VIBER_TOKEN}"
-      VIBER_WEBHOOK_URL: "${VIBER_WEBHOOK_URL}"
-      PYTHONPATH: "/app"
-    command: celery -A services.viber_service.app.celery_app.celery_app worker -Q viber_queue --loglevel=info --concurrency=2 --max-tasks-per-child=100
-    healthcheck:
-      test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@viber_worker" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-
-  whatsapp_service:
-    env_file:
-      - .env
-    container_name: whatsapp_service
-    networks:
-      - app_net
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-    build:
-      context: .
-      dockerfile: services/whatsapp_service/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    ports:
-      - "8002:8080"  # Expose port for webhook
-    environment:
-      <<: *common-variables
-      TWILIO_ACCOUNT_SID: "${TWILIO_ACCOUNT_SID}"
-      TWILIO_AUTH_TOKEN: "${TWILIO_AUTH_TOKEN}"
-      TWILIO_PHONE_NUMBER: "${TWILIO_PHONE_NUMBER}"
-      SERVICE_NAME: "whatsapp"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8080
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-
-  whatsapp_worker_service:
-    volumes:
-      - ./services:/app/services  # Mount entire services directory
-      - ./common:/app/common
-    env_file:
-      - .env
-    container_name: whatsapp_worker
-    <<: *combined-settings
-    build:
-      context: .
-      dockerfile: services/whatsapp_service/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *common-variables
-      TWILIO_ACCOUNT_SID: "${TWILIO_ACCOUNT_SID}"
-      TWILIO_AUTH_TOKEN: "${TWILIO_AUTH_TOKEN}"
-      TWILIO_PHONE_NUMBER: "${TWILIO_PHONE_NUMBER}"
-      PYTHONPATH: "/app"
-    command: celery -A services.whatsapp_service.app.celery_app.celery_app worker -Q whatsapp_queue --loglevel=info --concurrency=2 --max-tasks-per-child=100
-    healthcheck:
-      test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@whatsapp_worker" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   scraper_worker_service:
     container_name: scraper_worker_service
-    <<: *combined-playwright-settings
+    <<: *combined-settings
     build:
       context: .
       dockerfile: services/scraper_service/Dockerfile
@@ -363,6 +228,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1500M          # was 512M
+        reservations:
+          cpus: '0.5'
+          memory: 768M
 
   scraper_beat_service:
     container_name: scraper_beat_service

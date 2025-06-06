@@ -2,10 +2,12 @@
 
 from typing import Optional, Union
 from aiogram.types import Message, InputFile
-import requests
+import aiohttp
+import asyncio
 from urllib.parse import urlparse
 import re
 from io import BytesIO
+from PIL import Image
 
 from common.messaging.unified_platform_utils import (
     safe_send_message as unified_send_message,
@@ -61,20 +63,12 @@ async def safe_send_message(
             return None
 
 
-@log_operation("process_image_url")
-def process_image_url(url: str) -> Union[str, InputFile, None]:
+# --- Asynchronous processing of image URLs (non-blocking) -------------------
+
+@log_operation("async_process_image_url")
+async def async_process_image_url(url: str) -> Union[str, InputFile, None]:
     """
-    Process an image URL to make it compatible with Telegram's requirements.
-    Handles problematic URLs by:
-    1. Validating the URL format
-    2. Checking if it's a direct image link
-    3. Downloading and sending as InputFile if necessary
-
-    Args:
-        url: The image URL to process
-
-    Returns:
-        Either a validated URL string, an InputFile object, or None if invalid
+    Asynchronously validate an image link and, when needed, download it.
     """
     with log_context(logger, url_length=len(url)):
         # Basic URL validation
@@ -100,32 +94,46 @@ def process_image_url(url: str) -> Union[str, InputFile, None]:
                 return url
 
             # For other URLs, try to check with a HEAD request
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            timeout = aiohttp.ClientTimeout(total=5)
+
+            # HEAD request to confirm content-type
             try:
-                headers = {'User-Agent': 'Mozilla/5.0'}
-                response = requests.head(url, timeout=3, headers=headers, allow_redirects=True)
-                content_type = response.headers.get('Content-Type', '')
+                async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                    async with session.head(url, allow_redirects=True) as resp:
+                        if resp.status < 400:
+                            content_type = resp.headers.get('Content-Type', '')
+                            if 'image/' in content_type:
+                                if 'image/webp' in content_type:
+                                    # Telegram cannot fetch webp as photo; download and convert
+                                    async with session.get(url) as img_resp:
+                                        data = await img_resp.read()
+                                    try:
+                                        img_stream = BytesIO(data)
+                                        im = Image.open(img_stream).convert('RGB')
+                                        out_bytes = BytesIO()
+                                        im.save(out_bytes, format='JPEG', quality=90)
+                                        out_bytes.seek(0)
+                                        out_bytes.name = 'photo.jpg'
+                                        return InputFile(out_bytes)
+                                    except Exception as e:
+                                        logger.error("Failed to convert WEBP to JPEG", exc_info=True, extra={"error": str(e)})
+                                        return None
+                                logger.debug("URL confirmed as image through HEAD request", extra={
+                                    "content_type": content_type
+                                })
+                                return url
 
-                if 'image/' in content_type:
-                    logger.debug("URL confirmed as image through HEAD request", extra={
-                        "content_type": content_type
-                    })
-                    return url
-                else:
-                    logger.warning("URL is not a direct image link", extra={
-                        "url": url[:100],
-                        "content_type": content_type
-                    })
-
-                    # Try to download and send as file
-                    logger.info("Attempting to download and send as file", extra={"url": url[:100]})
-                    img_response = requests.get(url, timeout=5, headers=headers)
-                    if img_response.status_code == 200 and 'image/' in img_response.headers.get('Content-Type', ''):
-                        img_data = BytesIO(img_response.content)
-                        img_data.name = "image.jpg"  # Default name
-                        return InputFile(img_data)
+                    # If not confirmed, try a GET to download first bytes
+                    async with session.get(url) as img_resp:
+                        if img_resp.status == 200 and 'image/' in img_resp.headers.get('Content-Type', ''):
+                            data = await img_resp.read()
+                            img_data = BytesIO(data)
+                            img_data.name = "image.jpg"
+                            return InputFile(img_data)
 
             except Exception as e:
-                logger.error(f"Error processing image URL: {str(e)}", exc_info=True)
+                logger.error("Error processing image URL asynchronously", exc_info=True, extra={"error": str(e)})
 
             # If we get here, we couldn't process the URL
             return None
@@ -134,6 +142,8 @@ def process_image_url(url: str) -> Union[str, InputFile, None]:
             logger.error(f"Error parsing image URL: {str(e)}", exc_info=True)
             return None
 
+
+# --- Public wrapper that remains backward compatible ------------------------
 
 @log_operation("telegram_safe_send_photo")
 async def safe_send_photo(
@@ -160,7 +170,7 @@ async def safe_send_photo(
         try:
             # Process the image URL to ensure it's compatible with Telegram
             if isinstance(photo, str):
-                processed_photo = process_image_url(photo)
+                processed_photo = await async_process_image_url(photo)
                 if not processed_photo:
                     # Fallback to text message with image link if photo couldn't be processed
                     logger.warning("Invalid image URL, falling back to text message with link", extra={

@@ -36,7 +36,7 @@ async def handle_support_command(user_id: Union[str, int], platform: str = None)
 
     Args:
         user_id: User's platform-specific ID or database ID
-        platform: Optional platform identifier ("telegram", "viber", "whatsapp")
+        platform: Optional platform identifier ("telegram",)
     """
     with log_context(logger, user_id=user_id, platform=platform):
         try:
@@ -75,7 +75,7 @@ async def handle_support_category(user_id: Union[str, int], category: str, platf
     Args:
         user_id: User's platform-specific ID or database ID
         category: Selected support category
-        platform: Optional platform identifier ("telegram", "viber", "whatsapp")
+        platform: Optional platform identifier ("telegram",)
     """
     with log_context(logger, user_id=user_id, category=category, platform=platform):
         try:
@@ -99,18 +99,6 @@ async def handle_support_category(user_id: Union[str, int], category: str, platf
                 options = [{
                     "text": "Перейти до техпідтримки",
                     "url": f"https://t.me/bookly_beekly?start={category.lower()}"
-                }]
-            elif platform == "viber":
-                # Viber uses deep links for support redirection
-                options = [{
-                    "text": "Перейти до техпідтримки",
-                    "value": f"redirect_support:{category.lower()}"
-                }]
-            elif platform == "whatsapp":
-                # WhatsApp uses text-based instructions
-                options = [{
-                    "text": "Скопіювати та надіслати до техпідтримки",
-                    "value": f"copy_support:{category.lower()}"
                 }]
             else:
                 # Generic fallback

@@ -44,7 +44,7 @@ BATCH_SIZE = 100
 @log_operation("get_or_create_user")
 def get_or_create_user(messenger_id, messenger_type="telegram"):
     """
-    Get or create a user with telegram_id, viber_id, or whatsapp_id
+    Get or create a user with telegram_id
     """
     with log_context(logger, messenger_id=messenger_id, messenger_type=messenger_type):
         logger.info(f"Getting user with {messenger_type} id: {messenger_id}")
@@ -265,12 +265,6 @@ def get_platform_ids_for_user(user_id: int) -> dict:
                 platform_ids = {}
                 if user.telegram_id is not None:
                     platform_ids["telegram_id"] = user.telegram_id
-
-                if user.viber_id is not None:
-                    platform_ids["viber_id"] = user.viber_id
-
-                if user.whatsapp_id is not None:
-                    platform_ids["whatsapp_id"] = user.whatsapp_id
 
                 logger.debug("Retrieved platform IDs", extra={
                     'user_id': user_id,

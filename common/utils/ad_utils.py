@@ -7,6 +7,7 @@ from common.utils.s3_utils import _upload_image_to_s3
 from common.utils.phone_parser import extract_phone_numbers_from_resource
 from common.db.models.ad import Ad
 from common.utils.logging_config import log_operation, log_context, LogAggregator
+from sqlalchemy.exc import IntegrityError
 
 # Import the common utils logger
 from . import logger
@@ -72,8 +73,20 @@ def process_and_insert_ad(
                 }
 
                 # Insert new ad
-                ad = AdRepository.create_ad(db, new_ad_data)
-                ad_id = ad.id
+                try:
+                    ad = AdRepository.create_ad(db, new_ad_data)
+                    ad_id = ad.id
+                except IntegrityError as dup:
+                    # Another worker inserted the same ad concurrently
+                    db.rollback()
+                    logger.warning("Duplicate ad detected during insert, fetching existing", extra={
+                        'external_id': ad_unique_id
+                    })
+                    ad = AdRepository.get_by_external_id(db, ad_unique_id)
+                    if not ad:
+                        raise  # propagate if truly missing
+                    ad_id = ad.id
+
                 logger.info("Created new ad", extra={
                     'external_id': ad_unique_id,
                     'database_id': ad_id

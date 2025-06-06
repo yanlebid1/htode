@@ -92,8 +92,6 @@ def get_user_by_phone(phone_number: str) -> Optional[Dict[str, Any]]:
                 user_data = {
                     "id": user.id,
                     "telegram_id": user.telegram_id,
-                    "viber_id": user.viber_id,
-                    "whatsapp_id": user.whatsapp_id,
                     "phone_number": user.phone_number,
                     "email": user.email
                 }
@@ -102,8 +100,6 @@ def get_user_by_phone(phone_number: str) -> Optional[Dict[str, Any]]:
                     'phone_number': phone_number,
                     'user_id': user.id,
                     'has_telegram': bool(user.telegram_id),
-                    'has_viber': bool(user.viber_id),
-                    'has_whatsapp': bool(user.whatsapp_id),
                     'has_email': bool(user.email)
                 })
 
@@ -123,7 +119,7 @@ def link_messenger_account(phone_number: str, messenger_type: str, messenger_id:
 
     Args:
         phone_number: Phone number
-        messenger_type: Type of messenger ("telegram", "viber", or "whatsapp")
+        messenger_type: Type of messenger ("telegram",)
         messenger_id: Messenger-specific ID
 
     Returns:
@@ -139,10 +135,6 @@ def link_messenger_account(phone_number: str, messenger_type: str, messenger_id:
                     # Update messenger ID
                     if messenger_type == "telegram":
                         user.telegram_id = messenger_id
-                    elif messenger_type == "viber":
-                        user.viber_id = messenger_id
-                    elif messenger_type == "whatsapp":
-                        user.whatsapp_id = messenger_id
 
                     # Verify phone number if not already verified
                     if not user.phone_verified:

@@ -42,7 +42,7 @@ class FlowContext:
 
         Args:
             user_id: User identifier
-            platform: Platform identifier (telegram, viber, whatsapp)
+            platform: Platform identifier (telegram, )
             flow_data: Flow-specific data dictionary
             message: Current message text (if available)
         """
@@ -768,7 +768,7 @@ async def check_and_process_flow(user_id: Union[str, int],
 
     Args:
         user_id: User's platform-specific ID or database ID
-        platform: Platform identifier ("telegram", "viber", "whatsapp")
+        platform: Platform identifier ("telegram",)
         message_text: Message text from user
         extra_context: Optional extra context data to include
         on_success: Optional callback function to call if message was handled
@@ -831,7 +831,7 @@ async def show_available_flows(user_id: Union[str, int], platform: str):
 
     Args:
         user_id: User's platform-specific ID or database ID
-        platform: Platform identifier ("telegram", "viber", "whatsapp")
+        platform: Platform identifier ("telegram",)
     """
     with log_context(logger, user_id=user_id, platform=platform):
         # Get all registered flows
@@ -879,7 +879,7 @@ async def process_flow_action(user_id: Union[str, int],
 
     Args:
         user_id: User's platform-specific ID or database ID
-        platform: Platform identifier ("telegram", "viber", "whatsapp")
+        platform: Platform identifier ("telegram",)
         action_text: Action text (format: "flow:flow_name:action")
 
     Returns:
@@ -930,7 +930,7 @@ async def create_flow_context(user_id: Union[str, int],
 
     Args:
         user_id: User's platform-specific ID or database ID
-        platform: Platform identifier ("telegram", "viber", "whatsapp")
+        platform: Platform identifier ("telegram",)
         message: Optional message text
         initial_data: Optional initial flow data
 

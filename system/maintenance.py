@@ -712,22 +712,6 @@ def check_subscription_statistics() -> Dict[str, Any]:
                     )
                 ).scalar()
 
-                viber_subscribers = db.query(func.count(User.id)).filter(
-                    User.viber_id.isnot(None),
-                    or_(
-                        User.subscription_until > datetime.now(),
-                        User.free_until > datetime.now()
-                    )
-                ).scalar()
-
-                whatsapp_subscribers = db.query(func.count(User.id)).filter(
-                    User.whatsapp_id.isnot(None),
-                    or_(
-                        User.subscription_until > datetime.now(),
-                        User.free_until > datetime.now()
-                    )
-                ).scalar()
-
                 # Count by subscription filter
                 subscription_counts = {}
 
@@ -784,8 +768,6 @@ def check_subscription_statistics() -> Dict[str, Any]:
                     "free_trial_subscribers": free_trial_subscribers,
                     "platform_breakdown": {
                         "telegram": telegram_subscribers,
-                        "viber": viber_subscribers,
-                        "whatsapp": whatsapp_subscribers
                     },
                     "subscription_counts": subscription_counts
                 }

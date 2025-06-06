@@ -214,10 +214,6 @@ def link_messenger_account(email, messenger_type, messenger_id):
                 # Update existing user with messenger ID
                 if messenger_type == "telegram":
                     user.telegram_id = messenger_id
-                elif messenger_type == "viber":
-                    user.viber_id = messenger_id
-                elif messenger_type == "whatsapp":
-                    user.whatsapp_id = messenger_id
                 else:
                     logger.error("Invalid messenger type", extra={
                         'messenger_type': messenger_type,

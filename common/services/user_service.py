@@ -24,7 +24,7 @@ class UserService:
         Args:
             db: Database session
             messenger_id: Messenger-specific ID
-            messenger_type: Type of messenger (telegram, viber, whatsapp)
+            messenger_type: Type of messenger (telegram,)
 
         Returns:
             User database ID

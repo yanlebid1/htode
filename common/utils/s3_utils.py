@@ -14,6 +14,9 @@ from common.utils.logging_config import log_operation, log_context, LogAggregato
 # Import the common utils logger
 from . import logger
 
+from io import BytesIO
+from PIL import Image
+
 # Initialize S3 client using config
 s3_client = boto3.client(
     's3',
@@ -226,10 +229,22 @@ def _upload_image_to_s3(image_url, ad_unique_id, max_retries=3, retry_delay=1):
                 })
                 s3_key = f"{AWS_CONFIG['s3_prefix']}{ad_unique_id}_{hash(image_url)}.jpg"
 
-            # 3) Determine content type
+            # 3) If WEBP convert to JPEG for Telegram compatibility
+            if file_extension == 'webp':
+                try:
+                    img = Image.open(BytesIO(image_data)).convert('RGB')
+                    jpeg_buffer = BytesIO()
+                    img.save(jpeg_buffer, format='JPEG', quality=92, optimize=True)
+                    image_data = jpeg_buffer.getvalue()
+                    file_extension = 'jpg'
+                    logger.debug("Converted WEBP to JPEG before S3 upload")
+                except Exception as conv_err:
+                    logger.warning("Failed to convert WEBP to JPEG, uploading as is", extra={"error": str(conv_err)})
+
+            # 4) Determine content type after possible conversion
             content_type = detect_content_type(image_url, file_extension)
 
-            # 4) Upload to S3 with retries
+            # 5) Upload to S3 with retries
             for attempt in range(max_retries):
                 try:
                     with log_context(logger, attempt=attempt + 1, s3_key=s3_key):
@@ -262,7 +277,7 @@ def _upload_image_to_s3(image_url, ad_unique_id, max_retries=3, retry_delay=1):
                         aggregator.add_error("S3 upload failed", {'error': str(e)})
                         return None
 
-            # 5) Build final URL
+            # 6) Build final URL
             if AWS_CONFIG['cloudfront_domain']:
                 final_url = f"{AWS_CONFIG['cloudfront_domain']}/{s3_key}"
             else:

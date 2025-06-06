@@ -39,7 +39,7 @@ class StateManager:
         Register a platform-specific handler.
 
         Args:
-            platform: Platform name (telegram, viber, whatsapp)
+            platform: Platform name (telegram,)
             handler: Platform-specific state handler
         """
         self.platform_handlers[platform] = handler

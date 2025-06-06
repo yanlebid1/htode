@@ -407,67 +407,6 @@ class UserRepository:
             return None
 
     @staticmethod
-    @log_operation("get_users_with_expired_viber_conversations")
-    def get_users_with_expired_viber_conversations(db: Session) -> List[User]:
-        """
-        Get users with Viber IDs who were active in the last 24-28 hours
-        (indicating their Viber conversations likely expired).
-        """
-        with log_context(logger):
-            try:
-                users = db.query(User) \
-                    .filter(
-                    User.viber_id.isnot(None),
-                    User.last_active > datetime.now() - timedelta(hours=28),
-                    User.last_active < datetime.now() - timedelta(hours=24),
-                    User.viber_conversation_expired == False
-                ) \
-                    .all()
-
-                logger.debug("Found users with expired Viber conversations", extra={
-                    'user_count': len(users)
-                })
-
-                return users
-            except Exception as e:
-                logger.error("Error getting users with expired Viber conversations", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
-                return []
-
-    @staticmethod
-    @log_operation("mark_viber_conversation_expired")
-    def mark_viber_conversation_expired(db: Session, user_id: int) -> bool:
-        """
-        Mark a user's Viber conversation as expired.
-        """
-        with log_context(logger, user_id=user_id):
-            try:
-                user = db.query(User).get(user_id)
-                if not user:
-                    logger.warning("User not found", extra={'user_id': user_id})
-                    return False
-
-                user.viber_conversation_expired = True
-                db.commit()
-
-                # Invalidate user cache
-                UserCacheManager.invalidate_all(user_id)
-
-                logger.info("Marked Viber conversation as expired", extra={
-                    'user_id': user_id
-                })
-
-                return True
-            except Exception as e:
-                db.rollback()
-                logger.error("Error marking Viber conversation as expired", exc_info=True, extra={
-                    'user_id': user_id,
-                    'error_type': type(e).__name__
-                })
-                return False
-
-    @staticmethod
     @log_operation("create_user")
     def create_user(db: Session, user_data: Dict[str, Any]) -> User:
         """
@@ -482,8 +421,6 @@ class UserRepository:
             logger.info("Created new user", extra={
                 'user_id': user.id,
                 'has_telegram': bool(user.telegram_id),
-                'has_viber': bool(user.viber_id),
-                'has_whatsapp': bool(user.whatsapp_id),
                 'has_email': bool(user.email),
                 'has_phone': bool(user.phone_number)
             })

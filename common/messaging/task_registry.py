@@ -15,7 +15,7 @@ def register_platform_tasks(platform_name: str, task_module_path: str):
     Register common messaging tasks for a specific platform.
 
     Args:
-        platform_name: Name of the platform (telegram, viber, whatsapp)
+        platform_name: Name of the platform (telegram,)
         task_module_path: Base module path for the platform's tasks (e.g., 'telegram_service.app.tasks')
     """
     with log_context(logger, platform_name=platform_name, task_module_path=task_module_path):
