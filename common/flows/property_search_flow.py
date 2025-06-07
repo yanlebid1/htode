@@ -1,10 +1,7 @@
 # common/flows/property_search_flow.py
 
-import logging
 from common.db.operations import (
-    update_user_filter,
-    get_or_create_user,
-    get_db_user_id_by_telegram_id
+    update_user_filter, get_user_by_telegram_id, create_telegram_user
 )
 from common.celery_app import celery_app
 from common.messaging.unified_flow import MessageFlow, FlowContext, flow_library
@@ -72,17 +69,16 @@ async def start_property_search(context: FlowContext):
     """Start the property search flow by showing property type options"""
     with log_context(logger, user_id=context.user_id, platform=context.platform):
         # Try to get user database ID from platform ID
-        user_id = context.user_id
-        platform = context.platform
+        telegram_id = context.user_id
 
-        db_user_id = get_db_user_id_by_telegram_id(user_id, messenger_type=platform)
+        user = get_user_by_telegram_id(telegram_id)
+        db_user_id = user.id if user else None
         if not db_user_id:
             # Create a new user if not found
-            db_user_id = get_or_create_user(user_id, messenger_type=platform)
+            db_user_id = create_telegram_user(telegram_id)
 
         logger.info("Starting property search flow", extra={
-            'user_id': user_id,
-            'platform': platform,
+            'user_id': telegram_id,
             'db_user_id': db_user_id
         })
 
@@ -646,7 +642,7 @@ async def handle_edit_selection(context: FlowContext):
 
 @log_operation("save_subscription")
 async def save_subscription(context: FlowContext):
-    """Save subscription to database"""
+    """Save subscription to a database"""
     with log_context(logger, user_id=context.user_id):
         # Get all parameters
         property_type = context.data.get("property_type")
@@ -659,10 +655,10 @@ async def save_subscription(context: FlowContext):
         user_db_id = context.data.get("user_db_id")
 
         if not user_db_id:
-            user_db_id = get_db_user_id_by_telegram_id(context.user_id, messenger_type=context.platform)
-
+            user = get_user_by_telegram_id(context.user_id, messenger_type=context.platform)
+            user_db_id = user.id if user else None
         if not user_db_id:
-            user_db_id = get_or_create_user(context.user_id, messenger_type=context.platform)
+            user_db_id = create_telegram_user(context.user_id)
             context.update(user_db_id=user_db_id)
 
         if not user_db_id:
@@ -670,7 +666,7 @@ async def save_subscription(context: FlowContext):
             await context.send_message("Помилка: Не вдалося визначити вашого користувача.")
             return
 
-        # Prepare filters for database
+        # Prepare filters for a database
         filters = {
             'property_type': property_type,
             'city': city,

@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, List
 
 
 from common.celery_app import celery_app
-from common.db.operations import get_platform_ids_for_user, get_db_user_id_by_telegram_id, Ad
+from common.db.operations import get_platform_ids_for_user, get_user_by_telegram_id, Ad
 from .service import messaging_service
 from common.db.session import db_session
 from ..db.models import User
@@ -289,7 +289,7 @@ def send_cross_platform_message(user_id: int, text: str, platforms: Optional[Lis
 
 @celery_app.task(name='common.messaging.tasks.send_ad_with_extra_buttons')
 @log_operation("send_ad_with_extra_buttons")
-def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id, ad_external_id, platform=None):
+def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id, ad_external_id):
     """
     Consolidated task to send an ad with platform-specific buttons.
     Can be called directly with a platform-specific ID or database user ID.
@@ -305,25 +305,20 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
         ad_external_id: External ID of the ad
         platform: Optional platform override if user_id is platform-specific
     """
-    with log_context(logger, user_id=user_id, ad_id=ad_id, platform=platform):
+    with log_context(logger, user_id=user_id, ad_id=ad_id):
         # If platform is not specified, try to determine it
-        if not platform:
-            platform = "telegram"
                 
-        logger.info(f"Processing ad with platform: {platform}", extra={
+        logger.info(f"Processing ad ", extra={
             'user_id': user_id,
             'ad_id': ad_id,
-            'platform': platform
         })
         
         async def send():
             # Make the platform variable from the outer scope accessible
-            nonlocal platform
 
             logger.info(f"Sending ad with extra buttons", extra={
                 'user_id': user_id,
                 'ad_id': ad_id,
-                'platform': platform
             })
 
             # First, determine the database user ID
@@ -343,19 +338,19 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
 
                 if not db_user_id:
                     # Try to find the user by platform ID
-                    db_user_id = get_db_user_id_by_telegram_id(user_id, messenger_type=platform)
-                    logger.info(f"Resolved db_user_id from platform ID", extra={
+                    user = get_user_by_telegram_id(user_id)
+                    db_user_id = user.id if user else None
+                    logger.info(f"Resolved db_user_id from telegram ID", extra={
                         'db_user_id': db_user_id,
-                        'platform_id': user_id,
-                        'platform': platform
+                        'telegram_id': user_id,
                     })
             else:
                 # This is definitely a platform-specific ID
-                db_user_id = get_db_user_id_by_telegram_id(user_id, messenger_type=platform)
-                logger.info(f"Resolved db_user_id from platform ID", extra={
+                user = get_user_by_telegram_id(user_id)
+                db_user_id = user.id if user else None
+                logger.info(f"Resolved db_user_id from telegram ID", extra={
                     'db_user_id': db_user_id,
                     'platform_id': user_id,
-                    'platform': platform
                 })
 
             # Fetch images, phones for the ad using the repository
@@ -513,7 +508,7 @@ def send_ad_with_extra_buttons(user_id, text, s3_image_url, resource_url, ad_id,
                     logger.warning(f"No platform IDs found for user", extra={'db_user_id': db_user_id})
 
             # If we failed to resolve user or couldn't send to any platform, try direct approach
-            if not success and platform == "telegram":
+            if not success:
                 # Use the direct telegram ID approach as a last resort
                 telegram_id = user_id
                 try:

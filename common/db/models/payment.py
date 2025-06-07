@@ -1,41 +1,37 @@
 # common/db/models/payment.py
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Numeric, Index
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from common.db.base import Base
 
 
-class PaymentOrder(Base):
-    __tablename__ = "payment_orders"
+class Payment(Base):
+    __tablename__ = "payments"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
     order_id = Column(String, unique=True, index=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
     period = Column(String, nullable=False)
-    status = Column(String, default="pending")  # 'pending', 'completed', 'cancelled', 'failed'
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    status = Column(String, default="pending", index=True)  # 'pending', 'completed', 'cancelled', 'failed'
 
-    # Relationships
-    user = relationship("User", back_populates="payment_orders")
-
-
-class PaymentHistory(Base):
-    __tablename__ = "payment_history"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True)
-    order_id = Column(String, index=True)
-    amount = Column(Float, nullable=False)
-    subscription_period = Column(String, nullable=False)
-    status = Column(String, nullable=False)
+    # Transaction details
     transaction_id = Column(String, nullable=True)
     card_mask = Column(String, nullable=True)
-    payment_details = Column(Text, nullable=True)  # JSON stored as text
+    payment_details = Column(JSON, nullable=True)  # Using JSON instead of Text
+
+    # Timestamps
     created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    completed_at = Column(DateTime, nullable=True)
 
     # Relationships
-    user = relationship("User")
+    user = relationship("User", back_populates="payments")
+
+    # Add index for status queries
+    __table_args__ = (
+        Index('idx_payment_status_created', 'status', 'created_at'),
+    )

@@ -3,7 +3,7 @@
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from ..bot import dp
-from common.db.operations import get_db_user_id_by_telegram_id
+from common.db.operations import get_user_by_telegram_id
 from ..payment.wayforpay import create_payment_form_url
 from ..utils.message_utils import delete_message_safe, safe_answer_callback_query
 
@@ -24,7 +24,8 @@ async def payment_handler(message: types.Message):
             "username": message.from_user.username
         })
 
-        db_user_id = get_db_user_id_by_telegram_id(telegram_id)
+        user = get_user_by_telegram_id(str(telegram_id))
+        db_user_id = user.id if user else None
 
         if not db_user_id:
             logger.warning("User not found for payment request", extra={
@@ -84,7 +85,8 @@ async def process_payment(callback_query: types.CallbackQuery):
             "callback_data": callback_query.data
         })
 
-        db_user_id = get_db_user_id_by_telegram_id(telegram_id)
+        user = get_user_by_telegram_id(str(telegram_id))
+        db_user_id = user.id if user else None
 
         if not db_user_id:
             logger.warning("User not found during payment processing", extra={

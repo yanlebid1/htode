@@ -6,13 +6,13 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from ..bot import dp
 from ..utils.message_utils import safe_send_message, safe_answer_callback_query, delete_message_safe
 from common.verification.phone_service import (
-    create_verification_code,
-    verify_code,
+    send_phone_verification_code,
     link_messenger_account,
     get_user_by_phone,
-    transfer_subscriptions
+    transfer_subscriptions,
+    verify_phone_code
 )
-from common.db.operations import get_db_user_id_by_telegram_id
+from common.db.operations import get_user_by_telegram_id
 from ..keyboards import (
     phone_request_keyboard,
     verification_code_keyboard,
@@ -154,7 +154,7 @@ async def process_phone_number(message: types.Message, state: FSMContext, phone_
 
         # Generate and send verification code
         try:
-            code = create_verification_code(phone_number)
+            code = send_phone_verification_code(phone_number, user_id)
             # Save generated code in state for local comparison (useful in tests/dev when DB verification may be disabled)
             await state.update_data(expected_code=code)
             logger.info("Verification code created", extra={
@@ -259,7 +259,7 @@ async def handle_verification_code(message: types.Message, state: FSMContext):
 
         # Verify the code
         try:
-            success, error_message = verify_code(phone_number, code)
+            success, error_message = verify_phone_code(phone_number, code)
             # If service verification fails but code matches the one we generated in this session, treat as success (dev/test shortcut)
             if not success:
                 expected_code = user_data.get('expected_code')
@@ -324,7 +324,8 @@ async def handle_verification_code(message: types.Message, state: FSMContext):
             return
 
         # Get the current user's ID in our database
-        current_user_id = get_db_user_id_by_telegram_id(telegram_id)
+        user = get_user_by_telegram_id(str(telegram_id))
+        current_user_id = user.id if user else None
         logger.info("Retrieved current user ID", extra={
             "user_id": user_id,
             "telegram_id": telegram_id,
@@ -333,7 +334,7 @@ async def handle_verification_code(message: types.Message, state: FSMContext):
 
         if existing_user and existing_user.get('telegram_id') != telegram_id:
             # User exists with this phone number but has a different telegram_id
-            # Ask for confirmation to merge accounts
+            # Ask for confirmation-to-merge accounts
             await state.update_data(
                 existing_user_id=existing_user['id'],
                 current_user_id=current_user_id

@@ -1,159 +1,95 @@
 # common/verification/email_service.py
 
-import smtplib
-import uuid
 import os
-from datetime import datetime, timedelta
+import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from typing import Optional
 
 from common.db.session import db_session
-from common.db.repositories.email_verification_repository import EmailVerificationRepository
+from common.db.repositories.verification_repository import VerificationRepository
 from common.db.repositories.user_repository import UserRepository
 from common.utils.logging_config import log_operation, log_context
 
 # Import the common verification logger
 from . import logger
 
-# Configuration
-EMAIL_VERIFICATION_EXPIRY_MINUTES = 30
-MAX_VERIFICATION_ATTEMPTS = 3
-EMAIL_SERVICE_ENABLED = os.getenv("EMAIL_SERVICE_ENABLED", "false").lower() == "true"
-EMAIL_SERVICE_DEBUG = os.getenv("EMAIL_SERVICE_DEBUG", "false").lower() == "true"
-
-# SMTP settings
+# Email configuration
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@realestatefinder.com")
+FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USERNAME)
+EMAIL_VERIFICATION_EXPIRY_MINUTES = 60
 
 
-@log_operation("generate_verification_token")
-def generate_verification_token():
-    """Generate a unique verification token"""
-    return str(uuid.uuid4())
-
-
-@log_operation("create_verification_token")
-def create_verification_token(email):
+@log_operation("send_verification_email_with_token")
+def send_verification_email_with_token(email: str) -> Optional[str]:
     """
-    Create a verification token for the given email
+    Create a verification token and send it via email
+
+    Args:
+        email: Email address to verify
 
     Returns:
-        The verification token
+        Generated token if successful, None otherwise
     """
-    # Normalize email
-    email = email.lower().strip()
+    with log_context(logger, email=email[:5] + "..."):
+        try:
+            # Create verification token
+            with db_session() as db:
+                token = VerificationRepository.create_verification(
+                    db=db,
+                    verification_type="email",
+                    target=email.lower().strip(),
+                    user_id=None,  # Will be linked later
+                    expiry_minutes=EMAIL_VERIFICATION_EXPIRY_MINUTES
+                )
 
-    with log_context(logger, email=email):
-        # Generate token
-        token = generate_verification_token()
-        expires_at = datetime.now() + timedelta(minutes=EMAIL_VERIFICATION_EXPIRY_MINUTES)
-
-        with db_session() as db:
-            # Create token using repository
-            EmailVerificationRepository.create_token(db, email, token, expires_at)
-
-        # Send verification email
-        send_verification_email(email, token)
-
-        logger.info("Created verification token", extra={'email': email})
-        return token
-
-
-@log_operation("verify_token")
-def verify_token(email, token):
-    """
-    Verify the token for an email address
-
-    Returns:
-        (success, error_message) tuple
-    """
-    # Normalize email
-    email = email.lower().strip()
-
-    with log_context(logger, email=email):
-        with db_session() as db:
-            # Get the verification record
-            token_record = EmailVerificationRepository.get_token(db, email)
-
-            if not token_record:
-                logger.warning("No verification token found", extra={'email': email})
-                return False, "No verification token found for this email"
-
-            # Check if expired
-            if datetime.now() > token_record.expires_at:
-                logger.warning("Verification token expired", extra={
-                    'email': email,
-                    'expires_at': token_record.expires_at.isoformat()
+            # Send email
+            if send_verification_email(email, token):
+                logger.info("Verification email sent successfully", extra={
+                    'email': email[:5] + "..."
                 })
-                return False, "Verification token has expired"
-
-            # Check attempts
-            if token_record.attempts >= MAX_VERIFICATION_ATTEMPTS:
-                logger.warning("Too many verification attempts", extra={
-                    'email': email,
-                    'attempts': token_record.attempts,
-                    'max_attempts': MAX_VERIFICATION_ATTEMPTS
+                return token
+            else:
+                logger.error("Failed to send verification email", extra={
+                    'email': email[:5] + "..."
                 })
-                return False, "Too many verification attempts"
+                return None
 
-            # Verify token
-            if not EmailVerificationRepository.verify_token(db, email, token):
-                logger.warning("Invalid verification token", extra={'email': email})
-                return False, "Invalid verification token"
-
-            # Mark email as verified
-            EmailVerificationRepository.mark_email_verified(db, email)
-
-            # Delete the token
-            EmailVerificationRepository.delete_token(db, email)
-
-            logger.info("Email verification successful", extra={'email': email})
-            return True, None
-
-
-@log_operation("mark_email_verified")
-def mark_email_verified(email):
-    """Mark an email as verified"""
-    with log_context(logger, email=email):
-        with db_session() as db:
-            EmailVerificationRepository.mark_email_verified(db, email)
-            logger.info("Marked email as verified", extra={'email': email})
+        except Exception as e:
+            logger.error("Error in send_verification_email_with_token", exc_info=True, extra={
+                'email': email[:5] + "...",
+                'error_type': type(e).__name__
+            })
+            return None
 
 
 @log_operation("send_verification_email")
-def send_verification_email(email, token):
-    """Send verification email with a token"""
-    with log_context(logger, email=email, email_service_enabled=EMAIL_SERVICE_ENABLED):
-        if not EMAIL_SERVICE_ENABLED:
-            # For development, just log the token
-            logger.info("EMAIL SERVICE DISABLED", extra={
-                'email': email,
-                'token': token,
-                'action': 'would_send'
+def send_verification_email(email: str, token: str) -> bool:
+    """
+    Send verification email with token
+
+    Args:
+        email: Recipient email
+        token: Verification token
+
+    Returns:
+        Success boolean
+    """
+    with log_context(logger, email=email[:5] + "..."):
+        if not all([SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD]):
+            logger.warning("Email configuration incomplete, skipping email send", extra={
+                'smtp_server': SMTP_SERVER,
+                'smtp_port': SMTP_PORT,
+                'has_username': bool(SMTP_USERNAME),
+                'has_password': bool(SMTP_PASSWORD)
             })
-
-            # Write to the file in debug mode
-            if EMAIL_SERVICE_DEBUG:
-                try:
-                    with open(f"email_token_{email.replace('@', '_at_')}.txt", "w") as f:
-                        f.write(token)
-                    logger.debug("Wrote token to debug file", extra={
-                        'email': email,
-                        'file': f"email_token_{email.replace('@', '_at_')}.txt"
-                    })
-                except Exception as e:
-                    logger.error("Failed to write debug email token to file", exc_info=True, extra={
-                        'email': email,
-                        'error_type': type(e).__name__
-                    })
-
             return True
 
         try:
-            # Create a message
+            # Create message
             msg = MIMEMultipart()
             msg['From'] = FROM_EMAIL
             msg['To'] = email
@@ -193,62 +129,133 @@ def send_verification_email(email, token):
             return False
 
 
-@log_operation("link_messenger_account")
-def link_messenger_account(email, messenger_type, messenger_id):
+@log_operation("verify_email_token")
+def verify_email_token(email: str, token: str) -> bool:
     """
-    Link a messenger account to a user with the given email.
-    If a user with email doesn't exist, creates a new user.
+    Verify an email verification token
+
+    Args:
+        email: Email address
+        token: Verification token
 
     Returns:
-        The user's database ID
+        True if valid, False otherwise
     """
-    # Normalize email
-    email = email.lower().strip()
+    with log_context(logger, email=email[:5] + "..."):
+        try:
+            with db_session() as db:
+                is_valid = VerificationRepository.verify_code(
+                    db=db,
+                    verification_type="email",
+                    target=email.lower().strip(),
+                    code=token
+                )
 
-    with log_context(logger, email=email, messenger_type=messenger_type, messenger_id=messenger_id):
-        with db_session() as db:
-            # Check if the user with this email exists
-            user = UserRepository.get_by_email(db, email)
+                if is_valid:
+                    logger.info("Email token verified successfully", extra={
+                        'email': email[:5] + "..."
+                    })
+                else:
+                    logger.warning("Email token verification failed", extra={
+                        'email': email[:5] + "..."
+                    })
+
+                return is_valid
+
+        except Exception as e:
+            logger.error("Error verifying email token", exc_info=True, extra={
+                'email': email[:5] + "...",
+                'error_type': type(e).__name__
+            })
+            return False
+
+
+@log_operation("link_messenger_account")
+def link_messenger_account(email: str, messenger_type: str, messenger_id: str) -> Optional[int]:
+    """
+    Link a messenger account to a user with the given email.
+    For Telegram-only app, messenger_type should always be "telegram".
+
+    Args:
+        email: Email address
+        messenger_type: Type of messenger ("telegram")
+        messenger_id: Messenger-specific ID
+
+    Returns:
+        The user's database ID if successful, None otherwise
+    """
+    with log_context(logger, email=email[:5] + "...", messenger_type=messenger_type):
+        if messenger_type != "telegram":
+            logger.error("Unsupported messenger type", extra={
+                'messenger_type': messenger_type
+            })
+            return None
+
+        try:
+            from common.db.operations import link_telegram_to_email
+            user = link_telegram_to_email(messenger_id, email)
 
             if user:
-                # Update existing user with messenger ID
-                if messenger_type == "telegram":
-                    user.telegram_id = messenger_id
-                else:
-                    logger.error("Invalid messenger type", extra={
-                        'messenger_type': messenger_type,
-                        'email': email
-                    })
-                    raise ValueError(f"Invalid messenger type: {messenger_type}")
-
-                db.commit()
-                logger.info("Linked messenger account to existing user", extra={
-                    'messenger_type': messenger_type,
-                    'messenger_id': messenger_id,
-                    'user_id': user.id,
-                    'email': email
+                logger.info("Successfully linked email to telegram account", extra={
+                    'email': email[:5] + "...",
+                    'user_id': user.id
                 })
                 return user.id
             else:
-                # Create a new user with this email and messenger ID
-                free_until = datetime.now() + timedelta(days=7)
+                logger.error("Failed to link email to telegram account", extra={
+                    'email': email[:5] + "..."
+                })
+                return None
 
-                # Prepare user data
+        except Exception as e:
+            logger.error("Error linking email to telegram", exc_info=True, extra={
+                'email': email[:5] + "...",
+                'error_type': type(e).__name__
+            })
+            return None
+
+
+@log_operation("get_user_by_email")
+def get_user_by_email(email: str) -> Optional[dict]:
+    """
+    Get user information by email
+
+    Args:
+        email: Email address
+
+    Returns:
+        User data dictionary or None if not found
+    """
+    with log_context(logger, email=email[:5] + "..."):
+        try:
+            with db_session() as db:
+                user = UserRepository.get_by_email(db, email)
+
+                if not user:
+                    logger.debug("No user found with email", extra={
+                        'email': email[:5] + "..."
+                    })
+                    return None
+
                 user_data = {
-                    "email": email,
-                    "email_verified": True,
-                    "free_until": free_until
+                    "id": user.id,
+                    "telegram_id": user.telegram_id,
+                    "email": user.email,
+                    "email_verified": user.email_verified,
+                    "phone_number": user.phone_number
                 }
 
-                # Add messenger-specific ID
-                user_data[f"{messenger_type}_id"] = messenger_id
-
-                # Create user
-                user = UserRepository.create_user(db, user_data)
-                logger.info("Created new user with messenger account", extra={
-                    'messenger_type': messenger_type,
-                    'messenger_id': messenger_id,
+                logger.info("Found user by email", extra={
+                    'email': email[:5] + "...",
                     'user_id': user.id,
-                    'email': email
+                    'email_verified': user.email_verified
                 })
-                return user.id
+
+                return user_data
+
+        except Exception as e:
+            logger.error("Error getting user by email", exc_info=True, extra={
+                'email': email[:5] + "...",
+                'error_type': type(e).__name__
+            })
+            return None

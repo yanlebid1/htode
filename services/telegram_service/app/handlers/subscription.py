@@ -27,7 +27,7 @@ from common.utils.logging_config import log_operation, log_context
 
 # Extra utilities for starting a new subscription flow
 from ..utils.message_utils import safe_send_message, safe_answer_callback_query
-from common.db.operations import get_or_create_user
+from common.db.operations import create_telegram_user
 from common.messaging.keyboard_utils import AVAILABLE_CITIES
 from ..states.basis_states import FilterStates
 
@@ -940,7 +940,7 @@ async def handle_new_subscription(callback_query: types.CallbackQuery, state: FS
     telegram_id = callback_query.from_user.id
     with log_context(logger, telegram_id=telegram_id):
         # Ensure the user exists in our DB
-        user_db_id = get_or_create_user(telegram_id)
+        user_db_id = create_telegram_user(str(telegram_id))
 
         # Inform the user and ask for the first parameter (city)
         intro_text = "Створюємо нову підписку.\n🏙️ Оберіть місто:"

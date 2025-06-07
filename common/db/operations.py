@@ -4,9 +4,7 @@
 This module contains database operations that combine models and repositories.
 It should be imported after both models and repositories are initialized.
 """
-
-import logging
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Tuple
 from datetime import datetime, timedelta, date
 
 from sqlalchemy import or_
@@ -21,7 +19,8 @@ from common.db.repositories.ad_repository import AdRepository
 from common.db.repositories.favorite_repository import FavoriteRepository
 from common.utils.cache import CacheTTL
 from common.utils.phone_parser import extract_phone_numbers_from_resource
-from common.utils.cache_invalidation import invalidate_favorite_caches, invalidate_subscription_caches, invalidate_user_caches, invalidate_ad_caches
+from common.utils.cache_invalidation import invalidate_favorite_caches, invalidate_subscription_caches, \
+    invalidate_user_caches, invalidate_ad_caches
 
 from common.utils.cache_managers import (
     UserCacheManager,
@@ -35,43 +34,52 @@ from common.utils.logging_config import log_operation, log_context, LogAggregato
 
 # Import the common db logger
 from . import logger
+from .repositories import VerificationRepository
 
 # Batch size for operations to balance between network round trips and memory usage
 BATCH_SIZE = 100
 
 
-@log_operation("get_or_create_user")
-def get_or_create_user(messenger_id, messenger_type="telegram"):
+@log_operation("create_telegram_user")
+def create_telegram_user(telegram_id: str) -> Optional[User]:
     """
-    Get or create a user with telegram_id
+    Create a new Telegram user.
+    Simplified for Telegram-only app.
     """
-    with log_context(logger, messenger_id=messenger_id, messenger_type=messenger_type):
-        logger.info(f"Getting user with {messenger_type} id: {messenger_id}")
+    with log_context(logger, telegram_id=telegram_id):
+        try:
+            with db_session() as db:
+                # Check if user already exists
+                existing_user = db.query(User).filter(User.telegram_id == telegram_id).first()
+                if existing_user:
+                    logger.info("User already exists", extra={
+                        'telegram_id': telegram_id,
+                        'user_id': existing_user.id
+                    })
+                    return existing_user
 
-        with db_session() as db:
-            # Get user by messenger ID
-            user = UserRepository.get_by_messenger_id(db, messenger_id, messenger_type)
+                # Create new user
+                user = User(
+                    telegram_id=telegram_id,
+                    free_until=datetime.now() + timedelta(days=7)
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
 
-            if user:
-                logger.info(f"Found user with {messenger_type} id: {messenger_id}", extra={
+                logger.info("Created new user", extra={
+                    'telegram_id': telegram_id,
                     'user_id': user.id
                 })
-                return user.id
 
-            logger.info(f"Creating user with {messenger_type} id: {messenger_id}")
+                return user
 
-            # Create a new user
-            free_until = datetime.now() + timedelta(days=7)
-
-            # Create user with the appropriate messenger ID
-            user = UserRepository.create_messenger_user(db, messenger_id, messenger_type, free_until)
-            logger.info("Created new user", extra={
-                'user_id': user.id,
-                'messenger_type': messenger_type,
-                'messenger_id': messenger_id,
-                'free_until': free_until.isoformat()
+        except Exception as e:
+            logger.error("Error creating user", exc_info=True, extra={
+                'telegram_id': telegram_id,
+                'error_type': type(e).__name__
             })
-            return user.id
+            return None
 
 
 @log_operation("update_user_filter")
@@ -217,29 +225,30 @@ def batch_get_user_filters(user_ids):
         return results
 
 
-@log_operation("get_db_user_id_by_telegram_id")
-def get_db_user_id_by_telegram_id(messenger_id, messenger_type="telegram"):
+@log_operation("get_user_by_telegram_id")
+def get_user_by_telegram_id(telegram_id: str) -> Optional[User]:
     """
-    Get database user ID from messenger-specific ID.
-    This doesn't need caching as it's a simple lookup and changing often.
+    Get user by Telegram ID.
+    Simplified for Telegram-only app.
     """
-    with log_context(logger, messenger_id=messenger_id, messenger_type=messenger_type):
-        logger.info(f"Getting database user ID for {messenger_type} ID: {messenger_id}")
-
+    with log_context(logger, telegram_id=telegram_id):
         try:
             with db_session() as db:
-                user = UserRepository.get_by_messenger_id(db, messenger_id, messenger_type)
+                user = db.query(User).filter(User.telegram_id == telegram_id).first()
 
                 if user:
-                    logger.info(f"Found database user ID {user.id} for {messenger_type} ID: {messenger_id}")
-                    return user.id
+                    logger.debug("Found user", extra={
+                        'telegram_id': telegram_id,
+                        'user_id': user.id
+                    })
+                else:
+                    logger.debug("User not found", extra={'telegram_id': telegram_id})
 
-            logger.warning(f"No database user found for {messenger_type} ID: {messenger_id}")
-            return None
+                return user
+
         except Exception as e:
-            logger.error("Error finding user by messenger ID", exc_info=True, extra={
-                'messenger_id': messenger_id,
-                'messenger_type': messenger_type,
+            logger.error("Error getting user", exc_info=True, extra={
+                'telegram_id': telegram_id,
                 'error_type': type(e).__name__
             })
             return None
@@ -1379,3 +1388,74 @@ def get_expiring_subscriptions() -> List[Dict[str, Any]]:
             logger.error("Error getting expiring subscriptions", exc_info=True)
             aggregator.add_error(str(e), {'error_type': type(e).__name__})
             return []
+
+
+@log_operation("send_email_verification_token")
+def send_email_verification_token(email: str, user_id: Optional[int] = None) -> str:
+    """
+    Create and send email verification token.
+    Updated to use a unified Verification model.
+    """
+    with log_context(logger, email=email[:5] + "...", user_id=user_id):
+        try:
+            with db_session() as db:
+                token = VerificationRepository.create_verification(
+                    db=db,
+                    verification_type="email",
+                    target=email.lower().strip(),
+                    user_id=user_id,
+                    expiry_minutes=60  # Email tokens valid for 1 hour
+                )
+
+                logger.info("Email verification token created", extra={
+                    'email': email[:5] + "...",
+                    'user_id': user_id
+                })
+
+                # Send email with token
+                from common.verification.email_service import send_verification_email
+                send_verification_email(email, token)
+
+                return token
+
+        except Exception as e:
+            logger.error("Error creating email verification", exc_info=True, extra={
+                'email': email[:5] + "...",
+                'error_type': type(e).__name__
+            })
+            raise
+
+
+@log_operation("verify_email_token")
+def verify_email_token(email: str, token: str) -> Tuple[bool, str]:
+    """
+    Verify email verification token.
+    Updated to use a unified Verification model.
+    """
+    with log_context(logger, email=email[:5] + "..."):
+        try:
+            with db_session() as db:
+                is_valid = VerificationRepository.verify_code(
+                    db=db,
+                    verification_type="email",
+                    target=email.lower().strip(),
+                    code=token
+                )
+
+                if is_valid:
+                    logger.info("Email verification successful", extra={
+                        'email': email[:5] + "..."
+                    })
+                    return True, ""
+                else:
+                    logger.warning("Email verification failed", extra={
+                        'email': email[:5] + "..."
+                    })
+                    return False, "Недійсний токен або термін дії закінчився"
+
+        except Exception as e:
+            logger.error("Error verifying email token", exc_info=True, extra={
+                'email': email[:5] + "...",
+                'error_type': type(e).__name__
+            })
+            return False, "Помилка при перевірці токену"

@@ -3,8 +3,8 @@
 import re
 from common.config import GEO_ID_MAPPING, get_key_by_value
 from common.messaging.unified_flow import MessageFlow, FlowContext, flow_library
-from common.db.operations import get_db_user_id_by_telegram_id, update_user_filter, start_free_subscription_of_user, \
-    get_or_create_user
+from common.db.operations import update_user_filter, start_free_subscription_of_user, get_user_by_telegram_id, \
+    create_telegram_user
 from common.utils.logging_config import log_operation, log_context
 
 # Import the flows logger
@@ -307,6 +307,7 @@ async def show_price_options(context: FlowContext):
             text="💰 Виберіть діапазон цін (грн):",
             options=price_options
         )
+
 
 @log_operation("handle_price")
 async def handle_price(context: FlowContext):
@@ -630,16 +631,15 @@ async def save_subscription(context: FlowContext):
         user_db_id = context.data.get("user_db_id")
 
         if not user_db_id:
-            user_db_id = get_db_user_id_by_telegram_id(context.user_id, messenger_type=context.platform)
+            user_db_id = get_user_by_telegram_id(context.user_id)
 
         if not user_db_id:
-            user_db_id = get_or_create_user(context.user_id, messenger_type=context.platform)
+            user_db_id = create_telegram_user(context.user_id)
             context.update(user_db_id=user_db_id)
 
         if not user_db_id:
             logger.error("Failed to determine user ID", extra={
-                'platform_id': context.user_id,
-                'platform': context.platform
+                'context.user_id': context.user_id,
             })
             await context.send_message("Помилка: Не вдалося визначити вашого користувача.")
             return
@@ -652,7 +652,7 @@ async def save_subscription(context: FlowContext):
             'geo_id': geo_id
         })
 
-        # Prepare filters for database
+        # Prepare filters for a database
         filters = {
             'property_type': property_type,
             'city': geo_id,  # Use geo_id instead of the original city name
@@ -701,6 +701,7 @@ async def save_subscription(context: FlowContext):
             await context.send_message(
                 "❌ Помилка при збереженні підписки. Будь ласка, спробуйте ще раз."
             )
+
 
 # Add states to the flow
 subscription_flow.add_state("start", start_subscription_flow)

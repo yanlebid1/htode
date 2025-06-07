@@ -4,7 +4,6 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from aiogram.types import ParseMode
-from aiogram.types import InlineKeyboardButton
 
 from ..bot import dp
 from ..states.basis_states import FilterStates
@@ -14,7 +13,7 @@ from ..keyboards import (
     edit_parameters_keyboard, floor_keyboard,
     main_menu_keyboard
 )
-from common.db.operations import get_or_create_user, get_db_user_id_by_telegram_id
+from common.db.operations import create_telegram_user, get_user_by_telegram_id
 from ..utils.message_utils import (
     safe_send_message, safe_answer_callback_query,
     safe_edit_message, delete_message_safe
@@ -36,7 +35,7 @@ async def start_command(message: types.Message, state: FSMContext):
     telegram_id = message.from_user.id
 
     with log_context(logger, telegram_id=telegram_id, username=message.from_user.username):
-        user_db_id = get_or_create_user(telegram_id)
+        user_db_id = create_telegram_user(str(telegram_id))
         logger.info("Start command received", extra={
             "telegram_id": telegram_id,
             "user_db_id": user_db_id,
@@ -78,7 +77,8 @@ async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
 
     # If we don't have it in state, get it from database
     if not user_db_id:
-        user_db_id = get_db_user_id_by_telegram_id(telegram_id)
+        user = get_user_by_telegram_id(str(telegram_id))
+        user_db_id = user.id if user else None
 
     with log_context(logger, telegram_id=telegram_id, city=city):
         if city not in AVAILABLE_CITIES:
@@ -161,7 +161,8 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
 
         # If we don't have it in state, get it from database
         if not user_db_id:
-            user_db_id = get_db_user_id_by_telegram_id(telegram_id)
+            user = get_user_by_telegram_id(str(telegram_id))
+            user_db_id = user.id if user else None
 
         if data == 'rooms_done':
             if not selected_rooms:
@@ -311,7 +312,8 @@ async def process_price(callback_query: types.CallbackQuery, state: FSMContext):
 
     # If we don't have it in state, get it from database
     if not user_db_id:
-        user_db_id = get_db_user_id_by_telegram_id(telegram_id)
+        user = get_user_by_telegram_id(str(telegram_id))
+        user_db_id = user.id if user else None
 
     with log_context(logger, telegram_id=telegram_id, callback_data=callback_query.data):
         # callback_query.data might look like "price_0_5000" or "price_5000_7000" or "price_15000_any"
@@ -390,7 +392,8 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
 
     # If we don't have it in state, get it from database
     if not user_db_id:
-        user_db_id = get_db_user_id_by_telegram_id(telegram_id)
+        user = get_user_by_telegram_id(str(telegram_id))
+        user_db_id = user.id if user else None
 
     with log_context(logger, telegram_id=telegram_id, edit_field=edit_field):
         logger.info("Editing parameter", extra={
@@ -475,7 +478,8 @@ async def process_basic_params(callback_query: types.CallbackQuery, state: FSMCo
 
     # If we don't have it in state, get it from database
     if not user_db_id:
-        user_db_id = get_db_user_id_by_telegram_id(telegram_id)
+        user = get_user_by_telegram_id(str(telegram_id))
+        user_db_id = user.id if user else None
 
     with log_context(logger, telegram_id=telegram_id):
         # Получение всех данных из состояния
@@ -554,7 +558,8 @@ async def edit_parameters(callback_query: types.CallbackQuery, state: FSMContext
 
     # If we don't have it in state, get it from database
     if not user_db_id:
-        user_db_id = get_db_user_id_by_telegram_id(telegram_id)
+        user = get_user_by_telegram_id(str(telegram_id))
+        user_db_id = user.id if user else None
 
     with log_context(logger, telegram_id=telegram_id):
         logger.info("User requested to edit parameters", extra={
