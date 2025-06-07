@@ -504,11 +504,13 @@ async def _parse_olx_camoufox(ad_url: str, proxy: Optional[str] = None) -> Extra
 
         # Initialize Camoufox with proper configuration
         camoufox_args = {
-            'headless': True,
-            'proxy': proxy_config,
-            'viewport': {'width': 1920, 'height': 1080},
-            'locale': 'uk-UA',  # Ukrainian locale for OLX
-            'timezone_id': 'Europe/Kiev',
+            "proxy": proxy_config,
+            "headless": True,
+            "os": "windows",  # Use Windows OS to mimic real user
+            "locale": "uk-UA",  # Set Ukrainian locale
+            "geoip": True,  # Enable geolocation spoofing
+            "block_webrtc": True,  # Prevent WebRTC leaks
+            "humanize": True,  # Enable human-like cursor movements
         }
 
         # Remove None values

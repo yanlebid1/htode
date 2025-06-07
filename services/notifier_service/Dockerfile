@@ -37,8 +37,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 5) Install Playwright + Browsers
 #    A) pip install playwright (whatever version you like)
 #    B) Then run "playwright install --with-deps chromium"
-RUN pip install --no-cache-dir playwright==1.36.0
-RUN playwright install --with-deps chromium
+#RUN pip install --no-cache-dir playwright==1.36.0
+#RUN playwright install --with-deps chromium
 
 # Optionally, you can set an environment variable so Playwright knows
 #   where to store the browser binaries, or if you want them in the final image

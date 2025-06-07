@@ -16,3 +16,4 @@ aiodns
 curl_cffi
 brotlicffi
 pillow
+camoufox
