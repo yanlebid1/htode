@@ -193,14 +193,6 @@ def send_menu(user_id: int, text: str, options: List[Dict[str, str]], **kwargs):
                 loop.close()
 
 
-@celery_app.task(name='common.messaging.tasks.send_cross_platform_message')
-@log_operation("send_cross_platform_message")
-def send_cross_platform_message(*args, **kwargs):
-    """Deprecated stub: the application is now Telegram-only, so cross-platform messaging is disabled."""
-    logger.info("send_cross_platform_message is deprecated – Telegram-only mode active.")
-    return False
-
-
 # --- New Consolidated Tasks ---
 
 @celery_app.task(name='common.messaging.tasks.send_ad_with_extra_buttons')

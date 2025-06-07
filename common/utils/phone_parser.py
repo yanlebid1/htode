@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 import aiohttp
 from curl_cffi.requests import AsyncSession
 import httpx
-from playwright.async_api import async_playwright
+from camoufox.async_api import AsyncCamoufox
 
 # Handle imports for both package and direct execution
 from common.utils.logging_config import log_operation, log_context, LogAggregator
@@ -22,6 +22,7 @@ from common.utils import logger
 # User-Agent generator
 try:
     from fake_useragent import UserAgent  # type: ignore
+
     _UA_GEN = UserAgent()
 except Exception:  # pragma: no cover – fallback if fake_useragent data unavailable
     _UA_GEN = None
@@ -83,7 +84,7 @@ class AsyncHTTPClient:
     1. aiohttp (primary) - Fast and lightweight
     2. curl_cffi - Browser impersonation for anti-bot protection
     3. httpx - HTTP/2 support and advanced features
-    4. playwright - Full browser automation as last resort
+    4. camoufox - Full browser automation as last resort
     """
 
     def __init__(self, proxy: Optional[str] = None):
@@ -151,47 +152,56 @@ class AsyncHTTPClient:
         finally:
             await session.close()
 
-    async def _fetch_with_playwright(self, url: str) -> Optional[str]:
-        """Use Playwright as last resort for JavaScript-heavy sites."""
+    async def _fetch_with_camoufox(self, url: str) -> Optional[str]:
+        """Use Camoufox headless browser as a last resort for JavaScript-heavy sites."""
+        browser = None
         try:
-            async with async_playwright() as p:
-                browser_args = ['--disable-blink-features=AutomationControlled']
-                if self.proxy:
-                    browser = await p.chromium.launch(
-                        headless=True,
-                        args=browser_args,
-                        proxy={
-                            "server": self.proxy,
-                        }
-                    )
-                else:
-                    browser = await p.chromium.launch(headless=True, args=browser_args)
+            # Parse proxy if available
+            proxy_config = None
+            if self.proxy:
+                parsed_proxy = urllib.parse.urlparse(self.proxy)
+                proxy_config = {
+                    'server': f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port}",
+                }
+                if parsed_proxy.username and parsed_proxy.password:
+                    proxy_config['username'] = parsed_proxy.username
+                    proxy_config['password'] = parsed_proxy.password
 
-                context = await browser.new_context(
-                    viewport={'width': 1920, 'height': 1080},
-                    locale='en-US'
-                )
+            # Initialize Camoufox with proper configuration
+            camoufox_args = {
+                'headless': True,
+                'proxy': proxy_config,
+                # Add viewport to appear more like a real browser
+                'viewport': {'width': 1920, 'height': 1080},
+                # Add locale
+                'locale': 'en-US',
+                # Add timezone
+                'timezone_id': 'America/New_York',
+            }
 
-                # Add stealth scripts
-                await context.add_init_script("""
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    });
-                """)
+            # Remove None values
+            camoufox_args = {k: v for k, v in camoufox_args.items() if v is not None}
 
-                page = await context.new_page()
+            async with AsyncCamoufox(**camoufox_args) as browser:
+                page = await browser.new_page()
+
+                # Set extra headers to avoid detection
+                await page.set_extra_http_headers(self._get_random_headers())
+
+                # Navigate to the page
                 await page.goto(url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
 
                 # Wait a bit for dynamic content
                 await page.wait_for_timeout(2000)
 
+                # Get the content
                 content = await page.content()
-                await browser.close()
 
-                logger.info("Successfully fetched with Playwright")
+                logger.info("Successfully fetched with Camoufox")
                 return content
+
         except Exception as e:
-            logger.warning(f"Playwright failed: {e}")
+            logger.warning(f"Camoufox failed: {e}")
             return None
 
     async def fetch_with_aiohttp(self, url: str, headers: Optional[Dict] = None) -> Optional[str]:
@@ -248,7 +258,7 @@ class AsyncHTTPClient:
 
             async with httpx.AsyncClient(
                     timeout=REQUEST_TIMEOUT,
-                    proxy=self.proxy,  # Changed from proxies to proxy
+                    proxy=self.proxy,
                     headers=combined_headers,
                     follow_redirects=True,
                     http2=True,  # Enable HTTP/2
@@ -268,7 +278,7 @@ class AsyncHTTPClient:
             ("aiohttp", self.fetch_with_aiohttp),
             ("curl_cffi", self.fetch_with_curl_cffi),
             ("httpx", self.fetch_with_httpx),
-            ("playwright", lambda u, h: self._fetch_with_playwright(u)),
+            ("camoufox", lambda u, h: self._fetch_with_camoufox(u)),
         ]
 
         for method_name, method_func in methods:
@@ -391,7 +401,6 @@ async def parse_olx_content(html: str, url: str, client: AsyncHTTPClient) -> Ext
     logger.info("Parsing OLX content")
 
     # Try to extract ad ID from URL or page content
-    # ad_id_match = re.search(r'-ID([A-Za-z0-9]+)\.html', url)
     ad_id_match = re.search(r'"sku":"(.*?)"', html)
     if not ad_id_match:
         # Try to find it in the page content
@@ -408,12 +417,12 @@ async def parse_olx_content(html: str, url: str, client: AsyncHTTPClient) -> Ext
             else:
                 logger.warning(f"SKU IS IN THE HTML: {'sku' in html}")
                 logger.warning("Could not extract OLX ad ID")
-                logger.warning(f"HTML content: {html}...")
+                logger.warning(f"HTML content: {html[:500]}...")
 
-                # Last resort - use Playwright if available
-                logger.info("Attempting to fetch OLX phone with Playwright")
+                # Last resort - use Camoufox if available
+                logger.info("Attempting to fetch OLX phone with Camoufox")
                 try:
-                    full_content = await client._fetch_with_playwright(url)
+                    full_content = await client._fetch_with_camoufox(url)
                     if full_content:
                         # Look for phone after JavaScript execution
                         phone_soup = BeautifulSoup(full_content, "lxml")
@@ -422,7 +431,7 @@ async def parse_olx_content(html: str, url: str, client: AsyncHTTPClient) -> Ext
                             phones = [link.get("href").replace("tel:", "") for link in tel_links]
                             return ExtractionResult(phones, None)
                 except Exception as e:
-                    logger.warning(f"Playwright OLX fetch failed: {e}")
+                    logger.warning(f"Camoufox OLX fetch failed: {e}")
 
                 return ExtractionResult([], None)
     else:
@@ -464,11 +473,10 @@ async def parse_olx_content(html: str, url: str, client: AsyncHTTPClient) -> Ext
 
 
 # ===========================
-# Playwright-based OLX parsing
+# Camoufox-based OLX parsing
 # ===========================
-
-async def _parse_olx_playwright(ad_url: str, proxy: Optional[str] = None) -> ExtractionResult:
-    """Use Playwright to extract phone number from an OLX advertisement page.
+async def _parse_olx_camoufox(ad_url: str, proxy: Optional[str] = None) -> ExtractionResult:
+    """Use Camoufox to extract phone number from an OLX advertisement page.
 
     Flow:
       1. Navigate to the ad page.
@@ -479,44 +487,53 @@ async def _parse_olx_playwright(ad_url: str, proxy: Optional[str] = None) -> Ext
          ``tel:(068)6771621``.
       6. Normalise and return the number.
     """
-    logger.info("Parsing OLX content via Playwright")
+    logger.info("Parsing OLX content via Camoufox")
 
+    browser = None
     try:
-        async with async_playwright() as p:
-            browser_args = ['--disable-blink-features=AutomationControlled']
+        # Parse proxy if available
+        proxy_config = None
+        if proxy:
+            parsed_proxy = urllib.parse.urlparse(proxy)
+            proxy_config = {
+                'server': f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port}",
+            }
+            if parsed_proxy.username and parsed_proxy.password:
+                proxy_config['username'] = parsed_proxy.username
+                proxy_config['password'] = parsed_proxy.password
 
-            if proxy:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=browser_args,
-                    proxy={"server": proxy},
-                )
-            else:
-                browser = await p.chromium.launch(headless=True, args=browser_args)
+        # Initialize Camoufox with proper configuration
+        camoufox_args = {
+            'headless': True,
+            'proxy': proxy_config,
+            'viewport': {'width': 1920, 'height': 1080},
+            'locale': 'uk-UA',  # Ukrainian locale for OLX
+            'timezone_id': 'Europe/Kiev',
+        }
 
-            context = await browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                locale='en-US'
-            )
+        # Remove None values
+        camoufox_args = {k: v for k, v in camoufox_args.items() if v is not None}
 
-            # Basic stealth to hide automation.
-            await context.add_init_script(
-                """
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-                """
-            )
+        async with AsyncCamoufox(**camoufox_args) as browser:
+            page = await browser.new_page()
 
-            page = await context.new_page()
-            logger.info(f"Navigating to OLX ad URL via Playwright: {ad_url}")
+            # Set Ukrainian headers for OLX
+            headers = {
+                "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
+                "User-Agent": _random_ua(),
+            }
+            await page.set_extra_http_headers(headers)
+
+            logger.info(f"Navigating to OLX ad URL via Camoufox: {ad_url}")
             await page.goto(ad_url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
 
-            # Wait for and click the phone reveal button.
+            # Wait for the ad action buttons container
             ad_action_selector = 'div[data-testid="ad-action-buttons"]'
             btn_selector = 'button[data-cy="ad-contact-phone"]'
+
             try:
                 await page.wait_for_selector(ad_action_selector, timeout=8000)
+                logger.info("Found ad action buttons container")
             except Exception:
                 # Capture screenshot for debugging
                 try:
@@ -532,15 +549,17 @@ async def _parse_olx_playwright(ad_url: str, proxy: Optional[str] = None) -> Ext
                     logger.warning(f"Failed to capture screenshot: {ss_err}")
 
                 logger.warning("Phone button did not appear on OLX page")
-                await browser.close()
                 return ExtractionResult([], None)
 
+            # Click the phone button
             await page.click(btn_selector, force=True)
+            logger.info("Clicked phone reveal button")
 
-            # Wait for the link that contains the phone number.
+            # Wait for the link that contains the phone number
             link_selector = 'button[data-cy="ad-contact-phone"] a[data-testid="contact-phone"]'
             try:
                 await page.wait_for_selector(link_selector, timeout=8000)
+                logger.info("Phone link appeared")
             except Exception:
                 # Capture screenshot for debugging
                 try:
@@ -556,13 +575,11 @@ async def _parse_olx_playwright(ad_url: str, proxy: Optional[str] = None) -> Ext
                     logger.warning(f"Failed to capture screenshot: {ss_err}")
 
                 logger.warning("Phone link did not appear after clicking button on OLX page")
-                await browser.close()
                 return ExtractionResult([], None)
 
+            # Extract the phone number
             link_el = await page.query_selector(link_selector)
             href_val = await link_el.get_attribute("href") if link_el else None
-
-            await browser.close()
 
             if not href_val:
                 logger.warning("Failed to extract href with phone from OLX page")
@@ -573,10 +590,11 @@ async def _parse_olx_playwright(ad_url: str, proxy: Optional[str] = None) -> Ext
             # Remove parentheses, spaces, dashes
             phone_clean = re.sub(r'[\s\-()]+', '', phone_raw)
 
+            logger.info(f"Successfully extracted phone: {phone_clean}")
             return ExtractionResult([phone_clean], None)
 
     except Exception as e:
-        logger.warning(f"Playwright extraction for OLX failed: {e}")
+        logger.warning(f"Camoufox extraction for OLX failed: {e}")
         return ExtractionResult([], None)
 
 
@@ -597,8 +615,8 @@ async def _domain_parse_final(html: str, original_url: str, client: AsyncHTTPCli
 
     # Route to domain-specific parse functions
     if "olx.ua" in canonical_url:
-        # For OLX we rely solely on Playwright interaction
-        return await _parse_olx_playwright(canonical_url, proxy=client.proxy)
+        # For OLX we rely solely on Camoufox interaction
+        return await _parse_olx_camoufox(canonical_url, proxy=client.proxy)
     elif "real-estate.lviv.ua" in canonical_url:
         return await _parse_real_estate_lviv(canonical_url, client)
     elif "rieltor.ua" in canonical_url:
@@ -634,10 +652,10 @@ async def _extract_phone_numbers_async(resource_url: str, proxy: Optional[str] =
                 logger.error(f"Failed to fetch {resource_url}: {e}")
                 aggregator.add_error("fetch_failed", {'error': str(e)})
 
-                # If the target is an OLX advertisement, attempt Playwright extraction
+                # If the target is an OLX advertisement, attempt Camoufox extraction
                 if "olx.ua" in resource_url:
-                    logger.info("Attempting Playwright extraction for OLX after fetch failure")
-                    return await _parse_olx_playwright(resource_url, proxy=proxy)
+                    logger.info("Attempting Camoufox extraction for OLX after fetch failure")
+                    return await _parse_olx_camoufox(resource_url, proxy=proxy)
 
                 return ExtractionResult([], None)
 

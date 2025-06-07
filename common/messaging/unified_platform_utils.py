@@ -2,24 +2,14 @@
 
 import asyncio
 import random
-from typing import Dict, Any, Optional, Tuple, Union, List, TypeVar
+from typing import Dict, Any, Optional, Tuple, Union, List
 from common.utils.logging_config import log_operation, log_context
 
 # Import the messaging logger
 from . import logger
 
-# Type variable for return value
-T = TypeVar('T')
-
 
 # ===== Platform Detection and Resolution =====
-
-@log_operation("detect_platform_from_id")
-def detect_platform_from_id(user_id: str) -> Tuple[str, str]:
-    """Always returns Telegram in the simplified, single-messenger world."""
-    with log_context(logger, user_id=str(user_id)[:20]):
-        return ("telegram", str(user_id))
-
 
 @log_operation("resolve_user_id")
 def resolve_user_id(user_id: Union[int, str], *_ignored, **_kw) -> Tuple[Optional[int], str, str]:

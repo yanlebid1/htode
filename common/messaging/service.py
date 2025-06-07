@@ -1,7 +1,6 @@
 # common/messaging/service.py
 
-import os
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 
 from .unified_interface import MessagingInterface
 from common.utils.logging_config import log_operation, log_context
