@@ -13,7 +13,7 @@ boto3
 fake_useragent
 beautifulsoup4
 python-dotenv
-playwright
+camoufox
 curl_cffi
 brotlicffi
 httpx[http2]

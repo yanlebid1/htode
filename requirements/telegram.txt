@@ -13,14 +13,13 @@ aiohttp
 nest_asyncio
 lxml
 aiodns
-playwright
+camoufox
 curl_cffi
 brotlicffi
 httpx[http2]
 pillow
 
-# Add dependencies needed for cross-service functionality
-jmespath
+# boto3 already depends on jmespath, no need to pin explicitly
 
 aiogram==2.25.1
 psycopg2-binary==2.9.5
