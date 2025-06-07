@@ -1,8 +1,6 @@
 # common/db/models/ad.py
-from datetime import datetime
-from typing import List, Optional
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -17,8 +15,8 @@ class Ad(Base):
     property_type = Column(String, index=True)
     city = Column(Integer, index=True)
     address = Column(String)
-    price = Column(Float, index=True)
-    square_feet = Column(Float)
+    price = Column(Numeric(10, 2), index=True)
+    square_feet = Column(Numeric(10, 2))
     rooms_count = Column(Integer, index=True)
     floor = Column(Integer)
     total_floors = Column(Integer)

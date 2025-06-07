@@ -1,20 +1,29 @@
 # common/db/models/verification.py
 
-from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from common.db.base import Base
 
 
-class VerificationCode(Base):
-    __tablename__ = "verification_codes"
+class Verification(Base):
+    __tablename__ = "verifications"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    phone_number = Column(String, nullable=False)
-    code = Column(String, nullable=False)
+    type = Column(String, nullable=False)  # 'email' or 'phone'
+    target = Column(String, nullable=False, index=True)  # email address or phone number
+    code = Column(String, nullable=False)  # verification code/token
     expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.now)
+    attempts = Column(Integer, default=0)
+    verified_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
 
     # Relationships
-    user = relationship("User", back_populates="verification_codes")
+    user = relationship("User", back_populates="verifications")
+
+    # Composite index for efficient lookups
+    __table_args__ = (
+        Index('idx_verification_lookup', 'target', 'type', 'code'),
+        Index('idx_verification_target_type', 'target', 'type'),
+    )

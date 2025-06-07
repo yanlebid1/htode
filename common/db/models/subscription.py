@@ -1,5 +1,5 @@
 # common/db/models/subscription.py
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Numeric
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import relationship
 
@@ -14,8 +14,8 @@ class UserFilter(Base):
     property_type = Column(String, nullable=True)
     city = Column(Integer, nullable=True)
     rooms_count = Column(ARRAY(Integer), nullable=True)
-    price_min = Column(Float, nullable=True)
-    price_max = Column(Float, nullable=True)
+    price_min = Column(Numeric(10, 2), nullable=True)
+    price_max = Column(Numeric(10, 2), nullable=True)
     is_paused = Column(Boolean, default=False)
     floor_max = Column(Integer, nullable=True)
     is_not_first_floor = Column(Boolean, nullable=True)

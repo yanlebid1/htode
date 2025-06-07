@@ -2,174 +2,224 @@
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
-from sqlalchemy import desc
+from sqlalchemy import desc, and_
 from sqlalchemy.orm import Session
 
-from common.db.models.payment import PaymentOrder, PaymentHistory
+from common.db.models.payment import Payment
 from common.db.repositories.base_repository import BaseRepository
-from common.utils.logging_config import log_operation, log_context, LogAggregator
+from common.utils.logging_config import log_operation, log_context
 
 # Import the repository logger
 from . import logger
 
 
 class PaymentRepository(BaseRepository):
-    """Repository for payment operations"""
+    """Repository for payment operations with unified Payment model"""
 
     @staticmethod
-    @log_operation("get_order_by_id")
-    def get_order_by_id(db: Session, order_id: str) -> Optional[PaymentOrder]:
-        """Get payment order by ID"""
+    @log_operation("get_payment_by_order_id")
+    def get_payment_by_order_id(db: Session, order_id: str) -> Optional[Payment]:
+        """Get payment by order ID"""
         with log_context(logger, order_id=order_id):
-            order = db.query(PaymentOrder).filter(PaymentOrder.order_id == order_id).first()
+            payment = db.query(Payment).filter(Payment.order_id == order_id).first()
 
-            if order:
-                logger.debug("Found payment order", extra={
+            if payment:
+                logger.debug("Found payment", extra={
                     'order_id': order_id,
-                    'user_id': order.user_id,
-                    'status': order.status
+                    'payment_id': payment.id,
+                    'user_id': payment.user_id,
+                    'status': payment.status
                 })
             else:
-                logger.debug("Payment order not found", extra={'order_id': order_id})
+                logger.debug("Payment not found", extra={'order_id': order_id})
 
-            return order
+            return payment
 
     @staticmethod
-    @log_operation("create_order")
-    def create_order(db: Session, user_id: int, order_id: str, amount: float, period: str) -> PaymentOrder:
-        """Create a new payment order"""
+    @log_operation("create_payment")
+    def create_payment(db: Session, user_id: int, order_id: str, amount: float, period: str) -> Payment:
+        """Create a new payment"""
         with log_context(logger, user_id=user_id, order_id=order_id, amount=amount, period=period):
-            order = PaymentOrder(
+            payment = Payment(
                 user_id=user_id,
                 order_id=order_id,
                 amount=amount,
                 period=period,
                 status="pending"
             )
-            db.add(order)
+            db.add(payment)
             db.commit()
-            db.refresh(order)
+            db.refresh(payment)
 
-            logger.info("Created payment order", extra={
-                'id': order.id,
+            logger.info("Created payment", extra={
+                'payment_id': payment.id,
                 'order_id': order_id,
                 'user_id': user_id,
                 'amount': amount,
                 'period': period
             })
 
-            return order
+            return payment
 
     @staticmethod
-    @log_operation("update_order_status")
-    def update_order_status(db: Session, order_id: str, status: str) -> Optional[PaymentOrder]:
-        """Update payment order status"""
+    @log_operation("update_payment_status")
+    def update_payment_status(
+            db: Session,
+            order_id: str,
+            status: str,
+            transaction_id: Optional[str] = None,
+            card_mask: Optional[str] = None,
+            payment_details: Optional[Dict[str, Any]] = None
+    ) -> Optional[Payment]:
+        """Update payment status and optionally add transaction details"""
         with log_context(logger, order_id=order_id, new_status=status):
-            order = db.query(PaymentOrder).filter(PaymentOrder.order_id == order_id).first()
-            if order:
-                old_status = order.status
-                order.status = status
-                order.updated_at = datetime.now()
-                db.commit()
-                db.refresh(order)
+            payment = db.query(Payment).filter(Payment.order_id == order_id).first()
 
-                logger.info("Updated payment order status", extra={
+            if payment:
+                old_status = payment.status
+                payment.status = status
+                payment.updated_at = datetime.now()
+
+                # If completed, set completion time
+                if status == "completed" and not payment.completed_at:
+                    payment.completed_at = datetime.now()
+
+                # Add transaction details if provided
+                if transaction_id:
+                    payment.transaction_id = transaction_id
+                if card_mask:
+                    payment.card_mask = card_mask
+                if payment_details:
+                    payment.payment_details = payment_details
+
+                db.commit()
+                db.refresh(payment)
+
+                logger.info("Updated payment status", extra={
+                    'payment_id': payment.id,
                     'order_id': order_id,
                     'old_status': old_status,
                     'new_status': status,
-                    'user_id': order.user_id
+                    'user_id': payment.user_id,
+                    'has_transaction_id': bool(transaction_id)
                 })
             else:
-                logger.warning("Payment order not found for status update", extra={
+                logger.warning("Payment not found for status update", extra={
                     'order_id': order_id,
                     'new_status': status
                 })
 
-            return order
+            return payment
 
     @staticmethod
-    @log_operation("create_payment_history")
-    def create_payment_history(db: Session, payment_data: Dict[str, Any]) -> PaymentHistory:
-        """Create payment history record"""
-        with log_context(logger, user_id=payment_data.get('user_id'), order_id=payment_data.get('order_id')):
-            payment_history = PaymentHistory(**payment_data)
-            db.add(payment_history)
-            db.commit()
-            db.refresh(payment_history)
+    @log_operation("get_user_payments")
+    def get_user_payments(
+            db: Session,
+            user_id: int,
+            status: Optional[str] = None,
+            limit: int = 10
+    ) -> List[Payment]:
+        """Get payments for a user, optionally filtered by status"""
+        with log_context(logger, user_id=user_id, status=status, limit=limit):
+            query = db.query(Payment).filter(Payment.user_id == user_id)
 
-            logger.info("Created payment history record", extra={
-                'history_id': payment_history.id,
-                'user_id': payment_history.user_id,
-                'order_id': payment_history.order_id,
-                'status': payment_history.status,
-                'amount': payment_history.amount
+            if status:
+                query = query.filter(Payment.status == status)
+
+            payments = query.order_by(desc(Payment.created_at)).limit(limit).all()
+
+            logger.debug("Retrieved user payments", extra={
+                'user_id': user_id,
+                'status_filter': status,
+                'limit': limit,
+                'found_count': len(payments)
             })
 
-            return payment_history
+            return payments
 
     @staticmethod
-    @log_operation("get_user_payment_history")
-    def get_user_payment_history(db: Session, user_id: int, limit: int = 10) -> List[PaymentHistory]:
-        """Get payment history for user"""
-        with log_context(logger, user_id=user_id, limit=limit):
-            history = db.query(PaymentHistory).filter(
-                PaymentHistory.user_id == user_id
-            ).order_by(desc(PaymentHistory.created_at)).limit(limit).all()
+    @log_operation("get_pending_payments")
+    def get_pending_payments(db: Session, user_id: int) -> List[Payment]:
+        """Get all pending payments for a user"""
+        with log_context(logger, user_id=user_id):
+            payments = db.query(Payment).filter(
+                and_(
+                    Payment.user_id == user_id,
+                    Payment.status == "pending"
+                )
+            ).order_by(desc(Payment.created_at)).all()
 
-            logger.debug("Retrieved user payment history", extra={
+            logger.debug("Retrieved pending payments", extra={
+                'user_id': user_id,
+                'found_count': len(payments)
+            })
+
+            return payments
+
+    @staticmethod
+    @log_operation("get_successful_payments")
+    def get_successful_payments(db: Session, user_id: int, limit: int = 10) -> List[Payment]:
+        """Get successful payment history for a user"""
+        with log_context(logger, user_id=user_id, limit=limit):
+            payments = db.query(Payment).filter(
+                and_(
+                    Payment.user_id == user_id,
+                    Payment.status == "completed"
+                )
+            ).order_by(desc(Payment.completed_at)).limit(limit).all()
+
+            logger.debug("Retrieved successful payments", extra={
                 'user_id': user_id,
                 'limit': limit,
-                'found_count': len(history)
+                'found_count': len(payments)
             })
 
-            return history
+            return payments
 
     @staticmethod
-    @log_operation("get_active_orders")
-    def get_active_orders(db: Session, user_id: int) -> List[PaymentOrder]:
-        """Get active (pending) orders for user"""
-        with log_context(logger, user_id=user_id):
-            orders = db.query(PaymentOrder).filter(
-                PaymentOrder.user_id == user_id,
-                PaymentOrder.status == "pending"
-            ).all()
-
-            logger.debug("Retrieved active orders", extra={
-                'user_id': user_id,
-                'found_count': len(orders)
-            })
-
-            return orders
-
-    @staticmethod
-    @log_operation("cancel_expired_orders")
-    def cancel_expired_orders(db: Session, hours: int = 24) -> int:
-        """Cancel orders that have been pending for more than specified hours"""
+    @log_operation("cleanup_expired_pending_payments")
+    def cleanup_expired_pending_payments(db: Session, hours: int = 24) -> int:
+        """Clean up pending payments older than specified hours"""
         with log_context(logger, hours=hours):
-            expiry_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = datetime.now() - timedelta(hours=hours)
 
-            expired_orders = db.query(PaymentOrder).filter(
-                PaymentOrder.status == "pending",
-                PaymentOrder.created_at < expiry_time
-            ).all()
-
-            aggregator = LogAggregator(logger, f"cancel_expired_orders_{hours}h")
-
-            for order in expired_orders:
-                order.status = "cancelled"
-                order.updated_at = datetime.now()
-                aggregator.add_item({
-                    'order_id': order.order_id,
-                    'user_id': order.user_id,
-                    'created_at': order.created_at.isoformat()
-                }, success=True)
+            result = db.query(Payment).filter(
+                and_(
+                    Payment.status == "pending",
+                    Payment.created_at < cutoff_time
+                )
+            ).update(
+                {"status": "expired", "updated_at": datetime.now()},
+                synchronize_session=False
+            )
 
             db.commit()
 
-            aggregator.log_summary()
-            logger.info("Cancelled expired orders", extra={
+            logger.info("Cleaned up expired pending payments", extra={
                 'hours': hours,
-                'cancelled_count': len(expired_orders)
+                'expired_count': result
             })
 
-            return len(expired_orders)
+            return result
+
+    @staticmethod
+    @log_operation("get_payment_statistics")
+    def get_payment_statistics(db: Session, user_id: int) -> Dict[str, Any]:
+        """Get payment statistics for a user"""
+        with log_context(logger, user_id=user_id):
+            payments = db.query(Payment).filter(Payment.user_id == user_id).all()
+
+            stats = {
+                "total_payments": len(payments),
+                "completed": len([p for p in payments if p.status == "completed"]),
+                "pending": len([p for p in payments if p.status == "pending"]),
+                "failed": len([p for p in payments if p.status == "failed"]),
+                "total_spent": sum(float(p.amount) for p in payments if p.status == "completed")
+            }
+
+            logger.debug("Retrieved payment statistics", extra={
+                'user_id': user_id,
+                'stats': stats
+            })
+
+            return stats

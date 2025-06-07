@@ -7,6 +7,9 @@ import hmac
 from typing import Dict, Any, Optional
 import aiohttp
 
+from common.db.models import Payment
+from common.db.repositories import PaymentRepository
+from common.db.session import db_session
 # Import service logger
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
@@ -164,35 +167,36 @@ async def create_payment_form_url(user_id: int, amount: float, period: str = "1 
 
 
 @log_operation("store_payment_order")
-def store_payment_order(user_id: int, order_id: str, amount: float, period: str):
-    """Store payment order in database for later verification"""
+def store_payment_order(user_id: int, order_id: str, amount: float, period: str) -> Optional[Payment]:
+    """
+    Store payment order in database for later verification.
+    Updated to use unified Payment model.
+    """
     with log_context(logger, user_id=user_id, order_id=order_id):
-        from common.db.database import execute_query
-
-        logger.info("Storing payment order", extra={
-            "user_id": user_id,
-            "order_id": order_id,
-            "amount": amount,
-            "period": period
-        })
-
-        sql = """
-              INSERT INTO payment_orders (user_id, order_id, amount, period, status)
-              VALUES (%s, %s, %s, %s, %s) \
-              """
         try:
-            execute_query(sql, [user_id, order_id, amount, period, "pending"])
-            logger.info("Payment order stored successfully", extra={
-                "user_id": user_id,
-                "order_id": order_id
-            })
+            with db_session() as db:
+                payment = PaymentRepository.create_payment(
+                    db=db,
+                    user_id=user_id,
+                    order_id=order_id,
+                    amount=amount,
+                    period=period
+                )
+
+                logger.info("Payment order stored successfully", extra={
+                    'payment_id': payment.id,
+                    'user_id': user_id,
+                    'order_id': order_id
+                })
+
+                return payment
         except Exception as e:
             logger.error("Failed to store payment order", exc_info=True, extra={
-                "user_id": user_id,
-                "order_id": order_id,
-                "error": str(e)
+                'user_id': user_id,
+                'order_id': order_id,
+                'error_type': type(e).__name__
             })
-            raise
+            return None
 
 
 @log_operation("verify_payment_callback")
@@ -251,61 +255,50 @@ def verify_payment_callback(callback_data: Dict[str, Any]) -> bool:
 
 
 @log_operation("process_successful_payment")
-def process_successful_payment(order_id: str) -> bool:
-    """Process successful payment and update subscription"""
+def process_successful_payment(order_id: str, transaction_details: Optional[Dict[str, Any]] = None) -> bool:
+    """
+    Process successful payment and update subscription.
+    Updated to use a unified Payment model with transaction details.
+    """
     with log_context(logger, order_id=order_id):
-        from common.db.database import execute_query
-
-        logger.info("Processing successful payment", extra={
-            "order_id": order_id
-        })
-
-        # Get order details from database
-        sql_order = "SELECT user_id, period FROM payment_orders WHERE order_id = %s"
-        order = execute_query(sql_order, [order_id], fetchone=True)
-
-        if not order:
-            logger.error("Order not found", extra={
-                "order_id": order_id
-            })
-            return False
-
-        user_id = order["user_id"]
-        period = order["period"]
-
-        logger.info("Order details retrieved", extra={
-            "order_id": order_id,
-            "user_id": user_id,
-            "period": period
-        })
-
-        # Update order status
-        sql_update = "UPDATE payment_orders SET status = %s WHERE order_id = %s"
         try:
-            execute_query(sql_update, ["completed", order_id])
-            logger.info("Order status updated to completed", extra={
-                "order_id": order_id
-            })
-        except Exception as e:
-            logger.error("Failed to update order status", exc_info=True, extra={
-                "order_id": order_id,
-                "error": str(e)
-            })
-            return False
+            with db_session() as db:
+                # Get payment details
+                payment = PaymentRepository.get_payment_by_order_id(db, order_id)
 
-        # Update user subscription
-        try:
-            from common.db.operations import enable_subscription_for_user
-            enable_subscription_for_user(user_id)
-            logger.info("Subscription activated for user", extra={
-                "user_id": user_id,
-                "order_id": order_id
-            })
-            return True
+                if not payment:
+                    logger.error("Payment not found", extra={'order_id': order_id})
+                    return False
+
+                # Update payment status
+                updated_payment = PaymentRepository.update_payment_status(
+                    db=db,
+                    order_id=order_id,
+                    status="completed",
+                    transaction_id=transaction_details.get('transaction_id') if transaction_details else None,
+                    card_mask=transaction_details.get('card_mask') if transaction_details else None,
+                    payment_details=transaction_details
+                )
+
+                if not updated_payment:
+                    logger.error("Failed to update payment status", extra={'order_id': order_id})
+                    return False
+
+                # Update user subscription
+                from common.db.operations import enable_subscription_for_user
+                enable_subscription_for_user(payment.user_id)
+
+                logger.info("Payment processed successfully", extra={
+                    'order_id': order_id,
+                    'user_id': payment.user_id,
+                    'amount': payment.amount
+                })
+
+                return True
+
         except Exception as e:
-            logger.error("Failed to update subscription", exc_info=True, extra={
-                "user_id": user_id,
-                "order_id": order_id,
-                "error": str(e)
+            logger.error("Error processing payment", exc_info=True, extra={
+                'order_id': order_id,
+                'error_type': type(e).__name__
             })
             return False

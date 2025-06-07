@@ -2,13 +2,14 @@
 # Import all models to ensure they're registered with SQLAlchemy
 from common.db.base import Base
 import logging
+
 # Import all model classes
 from common.db.models.user import User
 from common.db.models.subscription import UserFilter
 from common.db.models.ad import Ad, AdImage, AdPhone
 from common.db.models.favorite import FavoriteAd
-from common.db.models.payment import PaymentOrder, PaymentHistory
-from common.db.models.verification import VerificationCode
+from common.db.models.payment import Payment
+from common.db.models.verification import Verification
 
 logger = logging.getLogger(__name__)
 
@@ -25,3 +26,18 @@ def initialize_database():
     from common.db.session import engine
     Base.metadata.create_all(bind=engine)
     logger.info("Database schema initialized")
+
+# Export all models
+__all__ = [
+    'Base',
+    'User',
+    'UserFilter',
+    'Ad',
+    'AdImage',
+    'AdPhone',
+    'FavoriteAd',
+    'Payment',
+    'Verification',
+    'create_tables',
+    'initialize_database'
+]

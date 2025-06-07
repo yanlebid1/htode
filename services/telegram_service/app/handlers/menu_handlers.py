@@ -9,8 +9,8 @@ from common.db.session import db_session
 from common.utils.cache import redis_cache
 from ..bot import dp
 from ..states.basis_states import FilterStates
-from common.db.operations import start_free_subscription_of_user, get_db_user_id_by_telegram_id, \
-    get_or_create_user, Ad, add_subscription as add_user_subscription
+from common.db.operations import start_free_subscription_of_user, get_user_by_telegram_id, \
+    create_telegram_user, Ad, add_subscription as add_user_subscription
 from common.db.database import execute_query
 from common.config import GEO_ID_MAPPING, get_key_by_value, build_ad_text
 from common.celery_app import celery_app
@@ -205,14 +205,15 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
             logger.warning("user_db_id not found in state, trying to retrieve from DB", extra={
                 "telegram_id": telegram_id
             })
-            user_db_id = get_db_user_id_by_telegram_id(telegram_id)
+            user = get_user_by_telegram_id(telegram_id)
+            user_db_id = user.id if user else None
 
             if not user_db_id:
                 # Still no user_db_id, create the user
                 logger.warning("User not found in DB, creating new user", extra={
                     "telegram_id": telegram_id
                 })
-                user_db_id = get_or_create_user(telegram_id)
+                user_db_id = create_telegram_user(telegram_id)
                 await state.update_data(user_db_id=user_db_id)
 
         if not user_db_id:
@@ -235,7 +236,7 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
                 "telegram_id": telegram_id
             })
             # Try to create user again
-            user_db_id = get_or_create_user(telegram_id)
+            user_db_id = create_telegram_user(telegram_id)
             await state.update_data(user_db_id=user_db_id)
 
             # Verify again

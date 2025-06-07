@@ -48,7 +48,7 @@ def resolve_user_id(user_id: Union[int, str], platform: Optional[str] = None) ->
     Returns:
         Tuple of (database_user_id, platform_name, platform_id)
     """
-    from common.db.operations import get_db_user_id_by_telegram_id, get_platform_ids_for_user
+    from common.db.operations import get_user_by_telegram_id, get_platform_ids_for_user
 
     with log_context(logger, user_id=str(user_id)[:20], platform=platform):
         # Case 1: Database user ID
@@ -91,8 +91,8 @@ def resolve_user_id(user_id: Union[int, str], platform: Optional[str] = None) ->
 
         # Get database user ID
         logger.info(f'Resolving database user ID for platform {platform_name}, {platform_id[:20]}...')
-        db_user_id = get_db_user_id_by_telegram_id(platform_id, messenger_type=platform_name)
-
+        user = get_user_by_telegram_id(platform_id)
+        db_user_id = user.id if user else None
         logger.info("Resolved platform user ID", extra={
             'platform': platform_name,
             'db_user_id': db_user_id,
