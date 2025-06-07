@@ -16,89 +16,34 @@ T = TypeVar('T')
 
 @log_operation("detect_platform_from_id")
 def detect_platform_from_id(user_id: str) -> Tuple[str, str]:
-    """
-    Detect messaging platform from user ID format.
-
-    Args:
-        user_id: Platform-specific user ID
-
-    Returns:
-        Tuple of (platform_name, clean_user_id)
-    """
-    with log_context(logger, user_id=user_id[:20]):
-        user_id_str = str(user_id)
-        result = ("telegram", user_id_str)
-        logger.info("Detected platform from ID", extra={
-            'platform': result[0],
-            'id_length': len(user_id_str)
-        })
-        return result
+    """Always returns Telegram in the simplified, single-messenger world."""
+    with log_context(logger, user_id=str(user_id)[:20]):
+        return ("telegram", str(user_id))
 
 
 @log_operation("resolve_user_id")
-def resolve_user_id(user_id: Union[int, str], platform: Optional[str] = None) -> Tuple[
-    Optional[int], Optional[str], Optional[str]]:
-    """
-    Resolve a user ID to get database ID and platform information.
+def resolve_user_id(user_id: Union[int, str], *_ignored, **_kw) -> Tuple[Optional[int], str, str]:
+    """Simplified Telegram-only resolver.
 
-    Args:
-        user_id: Either a database user ID or platform-specific ID
-        platform: Optional platform hint
-
-    Returns:
-        Tuple of (database_user_id, platform_name, platform_id)
+    Returns (db_user_id, "telegram", telegram_id).
+    If the incoming ID is already the Telegram ID (string, not purely digits) we look up DB id.
+    If it looks like a DB id (int or numeric str) we fetch the user's telegram_id.
     """
     from common.db.operations import get_user_by_telegram_id, get_platform_ids_for_user
 
-    with log_context(logger, user_id=str(user_id)[:20], platform=platform):
-        # Case 1: Database user ID
-        logger.info(f'Resolving user ID {user_id}')
+    with log_context(logger, user_id=str(user_id)[:20]):
+        # Numeric? treat as DB id
         if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
             db_user_id = int(user_id)
-
-            # Get platform IDs for this user
             platform_ids = get_platform_ids_for_user(db_user_id)
+            telegram_id = str(platform_ids.get("telegram_id")) if platform_ids.get("telegram_id") else str(user_id)
+            return db_user_id, "telegram", telegram_id
 
-            # Determine which platform to use (priority order)
-            if platform_ids.get("telegram_id"):
-                result = (db_user_id, "telegram", str(platform_ids["telegram_id"]))
-            else:
-                # Default to telegram if no platform information is found
-                # This prevents the "No messenger implementation registered for platform" error
-                logger.warning("No platform information found for user, defaulting to telegram", extra={
-                    'db_user_id': db_user_id
-                })
-                result = (db_user_id, "telegram", str(db_user_id))  # Use DB ID as telegram_id as fallback
-
-            logger.info("Resolved database user ID", extra={
-                'db_user_id': db_user_id,
-                'platform': result[1]
-            })
-            return result
-
-        # Case 2: Platform-specific ID
-
-        # If platform is provided, use it
-        if platform:
-            platform_name = platform
-            platform_id = user_id
-            logger.info(f'Resolving user ID for platform {platform_name}')
-        else:
-            # Detect platform from ID format
-            logger.info('Detecting platform from user ID')
-            platform_name, platform_id = detect_platform_from_id(user_id)
-            logger.info(f'Detected platform {platform_name}, {platform_id[:20]}...')
-
-        # Get database user ID
-        logger.info(f'Resolving database user ID for platform {platform_name}, {platform_id[:20]}...')
-        user = get_user_by_telegram_id(platform_id)
+        # Otherwise assume it is a telegram id string
+        telegram_id = str(user_id)
+        user = get_user_by_telegram_id(telegram_id)
         db_user_id = user.id if user else None
-        logger.info("Resolved platform user ID", extra={
-            'platform': platform_name,
-            'db_user_id': db_user_id,
-            'platform_id': platform_id[:20] if platform_id else None
-        })
-        return (db_user_id, platform_name, platform_id)
+        return db_user_id, "telegram", telegram_id
 
 
 @log_operation("get_messenger_for_user")
@@ -131,36 +76,18 @@ async def get_messenger_for_user(user_id: Union[int, str]) -> Tuple[Optional[str
 
 
 @log_operation("get_messenger_instance")
-def get_messenger_instance(platform: str):
-    """
-    Get the appropriate messenger instance for a platform.
-
-    Args:
-        platform: Platform name (telegram,)
-
-    Returns:
-        Messenger instance or None if not found
-    """
-    with log_context(logger, platform=platform):
+def get_messenger_instance(_platform: str = "telegram"):
+    """Always returns the Telegram messenger instance now."""
+    with log_context(logger, platform="telegram"):
         try:
-            if platform == "telegram":
-                from common.messaging.telegram_messaging import TelegramMessaging
-                from services.telegram_service.app.bot import bot
-                return TelegramMessaging(bot)
-            else:
-                logger.warning(f"Unknown platform", extra={'platform': platform})
-                return None
+            from common.messaging.telegram_messaging import TelegramMessaging
+            from services.telegram_service.app.bot import bot
+            return TelegramMessaging(bot)
         except ImportError as e:
-            logger.error(f"Error importing messenger", exc_info=True, extra={
-                'platform': platform,
-                'error_type': type(e).__name__
-            })
+            logger.error("Failed to import TelegramMessaging", exc_info=True, extra={'error_type': type(e).__name__})
             return None
         except Exception as e:
-            logger.error(f"Error getting messenger instance", exc_info=True, extra={
-                'platform': platform,
-                'error_type': type(e).__name__
-            })
+            logger.error("Error creating Telegram messenger", exc_info=True, extra={'error_type': type(e).__name__})
             return None
 
 
@@ -199,26 +126,15 @@ class MessageFormatter:
             total_floors = ad_data.get('total_floors', "Невідомо")
 
             # Apply platform-specific formatting
-            if platform == "telegram":
-                # Telegram supports markdown
-                text = (
-                    f"💰 Ціна: *{int(price)}* грн.\n"
-                    f"🏙️ Місто: *{city_name}*\n"
-                    f"📍 Адреса: *{address}*\n"
-                    f"🛏️ Кіл-сть кімнат: *{rooms_count}*\n"
-                    f"📐 Площа: *{square_feet}* кв.м.\n"
-                    f"🏢 Поверх: *{floor}* з *{total_floors}*\n"
-                )
-            else:
-                # Default format for unknown platforms
-                text = (
-                    f"💰 Ціна: {int(price)} грн.\n"
-                    f"🏙️ Місто: {city_name}\n"
-                    f"📍 Адреса: {address}\n"
-                    f"🛏️ Кіл-сть кімнат: {rooms_count}\n"
-                    f"📐 Площа: {square_feet} кв.м.\n"
-                    f"🏢 Поверх: {floor} з {total_floors}\n"
-                )
+            # Telegram markdown-formatted message (only platform now)
+            text = (
+                f"💰 Ціна: *{int(price)}* грн.\n"
+                f"🏙️ Місто: *{city_name}*\n"
+                f"📍 Адреса: *{address}*\n"
+                f"🛏️ Кіл-сть кімнат: *{rooms_count}*\n"
+                f"📐 Площа: *{square_feet}* кв.м.\n"
+                f"🏢 Поверх: *{floor}* з *{total_floors}*\n"
+            )
 
             logger.info("Formatted ad text", extra={
                 'platform': platform,
@@ -257,7 +173,7 @@ async def safe_send_message(
     with log_context(logger, user_id=str(user_id)[:20], platform=platform, retry_count=retry_count):
         try:
             # Get database user ID, platform and messenger
-            db_user_id, platform_name, platform_id = resolve_user_id(user_id, platform)
+            db_user_id, platform_name, platform_id = resolve_user_id(user_id)
 
             # If we have a database user ID, try to use the unified messaging service
             if db_user_id:
@@ -353,7 +269,7 @@ async def safe_send_media(
     with log_context(logger, user_id=str(user_id)[:20], platform=platform, media_url=media_url[:50]):
         try:
             # Get database user ID, platform and messenger
-            db_user_id, platform_name, platform_id = resolve_user_id(user_id, platform)
+            db_user_id, platform_name, platform_id = resolve_user_id(user_id)
 
             # If we have a database user ID, try to use the unified messaging service
             if db_user_id:
@@ -455,7 +371,7 @@ async def safe_send_menu(
     with log_context(logger, user_id=str(user_id)[:20], platform=platform, options_count=len(options)):
         try:
             # Get database user ID, platform and messenger
-            db_user_id, platform_name, platform_id = resolve_user_id(user_id, platform)
+            db_user_id, platform_name, platform_id = resolve_user_id(user_id)
 
             # If we have platform info, send the menu
             if platform_name and platform_id:

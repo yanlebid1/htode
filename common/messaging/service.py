@@ -11,166 +11,32 @@ from . import logger
 
 
 class MessagingService:
-    """
-    Unified messaging service for sending messages across different platforms.
-    Uses a plugin architecture with platform-specific adapters.
-    """
+    """Telegram-only messaging service (multi-platform support removed)."""
 
     def __init__(self):
-        """Initialize the messaging service without any messengers."""
-        self._messengers = {}
+        # Single slot for telegram messenger
+        self._telegram: Optional[MessagingInterface] = None
 
     @log_operation("register_messenger")
-    def register_messenger(self, platform: str, messenger: MessagingInterface) -> None:
-        """
-        Register a messenger implementation for a specific platform.
+    def register_messenger(self, _platform: str, messenger: MessagingInterface) -> None:
+        """Register the single Telegram messenger (platform arg ignored)."""
+        self._telegram = messenger
+        logger.info("Telegram messenger registered")
 
-        Args:
-            platform: Platform identifier (telegram,)
-            messenger: Messenger implementation for that platform
-        """
-        with log_context(logger, platform=platform):
-            self._messengers[platform] = messenger
-            logger.info(f"Registered messenger for platform", extra={'platform': platform})
+    def get_messenger(self, *_unused) -> Optional[MessagingInterface]:
+        """Always return the Telegram messenger instance (or None if not yet registered)."""
+        return self._telegram
 
-    @log_operation("get_messenger")
-    def get_messenger(self, platform: str) -> Optional[MessagingInterface]:
-        """
-        Get the messenger for a specific platform.
-
-        Args:
-            platform: Platform identifier
-
-        Returns:
-            Messenger instance or None if not registered
-        """
-        messenger = self._messengers.get(platform)
-        logger.debug("Retrieved messenger", extra={
-            'platform': platform,
-            'found': bool(messenger)
-        })
-        return messenger
-
-    @log_operation("get_user_platform")
-    async def get_user_platform(self, user_id: int) -> tuple[Optional[str], Optional[str]]:
-        """
-        Determine which platform a user is on and get their platform-specific ID.
-
-        Args:
-            user_id: Database user ID
-
-        Returns:
-            Tuple of (platform_name, platform_specific_id) or (None, None)
-        """
+    async def get_user_platform(self, user_id: int) -> tuple[str, str]:
+        """Return Telegram as the only platform plus the telegram_id."""
         from common.messaging.unified_platform_utils import resolve_user_id
+        _, _, telegram_id = resolve_user_id(user_id)
+        return "telegram", telegram_id
 
-        with log_context(logger, user_id=user_id):
-            # Use the centralized resolve_user_id function
-            _, platform_name, platform_id = resolve_user_id(user_id)
-
-            logger.debug("Resolved user platform", extra={
-                'user_id': user_id,
-                'platform_name': platform_name,
-                'platform_id': str(platform_id)[:10] if platform_id else None
-            })
-
-            return platform_name, platform_id
-
-    @log_operation("get_messenger_for_user")
-    async def get_messenger_for_user(self, user_id: int) -> tuple[Optional[str], Optional[str], Optional[MessagingInterface]]:
-        """
-        Get the messenger for a specific user based on their preferred platform.
-
-        Args:
-            user_id: Database user ID
-
-        Returns:
-            Tuple of (platform_name, platform_specific_id, messenger) or (None, None, None)
-        """
-        from common.messaging.unified_platform_utils import resolve_user_id
-
-        with log_context(logger, user_id=user_id):
-            # Get the platform and platform ID for this user
-            platform_name, platform_id = await self.get_user_platform(user_id)
-
-            if not platform_name:
-                logger.warning("Could not determine user's platform", extra={
-                    'user_id': user_id
-                })
-                return None, None, None
-
-            if not platform_id:
-                logger.warning("No platform ID found for user", extra={
-                    'user_id': user_id,
-                    'platform': platform_name
-                })
-                return platform_name, None, None
-
-            # Get the messenger for this platform
-            messenger = self.get_messenger(platform_name)
-
-            if not messenger:
-                # Try to fallback to Telegram if available
-                if platform_name != "telegram":
-                    telegram_messenger = self.get_messenger("telegram")
-                    if telegram_messenger:
-                        logger.warning(f"No messenger for {platform_name}, falling back to telegram", extra={
-                            'user_id': user_id,
-                            'original_platform': platform_name
-                        })
-                        return "telegram", platform_id, telegram_messenger
-
-                # If we get here, no messenger is available
-                logger.warning("No messenger implementation for platform", extra={
-                    'user_id': user_id,
-                    'platform': platform_name,
-                    'available_messengers': list(self._messengers.keys())
-                })
-                return platform_name, platform_id, None
-
-            logger.debug("Found messenger for user", extra={
-                'user_id': user_id,
-                'platform': platform_name
-            })
-
-            return platform_name, platform_id, messenger
-
-    @log_operation("get_all_messengers_for_user")
-    async def get_all_messengers_for_user(self, user_id: int) -> List[Tuple[str, str, MessagingInterface]]:
-        """
-        Get all available messengers for a user who may have multiple platforms.
-
-        Args:
-            user_id: Database user ID
-
-        Returns:
-            List of tuples, each containing (platform_name, platform_id, messenger)
-        """
-        from common.db.operations import get_platform_ids_for_user
-
-        with log_context(logger, user_id=user_id):
-            # Get all platform IDs for this user
-            platform_ids = get_platform_ids_for_user(user_id)
-            results = []
-
-            logger.debug("Retrieved platform IDs", extra={
-                'user_id': user_id,
-                'platform_count': len([k for k in platform_ids.keys() if k.endswith('_id') and platform_ids[k]]),
-                'has_telegram': bool(platform_ids.get('telegram_id')),
-            })
-
-            # Check each platform
-            if platform_ids.get('telegram_id'):
-                messenger = self.get_messenger('telegram')
-                if messenger:
-                    results.append(('telegram', str(platform_ids['telegram_id']), messenger))
-
-            logger.info(f"Found {len(results)} messenger(s) for user", extra={
-                'user_id': user_id,
-                'platforms': [r[0] for r in results]
-            })
-
-            return results
+    async def get_messenger_for_user(self, user_id: int) -> tuple[str, str, Optional[MessagingInterface]]:
+        """Return telegram messenger and id for user (None if messenger unregistered)."""
+        _, _, telegram_id = await self.get_user_platform(user_id)
+        return "telegram", telegram_id, self._telegram
 
     @log_operation("send_notification")
     async def send_notification(
