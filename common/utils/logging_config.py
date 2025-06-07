@@ -46,16 +46,23 @@ class JSONFormatter(logging.Formatter):
         if record.exc_info:
             log_record['exception'] = self.formatException(record.exc_info)
 
-        # Add any extra fields
+        # Add any extra fields (context, custom extras, etc.)
         for key, value in record.__dict__.items():
-            if key not in ['name', 'msg', 'args', 'levelname', 'levelno',
-                           'pathname', 'filename', 'module', 'exc_info',
-                           'exc_text', 'stack_info', 'lineno', 'funcName',
-                           'created', 'msecs', 'relativeCreated', 'thread',
-                           'threadName', 'processName', 'process', 'message']:
-                log_record[key] = value
+            if key not in [
+                'name', 'msg', 'args', 'levelname', 'levelno', 'pathname',
+                'filename', 'module', 'exc_info', 'exc_text', 'stack_info',
+                'lineno', 'funcName', 'created', 'msecs', 'relativeCreated',
+                'thread', 'threadName', 'processName', 'process', 'message'
+            ]:
+                # Ensure value is JSON-serializable; fallback to string
+                try:
+                    json.dumps(value)
+                    log_record[key] = value
+                except (TypeError, ValueError):
+                    log_record[key] = repr(value)
 
-        return json.dumps(log_record)
+        # Use default=str to convert any remaining unserializable objects
+        return json.dumps(log_record, default=str)
 
 
 def setup_logging(
