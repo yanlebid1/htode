@@ -23,7 +23,7 @@ engine = create_engine(
     max_overflow=10,
     echo=False,
 )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 
 @log_operation("get_db")

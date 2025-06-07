@@ -16,3 +16,6 @@ aiodns
 curl_cffi
 brotlicffi
 pillow
+camoufox
+geoip2
+maxminddb

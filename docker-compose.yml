@@ -350,10 +350,11 @@ services:
         condition: service_healthy
     environment:
       <<: *combined-env
+      PYTHONPATH: "/app"  # Ensure Python can find the system module
     volumes:
       - ./common:/app/common
       - ./system:/app/system  # Mount the new maintenance module
-    command: celery -A common.celery_app worker --loglevel=info -Q maintenance_queue --max-tasks-per-child=50
+    command: celery -A common.celery_app worker --loglevel=info -Q maintenance_queue --max-tasks-per-child=50 --concurrency=2
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@maintenance_worker" ]
       interval: 30s

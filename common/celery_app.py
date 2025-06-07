@@ -118,3 +118,9 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute=15, hour='*/1'),  # Every hour at 15 minutes past
     },
 }
+
+# Import maintenance tasks to register them (after celery app is configured)
+try:
+    import system.maintenance  # This registers the maintenance tasks
+except ImportError:
+    pass  # Silently continue if maintenance module doesn't exist

@@ -115,7 +115,8 @@ def _notify_user_about_ad(user_id, ad, s3_image_urls):
 
         celery_app.send_task(
             "common.messaging.tasks.send_ad_with_extra_buttons",
-            args=[user_id, text, s3_image_urls, ad.get('resource_url'), ad.get("id"), ad.get("external_id")]
+            args=[user_id, text, s3_image_urls, ad.get('resource_url'), ad.get("id"), ad.get("external_id")],
+            queue="telegram_queue"
         )
 
 
@@ -199,7 +200,8 @@ def notify_user_with_ads(telegram_id, user_filters):
 
                         celery_app.send_task(
                             TELEGRAM_SEND_TASK,
-                            args=celery_args
+                            args=celery_args,
+                            queue="telegram_queue"
                         )
 
                         aggregator.add_item({'ad_id': ad_id}, success=True)

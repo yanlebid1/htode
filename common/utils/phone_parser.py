@@ -504,11 +504,13 @@ async def _parse_olx_camoufox(ad_url: str, proxy: Optional[str] = None) -> Extra
 
         # Initialize Camoufox with proper configuration
         camoufox_args = {
-            'headless': True,
-            'proxy': proxy_config,
-            'viewport': {'width': 1920, 'height': 1080},
-            'locale': 'uk-UA',  # Ukrainian locale for OLX
-            'timezone_id': 'Europe/Kiev',
+            "proxy": proxy_config,
+            "headless": True,
+            "os": "windows",  # Use Windows OS to mimic real user
+            "locale": "uk-UA",  # Set Ukrainian locale
+            "geoip": True,  # Enable geolocation spoofing
+            "block_webrtc": True,  # Prevent WebRTC leaks
+            "humanize": True,  # Enable human-like cursor movements
         }
 
         # Remove None values
@@ -526,6 +528,17 @@ async def _parse_olx_camoufox(ad_url: str, proxy: Optional[str] = None) -> Extra
 
             logger.info(f"Navigating to OLX ad URL via Camoufox: {ad_url}")
             await page.goto(ad_url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
+
+            # Handle cookie banner if it appears
+            cookie_banner_selector = 'button[data-testid="dismiss-cookies-banner"]'
+            try:
+                await page.wait_for_selector(cookie_banner_selector, timeout=3000)
+                logger.info("Found cookie banner, dismissing...")
+                await page.click(cookie_banner_selector)
+                logger.info("Cookie banner dismissed")
+                await page.wait_for_timeout(1000)  # Wait a bit after dismissing
+            except Exception:
+                logger.info("No cookie banner found or already dismissed")
 
             # Wait for the ad action buttons container
             ad_action_selector = 'div[data-testid="ad-action-buttons"]'
@@ -644,6 +657,16 @@ async def _extract_phone_numbers_async(resource_url: str, proxy: Optional[str] =
     try:
         with log_context(logger, resource_url=resource_url):
             client = AsyncHTTPClient(proxy=proxy)
+
+            # Special-case OLX: rely exclusively on Camoufox and avoid any direct HTTP fetches
+            if "olx.ua" in resource_url:
+                logger.info("Detected OLX URL – using Camoufox only, skipping direct HTTP fetch")
+                olx_result = await _parse_olx_camoufox(resource_url, proxy=proxy)
+                if olx_result.phone_numbers:
+                    aggregator.add_item({'method': 'camoufox_direct'}, success=True)
+                else:
+                    aggregator.add_item({'method': 'camoufox_direct'}, success=False)
+                return olx_result
 
             # Fetch the page content
             try:

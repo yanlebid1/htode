@@ -18,3 +18,5 @@ curl_cffi
 brotlicffi
 httpx[http2]
 pillow
+geoip2
+maxminddb
