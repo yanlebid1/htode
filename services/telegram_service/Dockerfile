@@ -17,6 +17,9 @@ WORKDIR /app
 # Копируем общие модули
 COPY common /app/common
 
+# Include maintenance package
+COPY system /app/system
+
 # Копируем код конкретного сервиса
 COPY services/telegram_service/app /app/app
 

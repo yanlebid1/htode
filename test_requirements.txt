@@ -1,0 +1,6 @@
+camoufox[geoip]
+beautifulsoup4
+aiohttp
+curl-cffi
+httpx
+fake-useragent 

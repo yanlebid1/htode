@@ -169,14 +169,13 @@ class AsyncHTTPClient:
 
             # Initialize Camoufox with proper configuration
             camoufox_args = {
-                'headless': True,
-                'proxy': proxy_config,
-                # Add viewport to appear more like a real browser
-                'viewport': {'width': 1920, 'height': 1080},
-                # Add locale
-                'locale': 'en-US',
-                # Add timezone
-                'timezone_id': 'America/New_York',
+                "proxy": proxy_config,
+                "headless": True,
+                "os": "windows",  # Use Windows OS to mimic real user
+                "locale": "uk-UA",  # Set Ukrainian locale
+                "geoip": True,  # Enable geolocation spoofing
+                "block_webrtc": True,  # Prevent WebRTC leaks
+                "humanize": True,  # Enable human-like cursor movements
             }
 
             # Remove None values
@@ -184,9 +183,6 @@ class AsyncHTTPClient:
 
             async with AsyncCamoufox(**camoufox_args) as browser:
                 page = await browser.new_page()
-
-                # Set extra headers to avoid detection
-                await page.set_extra_http_headers(self._get_random_headers())
 
                 # Navigate to the page
                 await page.goto(url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
@@ -519,13 +515,6 @@ async def _parse_olx_camoufox(ad_url: str, proxy: Optional[str] = None) -> Extra
         async with AsyncCamoufox(**camoufox_args) as browser:
             page = await browser.new_page()
 
-            # Set Ukrainian headers for OLX
-            headers = {
-                "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
-                "User-Agent": _random_ua(),
-            }
-            await page.set_extra_http_headers(headers)
-
             logger.info(f"Navigating to OLX ad URL via Camoufox: {ad_url}")
             await page.goto(ad_url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
 
@@ -548,19 +537,6 @@ async def _parse_olx_camoufox(ad_url: str, proxy: Optional[str] = None) -> Extra
                 await page.wait_for_selector(ad_action_selector, timeout=8000)
                 logger.info("Found ad action buttons container")
             except Exception:
-                # Capture screenshot for debugging
-                try:
-                    from pathlib import Path
-                    from datetime import datetime
-
-                    ss_dir = Path.cwd() / "debug_screenshots"
-                    ss_dir.mkdir(parents=True, exist_ok=True)
-                    ss_path = ss_dir / f"olx_no_button_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
-                    await page.screenshot(path=str(ss_path), full_page=True)
-                    logger.warning(f"Saved troubleshooting screenshot to {ss_path}")
-                except Exception as ss_err:
-                    logger.warning(f"Failed to capture screenshot: {ss_err}")
-
                 logger.warning("Phone button did not appear on OLX page")
                 return ExtractionResult([], None)
 
@@ -568,37 +544,46 @@ async def _parse_olx_camoufox(ad_url: str, proxy: Optional[str] = None) -> Extra
             await page.click(btn_selector, force=True)
             logger.info("Clicked phone reveal button")
 
-            # Wait for the link that contains the phone number
+            # --- Wait for the phone reveal (several strategies) ---
             link_selector = 'button[data-cy="ad-contact-phone"] a[data-testid="contact-phone"]'
+            alt_link_selector = 'a[href^="tel:"]'
+
+            href_val: Optional[str] = None
+
             try:
                 await page.wait_for_selector(link_selector, timeout=8000)
-                logger.info("Phone link appeared")
+                logger.info("Phone link appeared using primary selector")
+                link_el = await page.query_selector(link_selector)
+                href_val = await link_el.get_attribute("href") if link_el else None
             except Exception:
-                # Capture screenshot for debugging
+                logger.info("Primary phone link selector failed, trying alternative selector")
                 try:
-                    from pathlib import Path
-                    from datetime import datetime
+                    await page.wait_for_selector(alt_link_selector, timeout=4000)
+                    alt_el = await page.query_selector(alt_link_selector)
+                    href_val = await alt_el.get_attribute("href") if alt_el else None
+                    if href_val:
+                        logger.info("Found phone using alternative tel: selector")
+                except Exception:
+                    logger.info("Alternative tel: selector also failed, trying to read button text")
 
-                    ss_dir = Path.cwd() / "debug_screenshots"
-                    ss_dir.mkdir(parents=True, exist_ok=True)
-                    ss_path = ss_dir / f"olx_no_link_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.png"
-                    await page.screenshot(path=str(ss_path), full_page=True)
-                    logger.warning(f"Saved troubleshooting screenshot to {ss_path}")
-                except Exception as ss_err:
-                    logger.warning(f"Failed to capture screenshot: {ss_err}")
-
-                logger.warning("Phone link did not appear after clicking button on OLX page")
-                return ExtractionResult([], None)
-
-            # Extract the phone number
-            link_el = await page.query_selector(link_selector)
-            href_val = await link_el.get_attribute("href") if link_el else None
+            # If still no href, attempt to parse visible text inside the button
+            if not href_val:
+                try:
+                    btn_text = await page.inner_text(btn_selector)
+                    # Expect something like "(068) 123 45 67" after reveal
+                    import re as _re
+                    digits = _re.sub(r"[^0-9]", "", btn_text)
+                    if len(digits) >= 9:
+                        phone_candidate = f"{digits}"
+                        logger.info("Extracted phone from button text")
+                        return ExtractionResult([phone_candidate], None)
+                except Exception:
+                    pass
 
             if not href_val:
-                logger.warning("Failed to extract href with phone from OLX page")
+                logger.warning("Phone link did not appear or href missing after all strategies")
                 return ExtractionResult([], None)
 
-            # href format example: tel:(068)6771621
             phone_raw = href_val.replace('tel:', '').strip()
             # Remove parentheses, spaces, dashes
             phone_clean = re.sub(r'[\s\-()]+', '', phone_raw)
@@ -628,7 +613,6 @@ async def _domain_parse_final(html: str, original_url: str, client: AsyncHTTPCli
 
     # Route to domain-specific parse functions
     if "olx.ua" in canonical_url:
-        # For OLX we rely solely on Camoufox interaction
         return await _parse_olx_camoufox(canonical_url, proxy=client.proxy)
     elif "real-estate.lviv.ua" in canonical_url:
         return await _parse_real_estate_lviv(canonical_url, client)
@@ -639,7 +623,7 @@ async def _domain_parse_final(html: str, original_url: str, client: AsyncHTTPCli
     elif "faktor24.com" in canonical_url:
         return _parse_faktor24(html)
     else:
-        logger.warning("Unknown domain, using fallback parser.")
+        logger.warning(f"Unknown domain, using fallback parser for {canonical_url}.")
         return _fallback_parse(html)
 
 
@@ -692,6 +676,7 @@ async def _extract_phone_numbers_async(resource_url: str, proxy: Optional[str] =
 
             try:
                 if "Перенаправлення" in html_content:
+                    logger.info(f"Detected redirection page for {resource_url}")
                     soup_tmp = BeautifulSoup(html_content, "html.parser")
                     redirect_tag = soup_tmp.select_one("a.redirect-link[href]")
                     if redirect_tag and redirect_tag.get("href"):

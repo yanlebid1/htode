@@ -2,6 +2,7 @@
 from celery import Celery
 from celery.schedules import crontab
 from common.config import REDIS_URL
+import importlib, logging
 
 celery_app = Celery("shared_app", broker=REDIS_URL, backend=REDIS_URL)
 
@@ -42,7 +43,7 @@ celery_app.conf.update(
         'scraper_service.app.tasks.fetch_new_ads': {'rate_limit': '1/m'},  # 1 per minute
         'notifier_service.app.tasks.notify_user_with_ads': {'rate_limit': '10/m'},  # 10 per minute
         # Add rate limits for resource-intensive maintenance tasks
-        'system.maintenance.optimize_database': {'rate_limit': '1/d'},  # Once per day
+        'system.maintenance.optimize_database': {'rate_limit': '1/h'},  # Max once per hour - beat schedule still weekly
         'system.maintenance.cleanup_redis_cache': {'rate_limit': '1/h'},  # Once per hour
     },
 )
@@ -119,8 +120,11 @@ celery_app.conf.beat_schedule = {
     },
 }
 
-# Import maintenance tasks to register them (after celery app is configured)
+# Ensure maintenance tasks are registered even if import errors occur; log failures explicitly
 try:
-    import system.maintenance  # This registers the maintenance tasks
-except ImportError:
-    pass  # Silently continue if maintenance module doesn't exist
+    importlib.import_module('system.maintenance')
+except Exception as _e:
+    logging.getLogger(__name__).error('Failed to import system.maintenance: %s', _e)
+
+# Also configure Celery to always import this module on worker start
+celery_app.conf.update(imports=['system.maintenance'])
