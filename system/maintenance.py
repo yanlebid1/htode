@@ -11,7 +11,7 @@ from common.celery_app import celery_app
 from common.db.operations import batch_get_full_ad_data, batch_get_user_filters
 from common.db.session import db_session
 from common.db.models.favorite import FavoriteAd
-from common.db.models.verification import VerificationCode
+from common.db.models.verification import Verification as VerificationCode
 from common.db.models.user import User
 from common.db.models.subscription import UserFilter
 from common.db.repositories.ad_repository import AdRepository

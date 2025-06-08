@@ -17,6 +17,8 @@ WORKDIR /app
 # Copy shared and service code
 COPY common /app/common
 COPY services/scraper_service /app/scraper_service
+# Include maintenance tasks and other shared utilities
+COPY system /app/system
 
 # Python deps
 COPY requirements/scraper.txt /app/requirements.txt
