@@ -22,11 +22,38 @@ def resolve_user_id(user_id: Union[int, str], *_ignored, **_kw) -> Tuple[Optiona
     from common.db.operations import get_user_by_telegram_id, get_platform_ids_for_user
 
     with log_context(logger, user_id=str(user_id)[:20]):
-        # Numeric? treat as DB id
+        # Heuristic:
+        # 1) If the ID is small (likely auto-increment DB id) treat as DB id.
+        # 2) If it is large (e.g., typical Telegram chat IDs are > 1e9) treat as telegram id directly.
+        # 3) As a fallback, attempt DB lookup – if the user exists by DB id, keep it, otherwise
+        #    treat the numeric value as a telegram id.
+
+        # Numeric? could be DB id or telegram id
         if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
-            db_user_id = int(user_id)
-            platform_ids = get_platform_ids_for_user(db_user_id)
-            telegram_id = str(platform_ids.get("telegram_id")) if platform_ids.get("telegram_id") else str(user_id)
+            numeric_id = int(user_id)
+
+            # Threshold to distinguish DB id vs telegram id (DB ids are usually small)
+            DB_ID_THRESHOLD = 1_000_000_000  # adjust if your DB ids can exceed this
+
+            if numeric_id < DB_ID_THRESHOLD:
+                # Treat as DB id first
+                db_user_id = numeric_id
+                platform_ids = get_platform_ids_for_user(db_user_id)
+
+                # If we didn't find a telegram_id in DB, fall back to treating numeric_id as telegram_id
+                if not platform_ids.get("telegram_id"):
+                    # The numeric value is actually a telegram id
+                    user = get_user_by_telegram_id(str(numeric_id))
+                    db_user_id = user.id if user else None
+                    return db_user_id, "telegram", str(numeric_id)
+
+                telegram_id = str(platform_ids.get("telegram_id"))
+                return db_user_id, "telegram", telegram_id
+
+            # Large number – more likely a telegram id directly
+            telegram_id = str(numeric_id)
+            user = get_user_by_telegram_id(telegram_id)
+            db_user_id = user.id if user else None
             return db_user_id, "telegram", telegram_id
 
         # Otherwise assume it is a telegram id string

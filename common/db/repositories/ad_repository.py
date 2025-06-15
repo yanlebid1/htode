@@ -195,6 +195,7 @@ class AdRepository:
                 "insert_time": ad.insert_time.isoformat() if ad.insert_time else None,
                 "description": ad.description,
                 "resource_url": ad.resource_url,
+                "original_currency": ad.original_currency,
                 "images": [img.image_url for img in ad.images][:20],  # Limit to 20 images
                 "phones": [phone.phone for phone in ad.phones if phone.phone][:10],  # Limit to 10 phones
                 "viber_link": next((phone.viber_link for phone in ad.phones if phone.viber_link), None)

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Dict
 import json
 import random
+import time
 from contextlib import asynccontextmanager
 
 from bs4 import BeautifulSoup
@@ -49,6 +50,12 @@ LUN_PHONE_REGEX = re.compile(r'"phones\\":\[\\"8(.*)\\"],\\"geoEntities')
 RIELTOR_PHONE_REGEX = re.compile(r'"tel:(.*?)"')
 RIELTOR_VIBER_REGEX = re.compile(r'href="(viber:.*)" class')
 FAKTOR24_PHONE_REGEX = re.compile(r'"tel:(.*?)" id="phoneDisplay"')
+
+# DOM.RIA specific constants
+DOM_RIA_PHONE_BUTTON_SELECTOR = "//div[@class='aside']//div[@data-tm='phone']"
+DOM_RIA_COPY_BUTTON_SELECTOR = "//div[@class='modal-body']//span[@title='Скопіювати в буфер обміну']"
+DOM_RIA_COOKIE_BUTTON_SELECTOR = '//label[@id="allowGdpr"]'
+DOM_RIA_MAX_RETRIES = 3
 
 # Browser impersonation options for curl_cffi
 IMPERSONATE_OPTIONS = [
@@ -153,52 +160,68 @@ class AsyncHTTPClient:
             await session.close()
 
     async def _fetch_with_camoufox(self, url: str) -> Optional[str]:
-        """Use Camoufox headless browser as a last resort for JavaScript-heavy sites."""
-        browser = None
-        try:
-            # Parse proxy if available
-            proxy_config = None
-            if self.proxy:
-                parsed_proxy = urllib.parse.urlparse(self.proxy)
-                proxy_config = {
-                    'server': f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port}",
-                }
-                if parsed_proxy.username and parsed_proxy.password:
-                    proxy_config['username'] = parsed_proxy.username
-                    proxy_config['password'] = parsed_proxy.password
+        """Use Camoufox headless browser as a last resort for JavaScript-heavy sites.
 
-            # Initialize Camoufox with proper configuration
-            camoufox_args = {
-                "proxy": proxy_config,
-                "headless": True,
-                "os": "windows",  # Use Windows OS to mimic real user
-                "locale": "uk-UA",  # Set Ukrainian locale
-                "geoip": True,  # Enable geolocation spoofing
-                "block_webrtc": True,  # Prevent WebRTC leaks
-                "humanize": True,  # Enable human-like cursor movements
+        Improvements:
+        • Retry up to 2 times.
+        • Longer navigation timeout (REQUEST_TIMEOUT + 15s).
+        • Gracefully handle navigation timeouts by attempting to read whatever content is available.
+        • Catch browser/page-closure errors separately and fall back to a fresh retry.
+        """
+
+        MAX_RETRIES = 2
+        NAV_TIMEOUT_MS = (REQUEST_TIMEOUT + 15) * 1000  # extra buffer
+
+        # Parse proxy if available
+        proxy_config = None
+        if self.proxy:
+            parsed_proxy = urllib.parse.urlparse(self.proxy)
+            proxy_config = {
+                'server': f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port}",
             }
+            if parsed_proxy.username and parsed_proxy.password:
+                proxy_config['username'] = parsed_proxy.username
+                proxy_config['password'] = parsed_proxy.password
 
-            # Remove None values
-            camoufox_args = {k: v for k, v in camoufox_args.items() if v is not None}
+        # Static Camoufox options
+        base_camoufox_args = {
+            "proxy": proxy_config,
+            "headless": True,
+            "os": "windows",
+            "locale": "uk-UA",
+            "geoip": True,
+            "block_webrtc": True,
+            "humanize": True,
+        }
 
-            async with AsyncCamoufox(**camoufox_args) as browser:
-                page = await browser.new_page()
+        # Remove None values
+        base_camoufox_args = {k: v for k, v in base_camoufox_args.items() if v is not None}
 
-                # Navigate to the page
-                await page.goto(url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                async with AsyncCamoufox(**base_camoufox_args) as browser:
+                    page = await browser.new_page()
 
-                # Wait a bit for dynamic content
-                await page.wait_for_timeout(2000)
+                    try:
+                        await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+                    except Exception as nav_err:  # TimeoutError or other
+                        logger.debug(f"Camoufox navigation attempt {attempt} issue: {nav_err}")
+                        # If the navigation timed out, we still try to grab whatever was loaded.
 
-                # Get the content
-                content = await page.content()
+                    try:
+                        # Let any JS execute a little longer (up to 3s extra) but don't block forever
+                        await page.wait_for_timeout(3000)
+                        content = await page.content()
+                        logger.info("Successfully fetched with Camoufox", extra={"attempt": attempt})
+                        return content
+                    except Exception as content_err:
+                        logger.debug(f"Camoufox attempt {attempt} failed when reading content: {content_err}")
 
-                logger.info("Successfully fetched with Camoufox")
-                return content
+            except Exception as e:
+                logger.debug(f"Camoufox attempt {attempt} failed to start or crashed: {e}")
 
-        except Exception as e:
-            logger.warning(f"Camoufox failed: {e}")
-            return None
+        logger.warning("Camoufox failed after all retries")
+        return None
 
     async def fetch_with_aiohttp(self, url: str, headers: Optional[Dict] = None) -> Optional[str]:
         """Fetch URL using aiohttp - PRIMARY METHOD."""
@@ -278,6 +301,10 @@ class AsyncHTTPClient:
         ]
 
         for method_name, method_func in methods:
+            if "olx.ua" in url and method_name != "camoufox":
+                # Skip non-Camoufox methods for OLX URLs
+                continue
+
             logger.info(f"Trying {method_name} for {url}")
             try:
                 content = await method_func(url, headers)
@@ -384,6 +411,252 @@ def _fallback_parse(html: str) -> ExtractionResult:
             phone_nums = [re.sub(r'[^\d+]', '', phone) for phone in matches]
 
     return ExtractionResult(phone_nums, viber_link)
+
+
+# ===========================
+# DOM.RIA phone extraction helper functions
+# ===========================
+def _validate_phone_number(phone: str) -> bool:
+    """Validate if a string is likely a phone number.
+
+    Args:
+        phone: String to validate as a phone number
+
+    Returns:
+        True if the string matches phone number patterns, False otherwise
+    """
+    # Basic pattern for international and local phone numbers
+    pattern = r'^[\+]?[(]?[0-9]{1,3}[)]?[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,9}$'
+    
+    # Clean the input string
+    cleaned_phone = phone.strip()
+    
+    # Check if matches pattern and has reasonable length
+    is_valid = bool(re.match(pattern, cleaned_phone)) and len(re.sub(r'\D', '', cleaned_phone)) >= 7
+    
+    if not is_valid:
+        logger.warning(f"Retrieved string '{phone}' doesn't appear to be a valid phone number")
+    
+    return is_valid
+
+
+async def _dom_ria_get_clipboard_text_browser_api(page) -> Optional[str]:
+    """Try to get clipboard text using browser's Clipboard API.
+
+    Args:
+        page: Camoufox page object
+
+    Returns:
+        Clipboard text if successful, None otherwise
+    """
+    logger.info("Attempting to access clipboard via Browser Clipboard API...")
+    
+    try:
+        # Use the Clipboard API to read text
+        clipboard_content = await page.evaluate("""
+            async () => {
+                try {
+                    if (navigator.clipboard && navigator.clipboard.readText) {
+                        return await navigator.clipboard.readText();
+                    }
+                    return null;
+                } catch (error) {
+                    console.log('Clipboard API error:', error);
+                    return null;
+                }
+            }
+        """)
+        
+        if clipboard_content:
+            logger.info(f"Successfully retrieved content via Clipboard API: {clipboard_content}")
+            return clipboard_content
+        else:
+            logger.warning("Browser Clipboard API returned empty result")
+            return None
+            
+    except Exception as e:
+        logger.warning(f"Failed to access clipboard via Browser API: {e}")
+        return None
+
+
+async def _dom_ria_get_clipboard_text_execcommand(page) -> Optional[str]:
+    """Try to get clipboard text using document.execCommand.
+
+    Args:
+        page: Camoufox page object
+
+    Returns:
+        Clipboard text if successful, None otherwise
+    """
+    logger.info("Attempting to access clipboard via document.execCommand...")
+    
+    try:
+        # Create a temporary element and try to paste into it
+        clipboard_content = await page.evaluate("""
+            () => {
+                const el = document.createElement('textarea');
+                el.id = 'clipboard-target';
+                document.body.appendChild(el);
+                el.focus();
+                document.execCommand('paste');
+                const content = el.innerText;
+                document.body.removeChild(el);
+                return content;
+            }
+        """)
+        
+        if clipboard_content:
+            logger.info(f"Successfully retrieved content via execCommand: {clipboard_content}")
+            return clipboard_content
+        else:
+            logger.warning("document.execCommand method returned empty result")
+            return None
+            
+    except Exception as e:
+        logger.warning(f"Failed to access clipboard via document.execCommand: {e}")
+        return None
+
+
+async def _dom_ria_extract_phone_number(page) -> Optional[str]:
+    """Extract the phone number using multiple clipboard access methods.
+
+    Args:
+        page: Camoufox page object
+
+    Returns:
+        Extracted phone number if successful, None otherwise
+    """
+    # Try each clipboard access method in order of reliability
+    phone_number = (
+        await _dom_ria_get_clipboard_text_browser_api(page) or
+        await _dom_ria_get_clipboard_text_execcommand(page)
+    )
+    
+    # If we have a result, validate it
+    if phone_number and _validate_phone_number(phone_number):
+        return phone_number
+    
+    # If all methods fail or result is invalid, log warning
+    logger.warning("All clipboard access methods failed or returned invalid data")
+    return None
+
+
+async def _parse_dom_ria_camoufox(ad_url: str, proxy: Optional[str] = None) -> ExtractionResult:
+    """Use Camoufox to extract phone number from a DOM.RIA advertisement page.
+
+    Flow:
+      1. Navigate to the ad page.
+      2. Handle cookie consent if present.
+      3. Wait for and click the phone button to reveal contact information.
+      4. Wait for and click the copy button in the modal.
+      5. Extract the phone number from clipboard using multiple methods.
+      6. Return the normalized phone number.
+
+    Args:
+        ad_url: The DOM.RIA advertisement URL
+        proxy: Optional proxy configuration
+
+    Returns:
+        ExtractionResult containing phone numbers
+    """
+    logger.info("Parsing DOM.RIA content via Camoufox")
+    
+    try:
+        # Parse proxy if available
+        proxy_config = None
+        if proxy:
+            parsed_proxy = urllib.parse.urlparse(proxy)
+            proxy_config = {
+                'server': f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port}",
+            }
+            if parsed_proxy.username and parsed_proxy.password:
+                proxy_config['username'] = parsed_proxy.username
+                proxy_config['password'] = parsed_proxy.password
+        
+        # Initialize Camoufox with proper configuration
+        camoufox_args = {
+            "proxy": proxy_config,
+            "headless": True,
+            "os": "windows",
+            "locale": "uk-UA",
+            "geoip": True,
+            "block_webrtc": True,
+            "humanize": True,
+        }
+        
+        # Remove None values
+        camoufox_args = {k: v for k, v in camoufox_args.items() if v is not None}
+        
+        async with AsyncCamoufox(**camoufox_args) as browser:
+            page = await browser.new_page()
+            
+            logger.info(f"Navigating to DOM.RIA ad URL: {ad_url}")
+            nav_timeout_ms = (REQUEST_TIMEOUT + 15) * 1000
+            await page.goto(ad_url, wait_until="domcontentloaded", timeout=nav_timeout_ms)
+            
+            # Wait for page to stabilize
+            await page.wait_for_load_state("networkidle", timeout=nav_timeout_ms)
+            
+            # Handle cookie consent if present
+            try:
+                await page.wait_for_selector(DOM_RIA_COOKIE_BUTTON_SELECTOR, timeout=5000)
+                logger.info("Found cookie consent button, clicking...")
+                await page.click(DOM_RIA_COOKIE_BUTTON_SELECTOR)
+                logger.info("Cookie consent handled")
+                await page.wait_for_timeout(1500)
+            except Exception:
+                logger.info("No cookie consent found or already handled")
+            
+            # Look for and click the phone button
+            try:
+                await page.wait_for_selector(DOM_RIA_PHONE_BUTTON_SELECTOR, timeout=10000)
+                logger.info("Found phone button, clicking...")
+                
+                # Hover and click with human-like behavior
+                phone_button = page.locator(DOM_RIA_PHONE_BUTTON_SELECTOR)
+                await phone_button.hover()
+                await page.wait_for_timeout(500)  # Brief pause
+                await phone_button.click()
+                logger.info("Successfully clicked phone button")
+                
+                # Wait for the modal to appear
+                await page.wait_for_timeout(1500)
+                
+            except Exception as e:
+                logger.warning(f"Failed to find or click phone button: {e}")
+                return ExtractionResult([], None)
+            
+            # Look for and click the copy button in the modal
+            try:
+                await page.wait_for_selector(DOM_RIA_COPY_BUTTON_SELECTOR, timeout=10000)
+                logger.info("Found copy button, clicking...")
+                
+                copy_button = page.locator(DOM_RIA_COPY_BUTTON_SELECTOR)
+                await copy_button.hover()
+                await page.wait_for_timeout(300)  # Brief pause
+                await copy_button.click()
+                logger.info("Successfully clicked copy button")
+                
+                # Wait for copying to complete
+                await page.wait_for_timeout(800)
+                
+            except Exception as e:
+                logger.warning(f"Failed to find or click copy button: {e}")
+                return ExtractionResult([], None)
+            
+            # Extract phone number from clipboard
+            phone_number = await _dom_ria_extract_phone_number(page)
+            
+            if phone_number:
+                logger.info(f"Successfully extracted phone number from DOM.RIA: {phone_number}")
+                return ExtractionResult([phone_number], None)
+            else:
+                logger.warning("Failed to extract phone number from DOM.RIA")
+                return ExtractionResult([], None)
+                
+    except Exception as e:
+        logger.error(f"DOM.RIA Camoufox extraction failed: {e}")
+        return ExtractionResult([], None)
 
 
 # ===========================
@@ -516,7 +789,8 @@ async def _parse_olx_camoufox(ad_url: str, proxy: Optional[str] = None) -> Extra
             page = await browser.new_page()
 
             logger.info(f"Navigating to OLX ad URL via Camoufox: {ad_url}")
-            await page.goto(ad_url, wait_until="domcontentloaded", timeout=REQUEST_TIMEOUT * 1000)
+            NAV_TIMEOUT_MS = (REQUEST_TIMEOUT + 15) * 1000  # extra buffer for OLX
+            await page.goto(ad_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
 
             # Handle cookie banner if it appears
             cookie_banner_selector = 'button[data-testid="dismiss-cookies-banner"]'
@@ -614,6 +888,8 @@ async def _domain_parse_final(html: str, original_url: str, client: AsyncHTTPCli
     # Route to domain-specific parse functions
     if "olx.ua" in canonical_url:
         return await _parse_olx_camoufox(canonical_url, proxy=client.proxy)
+    elif "dom.ria.com" in canonical_url:
+        return await _parse_dom_ria_camoufox(canonical_url, proxy=client.proxy)
     elif "real-estate.lviv.ua" in canonical_url:
         return await _parse_real_estate_lviv(canonical_url, client)
     elif "rieltor.ua" in canonical_url:
@@ -642,16 +918,7 @@ async def _extract_phone_numbers_async(resource_url: str, proxy: Optional[str] =
         with log_context(logger, resource_url=resource_url):
             client = AsyncHTTPClient(proxy=proxy)
 
-            # Special-case OLX: rely exclusively on Camoufox and avoid any direct HTTP fetches
-            if "olx.ua" in resource_url:
-                logger.info("Detected OLX URL – using Camoufox only, skipping direct HTTP fetch")
-                olx_result = await _parse_olx_camoufox(resource_url, proxy=proxy)
-                if olx_result.phone_numbers:
-                    aggregator.add_item({'method': 'camoufox_direct'}, success=True)
-                else:
-                    aggregator.add_item({'method': 'camoufox_direct'}, success=False)
-                return olx_result
-
+            logger.info("Starting phone number extraction", extra={'url': resource_url})
             # Fetch the page content
             try:
                 html_content = await client.fetch(resource_url)
@@ -663,6 +930,10 @@ async def _extract_phone_numbers_async(resource_url: str, proxy: Optional[str] =
                 if "olx.ua" in resource_url:
                     logger.info("Attempting Camoufox extraction for OLX after fetch failure")
                     return await _parse_olx_camoufox(resource_url, proxy=proxy)
+                # If the target is a DOM.RIA advertisement, attempt Camoufox extraction
+                elif "dom.ria.com" in resource_url:
+                    logger.info("Attempting Camoufox extraction for DOM.RIA after fetch failure")
+                    return await _parse_dom_ria_camoufox(resource_url, proxy=proxy)
 
                 return ExtractionResult([], None)
 
@@ -694,9 +965,6 @@ async def _extract_phone_numbers_async(resource_url: str, proxy: Optional[str] =
                             html_content = redirected_html
                             resource_url = redirect_url  # Update for downstream logic
             except Exception as e:
-                # We swallow errors here because failure to follow redirect should not
-                # abort the entire extraction; downstream fallback parsers may still
-                # succeed.
                 logger.warning(f"Redirect handling failed: {e}")
 
             # Parse the content based on domain

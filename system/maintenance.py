@@ -608,17 +608,26 @@ def check_database_connections() -> Dict[str, Any]:
     Returns:
         Dictionary with pool statistics
     """
-    from common.db.database import pool, initialize_pool
+    # Import the database module here to always reference the current pool instance
+    from common.db import database as db_module
 
     with log_context(logger, task="check_database_connections"):
-        if not pool:
+        # Ensure the pool is initialized
+        if db_module.pool is None:
             logger.warning("Database connection pool not initialized, initializing now")
-            initialize_pool()
+            db_module.initialize_pool()
+
+        # Refresh local reference after a possible initialization
+        pool = db_module.pool
+
+        # If initialization still failed, log and exit early
+        if pool is None:
+            logger.error("Database connection pool is still uninitialized after attempting to initialize.")
             return {
-                "status": "initialized",
-                "min_connections": pool.minconn,
-                "max_connections": pool.maxconn,
-                "used_connections": 0
+                "status": "uninitialized",
+                "min_connections": None,
+                "max_connections": None,
+                "used_connections": None
             }
 
         # Get pool statistics
@@ -797,6 +806,51 @@ def check_subscription_statistics() -> Dict[str, Any]:
             })
             aggregator.add_error(str(e), {})
             aggregator.log_summary()
+            return {
+                "status": "error",
+                "error": str(e),
+                "execution_time_seconds": time.time() - start_time
+            }
+
+
+@celery_app.task(name='system.maintenance.update_currency_rate')
+@log_operation("update_currency_rate")
+def update_currency_rate() -> Dict[str, Any]:
+    """
+    Update the USD to UAH currency exchange rate in the cache.
+    
+    This task is scheduled to run twice daily to ensure we have 
+    updated currency rates for price conversions.
+    
+    Returns:
+        Dictionary with operation status and the new rate
+    """
+    start_time = time.time()
+    
+    with log_context(logger, task="update_currency_rate"):
+        try:
+            from common.utils.currency_manager import CurrencyRateManager
+            
+            # Update the rate in cache
+            rate = CurrencyRateManager.update_rate()
+            
+            execution_time = time.time() - start_time
+            
+            logger.info("Updated currency rate", extra={
+                'rate': str(rate),
+                'execution_time': execution_time
+            })
+            
+            return {
+                "status": "success",
+                "rate": str(rate),
+                "execution_time_seconds": execution_time
+            }
+        except Exception as e:
+            logger.error("Error updating currency rate", exc_info=True, extra={
+                'error_type': type(e).__name__
+            })
+            
             return {
                 "status": "error",
                 "error": str(e),

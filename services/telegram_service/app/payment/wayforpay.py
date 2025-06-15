@@ -14,7 +14,7 @@ from common.db.session import db_session
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
-# Replace with your actual merchant credentials from WayForPay
+# Replace it with your actual merchant credentials from WayForPay
 MERCHANT_ACCOUNT = os.getenv("WAYFORPAY_MERCHANT_LOGIN")
 MERCHANT_SECRET = os.getenv("WAYFORPAY_MERCHANT_SECRET")
 API_URL = "https://api.wayforpay.com/api"
