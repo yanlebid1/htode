@@ -118,6 +118,16 @@ celery_app.conf.beat_schedule = {
         'task': 'system.maintenance.check_database_connections',
         'schedule': crontab(minute=15, hour='*/1'),  # Every hour at 15 minutes past
     },
+    # Update currency rate at 9 AM
+    'update-currency-rate-morning': {
+        'task': 'system.maintenance.update_currency_rate',
+        'schedule': crontab(hour=9, minute=0),  # Daily at 9:00 AM
+    },
+    # Update currency rate at 6 PM
+    'update-currency-rate-evening': {
+        'task': 'system.maintenance.update_currency_rate',
+        'schedule': crontab(hour=18, minute=0),  # Daily at 6:00 PM
+    },
 }
 
 # Ensure maintenance tasks are registered even if import errors occur; log failures explicitly

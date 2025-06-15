@@ -16,6 +16,7 @@ aiodns
 curl_cffi
 brotlicffi
 pillow
-camoufox
+camoufox>=0.4.10
+browserforge>=1.2.0
 geoip2
 maxminddb

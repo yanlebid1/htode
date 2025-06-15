@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS ads (
     floor INTEGER,
     total_floors INTEGER,
     description TEXT,
-    resource_url TEXT
+    resource_url TEXT,
+    original_currency VARCHAR(10) DEFAULT 'UAH'
 );
 
 CREATE TABLE IF NOT EXISTS ad_images (

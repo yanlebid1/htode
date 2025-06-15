@@ -23,6 +23,7 @@ class Ad(Base):
     insert_time = Column(DateTime, default=func.now())
     description = Column(Text)
     resource_url = Column(String, unique=True)
+    original_currency = Column(String, default="UAH")
 
     # Relationships
     images = relationship("AdImage", back_populates="ad", cascade="all, delete-orphan")

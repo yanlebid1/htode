@@ -35,7 +35,8 @@ class BaseCacheManager:
         """Set a value in the cache"""
         with log_context(logger, cache_key=key, ttl=ttl):
             try:
-                serialized = json.dumps(value)
+                # Use default=str to safely serialize non-standard types like Decimal
+                serialized = json.dumps(value, default=str)
                 redis_client.set(key, serialized, ex=ttl)
                 logger.debug("Value cached", extra={'key': key[:50], 'ttl': ttl})
             except (TypeError, ValueError) as e:

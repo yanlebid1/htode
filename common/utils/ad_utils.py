@@ -1,6 +1,7 @@
 # common/utils/ad_utils.py
 
 from typing import Dict, Any, Optional, List, Union
+from decimal import Decimal
 from common.db.session import db_session
 from common.db.repositories.ad_repository import AdRepository
 from common.utils.s3_utils import _upload_image_to_s3
@@ -50,20 +51,48 @@ def process_and_insert_ad(ad_data: Dict[str, Any], property_type: str, geo_id: i
                         'error_type': type(img_upload_err).__name__
                     })
 
+                # Get the original price and currency
+                original_price = ad_data.get("price")
+                currency = ad_data.get("currency", "UAH")
+
+                # Convert price if needed
+                price = original_price
+                if currency != "UAH" and original_price:
+                    try:
+                        from common.utils.currency_manager import CurrencyRateManager
+                        price_in_usd = Decimal(str(original_price))
+                        price = CurrencyRateManager.convert_to_uah(price_in_usd, currency)
+                        logger.info("Converted price to UAH", extra={
+                            'ad_id': ad_unique_id,
+                            'original_currency': currency,
+                            'original_price': original_price,
+                            'converted_price': float(price)
+                        })
+                    except Exception as e:
+                        logger.error("Error converting price", exc_info=True, extra={
+                            'ad_id': ad_unique_id,
+                            'currency': currency,
+                            'price': original_price,
+                            'error_type': type(e).__name__
+                        })
+                        # Keep original price if conversion fails
+                        price = original_price
+
                 # Create ad data
                 new_ad_data = {
                     "external_id": ad_unique_id,
                     "property_type": property_type,
                     "city": geo_id,
                     "address": ad_data.get("header"),
-                    "price": ad_data.get("price"),
+                    "price": price,
                     "square_feet": ad_data.get("area_total"),
                     "rooms_count": ad_data.get("room_count"),
                     "floor": ad_data.get("floor"),
                     "total_floors": ad_data.get("floor_count"),
                     "insert_time": ad_data.get("insert_time"),
                     "description": ad_data.get("text"),
-                    "resource_url": resource_url
+                    "resource_url": resource_url,
+                    "original_currency": currency
                 }
 
                 # Insert new ad

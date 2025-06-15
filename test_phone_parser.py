@@ -115,8 +115,10 @@ async def _parse_olx_camoufox_debug(ad_url: str, proxy: Optional[str] = None, he
                 await take_screenshot(page, "02_no_cookies")
 
             # Wait for the ad action buttons container
-            ad_action_selector = 'div[data-testid="ad-action-buttons"]'
-            btn_selector = 'button[data-cy="ad-contact-phone"]'
+            # ad_action_selector = 'div[data-testid="ad-action-buttons"]'
+            ad_action_selector = 'div[data-testid="phones-container"]'
+            # btn_selector = 'button[data-cy="ad-contact-phone"]'
+            btn_selector = 'button[data-testid="show-phone"]'
             print(f"🔍 Looking for ad action buttons: {ad_action_selector}")
             try:
                 await page.wait_for_selector(ad_action_selector, timeout=8000)
@@ -148,7 +150,8 @@ async def _parse_olx_camoufox_debug(ad_url: str, proxy: Optional[str] = None, he
             await take_screenshot(page, "05_after_click")
 
             # Wait for the link that contains the phone number
-            link_selector = 'button[data-cy="ad-contact-phone"] a[data-testid="contact-phone"]'
+            # link_selector = 'button[data-cy="ad-contact-phone"] a[data-testid="contact-phone"]'
+            link_selector = 'div[data-testid="phones-container"] a[data-testid="contact-phone"]'
             print(f"🔍 Looking for phone link: {link_selector}")
             
             try:
@@ -160,7 +163,8 @@ async def _parse_olx_camoufox_debug(ad_url: str, proxy: Optional[str] = None, he
                 await take_screenshot(page, "06_no_phone_link")
                 
                 # Try to find any links in the phone button
-                phone_links = await page.query_selector_all('button[data-cy="ad-contact-phone"] a')
+                # phone_links = await page.query_selector_all('button[data-cy="ad-contact-phone"] a')
+                phone_links = await page.query_selector_all('div[data-testid="phones-container"] a[data-testid="contact-phone"]')
                 print(f"🔍 Found {len(phone_links)} links in phone button:")
                 for i, link in enumerate(phone_links):
                     try:
