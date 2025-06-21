@@ -4,8 +4,11 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 from ..bot import dp
 from ..states.support_states import SupportStates
-from common.messaging.handlers.support_handler import handle_support_command, handle_support_category
-from ..utils.message_utils import safe_answer_callback_query, delete_message_safe
+from common.messaging.handlers.support_handler import (
+    handle_support_command,
+    handle_support_category,
+)
+from ..utils.message_utils import safe_answer_callback_query, delete_message_safe, safe_send_message
 
 # Import service logger and logging utilities
 from .. import logger
@@ -28,18 +31,22 @@ async def handle_support_command_telegram(message: types.Message, state: FSMCont
         # Set the state first since we have direct access to the state manager
         await SupportStates.waiting_for_category.set()
 
-        bot_msg = await handle_support_command(message.from_user.id, platform="telegram")
+        bot_msg = await handle_support_command(
+            message.from_user.id, platform="telegram"
+        )
 
         # Save trigger and bot msg ids
         SUPPORT_TRIGGER[user_id] = {
-            'trigger_id': message.message_id,
-            'bot_id': getattr(bot_msg, 'message_id', None)
+            "trigger_id": message.message_id,
+            "bot_id": getattr(bot_msg, "message_id", None),
         }
         logger.info("Support conversation started", extra={"user_id": user_id})
 
 
-@dp.message_handler(lambda msg: msg.text in ["Оплата", "Технічні проблеми", "Інше"],
-                    state=SupportStates.waiting_for_category)
+@dp.message_handler(
+    lambda msg: msg.text in ["Оплата", "Технічні проблеми", "Інше"],
+    state=SupportStates.waiting_for_category,
+)
 @log_operation("process_support_category_telegram")
 async def process_support_category_telegram(message: types.Message, state: FSMContext):
     """
@@ -54,16 +61,24 @@ async def process_support_category_telegram(message: types.Message, state: FSMCo
         await state.finish()
 
         # Use the unified handler for category processing
-        await handle_support_category(message.from_user.id, category, platform="telegram")
-        logger.info("Support category processed", extra={
-            "user_id": user_id,
-            "category": category
-        })
+        await handle_support_category(
+            message.from_user.id, category, platform="telegram"
+        )
+        logger.info(
+            "Support category processed",
+            extra={"user_id": user_id, "category": category},
+        )
 
 
-@dp.callback_query_handler(lambda c: c.data in ["support_payment", "support_technical", "support_other", "back_to_menu"], state=SupportStates.waiting_for_category)
+@dp.callback_query_handler(
+    lambda c: c.data
+    in ["support_payment", "support_technical", "support_other", "back_to_menu"],
+    state=SupportStates.waiting_for_category,
+)
 @log_operation("process_support_category_telegram_cb")
-async def process_support_category_telegram_cb(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_support_category_telegram_cb(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     """Handle support category selected via inline keyboard callback."""
     user_id = callback_query.from_user.id
     data = callback_query.data
@@ -75,10 +90,10 @@ async def process_support_category_telegram_cb(callback_query: types.CallbackQue
         # delete trigger and menu messages
         info = SUPPORT_TRIGGER.pop(user_id, None)
         if info:
-            if info.get('bot_id'):
-                await delete_message_safe(user_id, info['bot_id'])
-            if info.get('trigger_id'):
-                await delete_message_safe(user_id, info['trigger_id'])
+            if info.get("bot_id"):
+                await delete_message_safe(user_id, info["bot_id"])
+            if info.get("trigger_id"):
+                await delete_message_safe(user_id, info["trigger_id"])
 
         try:
             await callback_query.message.delete()
@@ -86,7 +101,10 @@ async def process_support_category_telegram_cb(callback_query: types.CallbackQue
             pass
 
         from ..keyboards import main_menu_keyboard
-        await safe_send_message(chat_id=user_id, text="Головне меню:", reply_markup=main_menu_keyboard())
+
+        await safe_send_message(
+            chat_id=user_id, text="Головне меню:", reply_markup=main_menu_keyboard()
+        )
         await safe_answer_callback_query(callback_query.id)
         return
 
@@ -94,7 +112,7 @@ async def process_support_category_telegram_cb(callback_query: types.CallbackQue
     category_mapping = {
         "support_payment": "payment",
         "support_technical": "technical",
-        "support_other": "other"
+        "support_other": "other",
     }
     category = category_mapping.get(data, "other")
 
@@ -107,10 +125,10 @@ async def process_support_category_telegram_cb(callback_query: types.CallbackQue
     # Clean up menu and trigger messages
     info = SUPPORT_TRIGGER.pop(user_id, None)
     if info:
-        if info.get('bot_id'):
-            await delete_message_safe(user_id, info['bot_id'])
-        if info.get('trigger_id'):
-            await delete_message_safe(user_id, info['trigger_id'])
+        if info.get("bot_id"):
+            await delete_message_safe(user_id, info["bot_id"])
+        if info.get("trigger_id"):
+            await delete_message_safe(user_id, info["trigger_id"])
 
     try:
         await callback_query.message.delete()

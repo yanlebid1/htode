@@ -2,14 +2,12 @@
 
 from aiogram import executor
 from .bot import dp
-from .handlers import menu_handlers, basic_handlers, advanced_handlers, subscription, support, favorites
+
 # Import the flow integration
-from .flow_integration import check_and_process_flow, flow_message_handler
+
 # Import the error handler
-from . import error_handler
 
 # Import the messaging service registration
-from . import messaging_service
 
 
 # Import service logger instead of configuring local logging
@@ -44,9 +42,7 @@ def main():
         # Start polling
         executor.start_polling(dp, skip_updates=True)
     except Exception as e:
-        logger.error("Bot startup failed", exc_info=True, extra={
-            "error": str(e)
-        })
+        logger.error("Bot startup failed", exc_info=True, extra={"error": str(e)})
         raise
     finally:
         logger.info("Bot stopped")

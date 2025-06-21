@@ -25,20 +25,27 @@ def initialize_pool(min_conn=1, max_conn=10):
                 port=DB_CONFIG["port"],
                 dbname=DB_CONFIG["dbname"],
                 user=DB_CONFIG["user"],
-                password=DB_CONFIG["password"]
+                password=DB_CONFIG["password"],
             )
-            logger.info("DB connection pool initialized", extra={
-                'min_connections': min_conn,
-                'max_connections': max_conn,
-                'host': DB_CONFIG["host"],
-                'database': DB_CONFIG["dbname"]
-            })
+            logger.info(
+                "DB connection pool initialized",
+                extra={
+                    "min_connections": min_conn,
+                    "max_connections": max_conn,
+                    "host": DB_CONFIG["host"],
+                    "database": DB_CONFIG["dbname"],
+                },
+            )
     except Exception as e:
-        logger.error("Failed to initialize connection pool", exc_info=True, extra={
-            'error_type': type(e).__name__,
-            'host': DB_CONFIG["host"],
-            'database': DB_CONFIG["dbname"]
-        })
+        logger.error(
+            "Failed to initialize connection pool",
+            exc_info=True,
+            extra={
+                "error_type": type(e).__name__,
+                "host": DB_CONFIG["host"],
+                "database": DB_CONFIG["dbname"],
+            },
+        )
         raise
 
 
@@ -57,16 +64,14 @@ def get_db_connection():
     try:
         with log_context(logger, pool_size=pool.maxconn):
             conn = pool.getconn()
-            logger.debug("Got connection from pool", extra={
-                'connection_id': id(conn)
-            })
+            logger.debug("Got connection from pool", extra={"connection_id": id(conn)})
             yield conn
     finally:
         if conn is not None:
             pool.putconn(conn)
-            logger.debug("Returned connection to pool", extra={
-                'connection_id': id(conn)
-            })
+            logger.debug(
+                "Returned connection to pool", extra={"connection_id": id(conn)}
+            )
 
 
 @log_operation("return_connection")
@@ -90,26 +95,24 @@ def get_db_cursor(commit=True):
         with get_db_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             try:
-                logger.debug("Created database cursor", extra={
-                    'cursor_id': id(cursor),
-                    'connection_id': id(conn)
-                })
+                logger.debug(
+                    "Created database cursor",
+                    extra={"cursor_id": id(cursor), "connection_id": id(conn)},
+                )
                 yield cursor
                 if commit:
                     conn.commit()
                     logger.debug("Transaction committed")
             except Exception as e:
                 conn.rollback()
-                logger.warning("Transaction rolled back", extra={
-                    'error_type': type(e).__name__,
-                    'error': str(e)
-                })
+                logger.warning(
+                    "Transaction rolled back",
+                    extra={"error_type": type(e).__name__, "error": str(e)},
+                )
                 raise
             finally:
                 cursor.close()
-                logger.debug("Cursor closed", extra={
-                    'cursor_id': id(cursor)
-                })
+                logger.debug("Cursor closed", extra={"cursor_id": id(cursor)})
 
 
 @log_operation("execute_query")
@@ -118,7 +121,13 @@ def execute_query(sql, params=None, fetch=False, fetchone=False, commit=True):
     Execute a SQL query with proper transaction handling.
     Uses context managers to ensure connections are always returned to the pool.
     """
-    with log_context(logger, sql=sql[:100], params_count=len(params) if params else 0, fetch=fetch, fetchone=fetchone):
+    with log_context(
+        logger,
+        sql=sql[:100],
+        params_count=len(params) if params else 0,
+        fetch=fetch,
+        fetchone=fetchone,
+    ):
         try:
             with get_db_cursor(commit=commit) as cur:
                 cur.execute(sql, params)
@@ -128,18 +137,23 @@ def execute_query(sql, params=None, fetch=False, fetchone=False, commit=True):
                     logger.debug("Fetched one row")
                 elif fetch:
                     result = cur.fetchall()
-                    logger.debug("Fetched all rows", extra={
-                        'row_count': len(result) if result else 0
-                    })
+                    logger.debug(
+                        "Fetched all rows",
+                        extra={"row_count": len(result) if result else 0},
+                    )
                 else:
                     result = cur
                     logger.debug("Returning cursor")
 
                 return result
         except Exception as e:
-            logger.error("Database error", exc_info=True, extra={
-                'error_type': type(e).__name__,
-                'sql': sql[:200],
-                'params': str(params)[:200] if params else None
-            })
+            logger.error(
+                "Database error",
+                exc_info=True,
+                extra={
+                    "error_type": type(e).__name__,
+                    "sql": sql[:200],
+                    "params": str(params)[:200] if params else None,
+                },
+            )
             raise

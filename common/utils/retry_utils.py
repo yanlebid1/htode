@@ -12,17 +12,17 @@ from common.utils.logging_config import log_operation, log_context
 from . import logger
 
 # Type variable for return value
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def retry_with_exponential_backoff(
-        max_retries: int = 3,
-        initial_delay: float = 1.0,
-        backoff_factor: float = 2.0,
-        jitter: bool = True,
-        jitter_factor: float = 0.2,
-        retryable_exceptions: Optional[List[Type[Exception]]] = None,
-        on_retry: Optional[Callable[[Exception, int, float], None]] = None
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    jitter: bool = True,
+    jitter_factor: float = 0.2,
+    retryable_exceptions: Optional[List[Type[Exception]]] = None,
+    on_retry: Optional[Callable[[Exception, int, float], None]] = None,
 ):
     """
     Decorator for retrying async functions with exponential backoff.
@@ -47,12 +47,14 @@ def retry_with_exponential_backoff(
                         last_exception = e
                         if attempt < max_retries - 1:
                             # Calculate exponential delay
-                            delay = initial_delay * (backoff_factor ** attempt)
+                            delay = initial_delay * (backoff_factor**attempt)
 
                             # Add jitter if enabled
                             if jitter:
                                 jitter_range = delay * jitter_factor
-                                delay = delay + random.uniform(-jitter_range, jitter_range)
+                                delay = delay + random.uniform(
+                                    -jitter_range, jitter_range
+                                )
                                 delay = max(0.1, delay)  # Ensure delay is positive
 
                             # Call the on_retry callback if provided
@@ -60,31 +62,39 @@ def retry_with_exponential_backoff(
                                 on_retry(e, attempt + 1, delay)
                             else:
                                 logger.warning(
-                                    "Retry attempt failed", extra={
-                                        'function': func.__name__,
-                                        'attempt': attempt + 1,
-                                        'max_retries': max_retries,
-                                        'delay': delay,
-                                        'error': str(e),
-                                        'error_type': type(e).__name__
-                                    }
+                                    "Retry attempt failed",
+                                    extra={
+                                        "function": func.__name__,
+                                        "attempt": attempt + 1,
+                                        "max_retries": max_retries,
+                                        "delay": delay,
+                                        "error": str(e),
+                                        "error_type": type(e).__name__,
+                                    },
                                 )
 
                             await asyncio.sleep(delay)
                         else:
-                            logger.error("All retry attempts failed", extra={
-                                'function': func.__name__,
-                                'attempts': max_retries,
-                                'error': str(e),
-                                'error_type': type(e).__name__
-                            })
+                            logger.error(
+                                "All retry attempts failed",
+                                extra={
+                                    "function": func.__name__,
+                                    "attempts": max_retries,
+                                    "error": str(e),
+                                    "error_type": type(e).__name__,
+                                },
+                            )
                             raise
                     except Exception as e:
                         # Don't retry on non-retryable exceptions
-                        logger.error("Non-retryable exception occurred", exc_info=True, extra={
-                            'function': func.__name__,
-                            'error_type': type(e).__name__
-                        })
+                        logger.error(
+                            "Non-retryable exception occurred",
+                            exc_info=True,
+                            extra={
+                                "function": func.__name__,
+                                "error_type": type(e).__name__,
+                            },
+                        )
                         raise
 
                 # This will only be reached if max_retries is 0
@@ -110,12 +120,14 @@ def retry_with_exponential_backoff(
                         last_exception = e
                         if attempt < max_retries - 1:
                             # Calculate exponential delay
-                            delay = initial_delay * (backoff_factor ** attempt)
+                            delay = initial_delay * (backoff_factor**attempt)
 
                             # Add jitter if enabled
                             if jitter:
                                 jitter_range = delay * jitter_factor
-                                delay = delay + random.uniform(-jitter_range, jitter_range)
+                                delay = delay + random.uniform(
+                                    -jitter_range, jitter_range
+                                )
                                 delay = max(0.1, delay)  # Ensure delay is positive
 
                             # Call the on_retry callback if provided
@@ -123,31 +135,39 @@ def retry_with_exponential_backoff(
                                 on_retry(e, attempt + 1, delay)
                             else:
                                 logger.warning(
-                                    "Retry attempt failed", extra={
-                                        'function': func.__name__,
-                                        'attempt': attempt + 1,
-                                        'max_retries': max_retries,
-                                        'delay': delay,
-                                        'error': str(e),
-                                        'error_type': type(e).__name__
-                                    }
+                                    "Retry attempt failed",
+                                    extra={
+                                        "function": func.__name__,
+                                        "attempt": attempt + 1,
+                                        "max_retries": max_retries,
+                                        "delay": delay,
+                                        "error": str(e),
+                                        "error_type": type(e).__name__,
+                                    },
                                 )
 
                             time.sleep(delay)
                         else:
-                            logger.error("All retry attempts failed", extra={
-                                'function': func.__name__,
-                                'attempts': max_retries,
-                                'error': str(e),
-                                'error_type': type(e).__name__
-                            })
+                            logger.error(
+                                "All retry attempts failed",
+                                extra={
+                                    "function": func.__name__,
+                                    "attempts": max_retries,
+                                    "error": str(e),
+                                    "error_type": type(e).__name__,
+                                },
+                            )
                             raise
                     except Exception as e:
                         # Don't retry on non-retryable exceptions
-                        logger.error("Non-retryable exception occurred", exc_info=True, extra={
-                            'function': func.__name__,
-                            'error_type': type(e).__name__
-                        })
+                        logger.error(
+                            "Non-retryable exception occurred",
+                            exc_info=True,
+                            extra={
+                                "function": func.__name__,
+                                "error_type": type(e).__name__,
+                            },
+                        )
                         raise
 
                 # This will only be reached if max_retries is 0
@@ -166,13 +186,13 @@ def retry_with_exponential_backoff(
 
 @log_operation("retry_async_function")
 async def retry_async_function(
-        func: Callable[..., Any],
-        *args: Any,
-        max_retries: int = 3,
-        initial_delay: float = 1.0,
-        backoff_factor: float = 2.0,
-        retryable_exceptions: Optional[List[Type[Exception]]] = None,
-        **kwargs: Any
+    func: Callable[..., Any],
+    *args: Any,
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    retryable_exceptions: Optional[List[Type[Exception]]] = None,
+    **kwargs: Any
 ) -> Any:
     """
     Retry an async function with exponential backoff.
@@ -192,34 +212,39 @@ async def retry_async_function(
             except retry_on as e:
                 last_exception = e
                 if attempt < max_retries - 1:
-                    delay = initial_delay * (backoff_factor ** attempt)
+                    delay = initial_delay * (backoff_factor**attempt)
                     jitter = random.uniform(0.8, 1.2)
                     final_delay = delay * jitter
 
                     logger.warning(
-                        "Retry attempt failed", extra={
-                            'function': func.__name__,
-                            'attempt': attempt + 1,
-                            'max_retries': max_retries,
-                            'delay': final_delay,
-                            'error': str(e),
-                            'error_type': type(e).__name__
-                        }
+                        "Retry attempt failed",
+                        extra={
+                            "function": func.__name__,
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries,
+                            "delay": final_delay,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                        },
                     )
                     await asyncio.sleep(final_delay)
                 else:
-                    logger.error("All retry attempts failed", extra={
-                        'function': func.__name__,
-                        'attempts': max_retries,
-                        'error': str(e),
-                        'error_type': type(e).__name__
-                    })
+                    logger.error(
+                        "All retry attempts failed",
+                        extra={
+                            "function": func.__name__,
+                            "attempts": max_retries,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                        },
+                    )
                     raise
             except Exception as e:
-                logger.error("Non-retryable exception occurred", exc_info=True, extra={
-                    'function': func.__name__,
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Non-retryable exception occurred",
+                    exc_info=True,
+                    extra={"function": func.__name__, "error_type": type(e).__name__},
+                )
                 raise
 
         if last_exception:
@@ -229,13 +254,13 @@ async def retry_async_function(
 
 @log_operation("retry_sync_function")
 def retry_sync_function(
-        func: Callable[..., Any],
-        *args: Any,
-        max_retries: int = 3,
-        initial_delay: float = 1.0,
-        backoff_factor: float = 2.0,
-        retryable_exceptions: Optional[List[Type[Exception]]] = None,
-        **kwargs: Any
+    func: Callable[..., Any],
+    *args: Any,
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    retryable_exceptions: Optional[List[Type[Exception]]] = None,
+    **kwargs: Any
 ) -> Any:
     """
     Retry a synchronous function with exponential backoff.
@@ -255,34 +280,39 @@ def retry_sync_function(
             except retry_on as e:
                 last_exception = e
                 if attempt < max_retries - 1:
-                    delay = initial_delay * (backoff_factor ** attempt)
+                    delay = initial_delay * (backoff_factor**attempt)
                     jitter = random.uniform(0.8, 1.2)
                     final_delay = delay * jitter
 
                     logger.warning(
-                        "Retry attempt failed", extra={
-                            'function': func.__name__,
-                            'attempt': attempt + 1,
-                            'max_retries': max_retries,
-                            'delay': final_delay,
-                            'error': str(e),
-                            'error_type': type(e).__name__
-                        }
+                        "Retry attempt failed",
+                        extra={
+                            "function": func.__name__,
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries,
+                            "delay": final_delay,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                        },
                     )
                     time.sleep(final_delay)
                 else:
-                    logger.error("All retry attempts failed", extra={
-                        'function': func.__name__,
-                        'attempts': max_retries,
-                        'error': str(e),
-                        'error_type': type(e).__name__
-                    })
+                    logger.error(
+                        "All retry attempts failed",
+                        extra={
+                            "function": func.__name__,
+                            "attempts": max_retries,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                        },
+                    )
                     raise
             except Exception as e:
-                logger.error("Non-retryable exception occurred", exc_info=True, extra={
-                    'function': func.__name__,
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Non-retryable exception occurred",
+                    exc_info=True,
+                    extra={"function": func.__name__, "error_type": type(e).__name__},
+                )
                 raise
 
         if last_exception:
@@ -294,11 +324,11 @@ class AsyncRetry:
     """Helper class for retrying async operations within an async context."""
 
     def __init__(
-            self,
-            max_retries: int = 3,
-            initial_delay: float = 1.0,
-            backoff_factor: float = 2.0,
-            retryable_exceptions: Optional[List[Type[Exception]]] = None
+        self,
+        max_retries: int = 3,
+        initial_delay: float = 1.0,
+        backoff_factor: float = 2.0,
+        retryable_exceptions: Optional[List[Type[Exception]]] = None,
     ):
         self.max_retries = max_retries
         self.initial_delay = initial_delay

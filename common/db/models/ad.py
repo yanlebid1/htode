@@ -28,7 +28,9 @@ class Ad(Base):
     # Relationships
     images = relationship("AdImage", back_populates="ad", cascade="all, delete-orphan")
     phones = relationship("AdPhone", back_populates="ad", cascade="all, delete-orphan")
-    favorites = relationship("FavoriteAd", back_populates="ad", cascade="all, delete-orphan")
+    favorites = relationship(
+        "FavoriteAd", back_populates="ad", cascade="all, delete-orphan"
+    )
 
 
 class AdImage(Base):

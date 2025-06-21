@@ -9,16 +9,19 @@ def configure_logging():
     """Configure additional logging features for the notifier service"""
 
     # Set up log aggregation if configured
-    aggregation_backend = os.getenv('LOG_AGGREGATION_BACKEND')
+    aggregation_backend = os.getenv("LOG_AGGREGATION_BACKEND")
     if aggregation_backend:
         setup_log_aggregation(logger, aggregation_backend)
 
     # Add any service-specific logging configuration here
-    logger.info("Notifier service logging configured", extra={
-        'log_level': logger.level,
-        'aggregation_backend': aggregation_backend,
-        'environment': os.getenv('ENVIRONMENT', 'development')
-    })
+    logger.info(
+        "Notifier service logging configured",
+        extra={
+            "log_level": logger.level,
+            "aggregation_backend": aggregation_backend,
+            "environment": os.getenv("ENVIRONMENT", "development"),
+        },
+    )
 
 
 # Run configuration when module is imported

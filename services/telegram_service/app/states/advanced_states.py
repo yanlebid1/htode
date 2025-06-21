@@ -2,6 +2,7 @@
 
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
+
 class AdvancedFilterStates(StatesGroup):
     waiting_for_floor_max = State()
     waiting_for_first_floor = State()

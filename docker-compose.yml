@@ -222,7 +222,7 @@ services:
     environment:
       <<: *combined-env
       DISABLE_CAMOUFOX: "1"
-    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scrape_queue --max-tasks-per-child=50
+    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@scraper_worker_service" ]
       interval: 30s
@@ -309,9 +309,71 @@ services:
         reservations:
           cpus: '0.25'
           memory: 512M
-    command: celery -A app.celery_app worker --loglevel=info -Q notify_queue
+    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 4
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@notifier_service" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  phone_extraction_worker:
+    container_name: phone_extraction_worker
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/notifier_service/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      webcrawler_service:
+        condition: service_healthy
+      camoufox_service:
+        condition: service_healthy
+    environment:
+      <<: *combined-env
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    command: celery -A app.celery_app worker --loglevel=info -Q phone_extraction_queue -c 8 -n phone_worker@%h
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "phone_worker@phone_extraction_worker" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  notification_batch_worker:
+    container_name: notification_batch_worker
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/notifier_service/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      telegram_service:
+        condition: service_healthy
+    environment:
+      <<: *combined-env
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 16 -n batch_worker@%h
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "batch_worker@notification_batch_worker" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -360,6 +422,58 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  camoufox_service:
+    container_name: camoufox_service
+    <<: *combined-playwright-settings  # Use playwright settings for browser resources
+    build:
+      context: services/camoufox_service
+      dockerfile: Dockerfile
+    ports:
+      - "8100:8100"
+    environment:
+      PYTHONUNBUFFERED: 1
+      BROWSER_POOL_SIZE: "${BROWSER_POOL_SIZE:-3}"
+    volumes:
+      - /dev/shm:/dev/shm  # Shared memory for browser performance
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8100/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s  # Give browser pool time to initialize
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+
+  webcrawler_service:
+    container_name: webcrawler_service
+    <<: *combined-settings
+    build:
+      context: services/webcrawler_service
+      dockerfile: Dockerfile
+    ports:
+      - "8200:8200"
+    environment:
+      PYTHONUNBUFFERED: 1
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8200/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
 networks:
   app_net:

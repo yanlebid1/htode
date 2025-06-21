@@ -1,6 +1,7 @@
 """
 Currency rate management module for caching and retrieving currency exchange rates.
 """
+
 from decimal import Decimal
 import aiohttp
 import logging
@@ -17,9 +18,11 @@ logger = logging.getLogger(__name__)
 # Cache key for currency rates
 CURRENCY_RATE_CACHE_KEY = "currency:usd_uah_rate"
 PRIVAT_URL: Final = (
-    "https://api.privatbank.ua/p24api/pubinfo?exchange&json&coursid=11"
-)  # :contentReference[oaicite:0]{index=0}
-MONO_URL: Final = "https://api.monobank.ua/bank/currency"  # :contentReference[oaicite:1]{index=1}
+    "https://api.privatbank.ua/p24api/pubinfo?exchange&json&coursid=11"  # :contentReference[oaicite:0]{index=0}
+)
+MONO_URL: Final = (
+    "https://api.monobank.ua/bank/currency"  # :contentReference[oaicite:1]{index=1}
+)
 USD_NUM, UAH_NUM = 840, 980  # ISO-4217 numeric codes
 
 
@@ -31,7 +34,7 @@ class CurrencyRateManager:
     def get_usd_uah_rate() -> Decimal:
         """
         Get the USD to UAH exchange rate from cache or fetch it if not available.
-        
+
         Returns:
             Decimal: The current USD to UAH exchange rate
         """
@@ -40,10 +43,10 @@ class CurrencyRateManager:
             cached_rate = BaseCacheManager.get(CURRENCY_RATE_CACHE_KEY)
 
             if cached_rate:
-                logger.debug("Using cached USD/UAH rate", extra={
-                    'rate': cached_rate,
-                    'source': 'cache'
-                })
+                logger.debug(
+                    "Using cached USD/UAH rate",
+                    extra={"rate": cached_rate, "source": "cache"},
+                )
                 return Decimal(str(cached_rate))
 
             # If not in cache, fetch it
@@ -55,7 +58,7 @@ class CurrencyRateManager:
     def update_rate() -> Decimal:
         """
         Fetch the current USD to UAH rate and update the cache.
-        
+
         Returns:
             Decimal: The fetched USD to UAH exchange rate
         """
@@ -67,39 +70,44 @@ class CurrencyRateManager:
                 # Cache the rate with a long TTL (it will be refreshed by scheduled tasks)
                 BaseCacheManager.set(CURRENCY_RATE_CACHE_KEY, str(rate), CacheTTL.LONG)
 
-                logger.info("Updated USD/UAH rate in cache", extra={
-                    'rate': str(rate),
-                    'source': 'api'
-                })
+                logger.info(
+                    "Updated USD/UAH rate in cache",
+                    extra={"rate": str(rate), "source": "api"},
+                )
 
                 return rate
             except Exception as e:
-                logger.error("Failed to fetch currency rate", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Failed to fetch currency rate",
+                    exc_info=True,
+                    extra={"error_type": type(e).__name__},
+                )
                 # Return a fallback rate in case of failure
-                return Decimal('41.00')  # Fallback rate
+                return Decimal("41.00")  # Fallback rate
 
     @staticmethod
     @log_operation("convert_usd_to_uah")
     def convert_usd_to_uah(amount: Decimal) -> Decimal:
         """
         Convert USD amount to UAH using the cached exchange rate.
-        
+
         Args:
             amount: The amount in USD to convert
-            
+
         Returns:
             Decimal: The equivalent amount in UAH
         """
         rate = CurrencyRateManager.get_usd_uah_rate()
         converted = amount * rate
 
-        logger.debug("Converted USD to UAH", extra={
-            'usd_amount': str(amount),
-            'uah_amount': str(converted),
-            'rate': str(rate)
-        })
+        logger.debug(
+            "Converted USD to UAH",
+            extra={
+                "usd_amount": str(amount),
+                "uah_amount": str(converted),
+                "rate": str(rate),
+            },
+        )
 
         return converted
 
@@ -108,11 +116,11 @@ class CurrencyRateManager:
     def convert_to_uah(amount: Decimal, currency: str) -> Decimal:
         """
         Convert the amount from specified currency to UAH.
-        
+
         Args:
             amount: The amount to convert
             currency: The source currency code (e.g., 'USD', 'UAH')
-            
+
         Returns:
             Decimal: The equivalent amount in UAH
         """
@@ -121,9 +129,9 @@ class CurrencyRateManager:
         elif currency == "USD":
             return CurrencyRateManager.convert_usd_to_uah(amount)
         else:
-            logger.warning("Unsupported currency for conversion", extra={
-                'currency': currency
-            })
+            logger.warning(
+                "Unsupported currency for conversion", extra={"currency": currency}
+            )
             return amount  # Return original amount if currency not supported
 
 

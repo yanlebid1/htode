@@ -22,6 +22,7 @@ from common.utils.logging_config import log_context, log_operation, LogAggregato
 
 # Import the service logger
 from . import logger
+
 # ---------------------------
 # Configuration & Initialization
 # ---------------------------
@@ -43,23 +44,25 @@ def acquire_lock(lock_name, expire_time=3600):
             acquired = redis_client.set(lock_key, lock_id, ex=expire_time, nx=True)
 
             if acquired:
-                logger.info(f"Lock acquired", extra={
-                    'lock_name': lock_name,
-                    'lock_id': lock_id,
-                    'expire_time': expire_time
-                })
+                logger.info(
+                    "Lock acquired",
+                    extra={
+                        "lock_name": lock_name,
+                        "lock_id": lock_id,
+                        "expire_time": expire_time,
+                    },
+                )
                 return lock_id
             else:
-                logger.info(f"Lock already held", extra={
-                    'lock_name': lock_name
-                })
+                logger.info("Lock already held", extra={"lock_name": lock_name})
                 return None
 
         except Exception as e:
-            logger.error(f"Error acquiring lock", exc_info=True, extra={
-                'lock_name': lock_name,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error acquiring lock",
+                exc_info=True,
+                extra={"lock_name": lock_name, "error_type": type(e).__name__},
+            )
             return None
 
 
@@ -83,25 +86,31 @@ def release_lock(lock_name, lock_id):
             result = redis_client.eval(script, 1, lock_key, lock_id)
 
             if result:
-                logger.info(f"Lock released", extra={
-                    'lock_name': lock_name,
-                    'lock_id': lock_id
-                })
+                logger.info(
+                    "Lock released", extra={"lock_name": lock_name, "lock_id": lock_id}
+                )
                 return True
             else:
-                logger.warning(f"Lock not released", extra={
-                    'lock_name': lock_name,
-                    'lock_id': lock_id,
-                    'reason': 'not owned or already expired'
-                })
+                logger.warning(
+                    "Lock not released",
+                    extra={
+                        "lock_name": lock_name,
+                        "lock_id": lock_id,
+                        "reason": "not owned or already expired",
+                    },
+                )
                 return False
 
         except Exception as e:
-            logger.error(f"Error releasing lock", exc_info=True, extra={
-                'lock_name': lock_name,
-                'lock_id': lock_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error releasing lock",
+                exc_info=True,
+                extra={
+                    "lock_name": lock_name,
+                    "lock_id": lock_id,
+                    "error_type": type(e).__name__,
+                },
+            )
             return False
 
 
@@ -125,9 +134,14 @@ def redis_lock(lock_name, expire_time=3600):
 
     with log_context(logger, lock_name=lock_name, lock_id=lock_id, acquired=acquired):
         if acquired:
-            logger.info(f"Acquired lock {lock_name}", extra={'lock_id': lock_id, 'expire_time': expire_time})
+            logger.info(
+                f"Acquired lock {lock_name}",
+                extra={"lock_id": lock_id, "expire_time": expire_time},
+            )
         else:
-            logger.info(f"Failed to acquire lock {lock_name}", extra={'lock_key': lock_key})
+            logger.info(
+                f"Failed to acquire lock {lock_name}", extra={"lock_key": lock_key}
+            )
 
         try:
             yield acquired, lock_id
@@ -140,24 +154,29 @@ def redis_lock(lock_name, expire_time=3600):
                 key_val, _ = pipe.execute()
 
                 if key_val and key_val.decode() != lock_id:
-                    logger.error(f"Lock {lock_key} was stolen",
-                                 extra={'expected_id': lock_id, 'found_id': key_val.decode()})
+                    logger.error(
+                        f"Lock {lock_key} was stolen",
+                        extra={"expected_id": lock_id, "found_id": key_val.decode()},
+                    )
                 else:
-                    logger.info(f"Released lock {lock_name}", extra={'lock_id': lock_id})
+                    logger.info(
+                        f"Released lock {lock_name}", extra={"lock_id": lock_id}
+                    )
 
 
 # Initialize boto3 S3 client (using AWS_CONFIG from common/config.py)
 s3_client = boto3.client(
-    's3',
+    "s3",
     aws_access_key_id=AWS_CONFIG["access_key"],
     aws_secret_access_key=AWS_CONFIG["secret_key"],
-    region_name=AWS_CONFIG["region"]
+    region_name=AWS_CONFIG["region"],
 )
 
 
 # ---------------------------
 # Celery Tasks and Scraper Functions
 # ---------------------------
+
 
 @celery_app.task(name="scraper_service.app.tasks.fetch_new_ads")
 @log_operation("fetch_new_ads")
@@ -168,7 +187,7 @@ def fetch_new_ads() -> None:
                 active_cities = SubscriptionRepository.get_active_cities(db)
 
                 if not active_cities:
-                    logger.info("No subscribed cities found", extra={'cities_count': 0})
+                    logger.info("No subscribed cities found", extra={"cities_count": 0})
                     return
 
                 aggregator = LogAggregator(logger, "fetch_new_ads")
@@ -178,17 +197,25 @@ def fetch_new_ads() -> None:
                         try:
                             ads_processed = _scrape_ads_for_city(city)
                             aggregator.add_item(
-                                {'city_id': city, 'ads_processed': ads_processed},
-                                success=True
+                                {"city_id": city, "ads_processed": ads_processed},
+                                success=True,
                             )
                         except Exception as e:
-                            aggregator.add_error(str(e), {'city_id': city})
-                            logger.error(f"Failed to scrape city {city}", exc_info=True, extra={'city_id': city})
+                            aggregator.add_error(str(e), {"city_id": city})
+                            logger.error(
+                                f"Failed to scrape city {city}",
+                                exc_info=True,
+                                extra={"city_id": city},
+                            )
 
                 aggregator.log_summary()
 
         except Exception as e:
-            logger.error("Failed to fetch new ads", exc_info=True, extra={'error_type': type(e).__name__})
+            logger.error(
+                "Failed to fetch new ads",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             raise
 
 
@@ -198,43 +225,61 @@ def _scrape_ads_for_city(geo_id: int) -> int:
     Scrapes ads for a given city (geo_id) and returns the count of processed ads
     """
     total_processed = 0
-    property_types = {'apartment': 2}
+    property_types = {"apartment": 2}
     cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=5)
 
     with log_context(logger, geo_id=geo_id, operation="scrape_city"):
         for property_type, section_id in property_types.items():
             page = 1
 
-            with log_context(logger, property_type=property_type, section_id=section_id):
-                aggregator = LogAggregator(logger, f"scrape_city_{geo_id}_{property_type}")
+            with log_context(
+                logger, property_type=property_type, section_id=section_id
+            ):
+                aggregator = LogAggregator(
+                    logger, f"scrape_city_{geo_id}_{property_type}"
+                )
 
                 while True:
                     try:
                         ads = _scrape_ads_from_page(geo_id, section_id, page)
                         if not ads:
-                            logger.debug(f"No more ads on page {page}", extra={'page': page, 'geo_id': geo_id})
+                            logger.debug(
+                                f"No more ads on page {page}",
+                                extra={"page": page, "geo_id": geo_id},
+                            )
                             break
 
                         found_new = False
                         for ad in ads:
-                            inserted_id = _insert_ad_if_new(ad, geo_id, property_type, cutoff_time)
+                            inserted_id = _insert_ad_if_new(
+                                ad, geo_id, property_type, cutoff_time
+                            )
                             if inserted_id:
                                 found_new = True
                                 total_processed += 1
-                                aggregator.add_item({'ad_id': inserted_id}, success=True)
+                                aggregator.add_item(
+                                    {"ad_id": inserted_id}, success=True
+                                )
 
                         if not found_new:
-                            logger.info(f"No new ads found on page {page}", extra={'page': page, 'geo_id': geo_id})
+                            logger.info(
+                                f"No new ads found on page {page}",
+                                extra={"page": page, "geo_id": geo_id},
+                            )
                             break
                         page += 1
 
                     except Exception as e:
-                        logger.error(f"Error scraping page {page}", exc_info=True, extra={
-                            'page': page,
-                            'geo_id': geo_id,
-                            'property_type': property_type,
-                            'error_type': type(e).__name__
-                        })
+                        logger.error(
+                            f"Error scraping page {page}",
+                            exc_info=True,
+                            extra={
+                                "page": page,
+                                "geo_id": geo_id,
+                                "property_type": property_type,
+                                "error_type": type(e).__name__,
+                            },
+                        )
                         break
 
                 aggregator.log_summary()
@@ -258,55 +303,55 @@ def _scrape_ads_from_page(geo_id: int, section_id: int, page: int) -> list:
         "page": page,
         "price_sqm_currency": "UAH",
         "section_id": section_id,
-        "sort": "insert_time"
+        "sort": "insert_time",
     }
 
     with log_context(logger, geo_id=geo_id, section_id=section_id, page=page):
         try:
-            logger.debug(f"Scraping page from Flatfy API", extra={
-                'url': base_url,
-                'params': params
-            })
+            logger.debug(
+                "Scraping page from Flatfy API",
+                extra={"url": base_url, "params": params},
+            )
 
             response = make_request(
-                url=base_url,
-                method='get',
-                params=params,
-                timeout=15,
-                retries=5
+                url=base_url, method="get", params=params, timeout=15, retries=5
             )
 
             if not response:
-                logger.warning("No response from Flatfy API", extra={
-                    'geo_id': geo_id,
-                    'section_id': section_id,
-                    'page': page
-                })
+                logger.warning(
+                    "No response from Flatfy API",
+                    extra={"geo_id": geo_id, "section_id": section_id, "page": page},
+                )
                 return []
 
             data = response.json()
             ads = data.get("data", [])
 
-            logger.info(f"Successfully scraped page", extra={
-                'ads_count': len(ads),
-                'geo_id': geo_id,
-                'page': page
-            })
+            logger.info(
+                "Successfully scraped page",
+                extra={"ads_count": len(ads), "geo_id": geo_id, "page": page},
+            )
 
             return ads
 
         except Exception as e:
-            logger.error(f"Failed to scrape page", exc_info=True, extra={
-                'geo_id': geo_id,
-                'section_id': section_id,
-                'page': page,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Failed to scrape page",
+                exc_info=True,
+                extra={
+                    "geo_id": geo_id,
+                    "section_id": section_id,
+                    "page": page,
+                    "error_type": type(e).__name__,
+                },
+            )
             return []
 
 
 @log_operation("insert_ad_if_new")
-def _insert_ad_if_new(ad_data: dict, geo_id: int, property_type: str, cutoff_time: datetime) -> int:
+def _insert_ad_if_new(
+    ad_data: dict, geo_id: int, property_type: str, cutoff_time: datetime
+) -> int:
     """
     Checks if an ad is new and inserts it into the database.
     """
@@ -316,7 +361,7 @@ def _insert_ad_if_new(ad_data: dict, geo_id: int, property_type: str, cutoff_tim
 
         with log_context(logger, ad_id=ad_unique_id, geo_id=geo_id):
             if not ad_unique_id:
-                logger.warning("Ad missing ID, skipping", extra={'ad_data': ad_data})
+                logger.warning("Ad missing ID, skipping", extra={"ad_data": ad_data})
                 return None
 
             # Check recency
@@ -326,33 +371,42 @@ def _insert_ad_if_new(ad_data: dict, geo_id: int, property_type: str, cutoff_tim
                     last_update_time = datetime.fromisoformat(last_update_time_str)
 
                     if last_update_time < cutoff_time:
-                        logger.debug(f"Ad too old, skipping", extra={
-                            'ad_id': ad_unique_id,
-                            'update_time': last_update_time_str,
-                            'cutoff_time': cutoff_time.isoformat()
-                        })
+                        logger.debug(
+                            "Ad too old, skipping",
+                            extra={
+                                "ad_id": ad_unique_id,
+                                "update_time": last_update_time_str,
+                                "cutoff_time": cutoff_time.isoformat(),
+                            },
+                        )
                         return None
 
                 except ValueError as e:
-                    logger.warning(f"Invalid date format in ad data", extra={
-                        'ad_id': ad_unique_id,
-                        'date_str': last_update_time_str,
-                        'error': str(e)
-                    })
+                    logger.warning(
+                        "Invalid date format in ad data",
+                        extra={
+                            "ad_id": ad_unique_id,
+                            "date_str": last_update_time_str,
+                            "error": str(e),
+                        },
+                    )
                     return None
 
             # Check if the ad already exists
             existing_ad = AdRepository.get_by_external_id(db, ad_unique_id)
             if existing_ad:
-                logger.debug(f"Ad already exists", extra={'ad_id': ad_unique_id})
+                logger.debug("Ad already exists", extra={"ad_id": ad_unique_id})
                 return None
 
             # Insert new ad
-            logger.info(f"Inserting new ad", extra={
-                'ad_id': ad_unique_id,
-                'property_type': property_type,
-                'geo_id': geo_id
-            })
+            logger.info(
+                "Inserting new ad",
+                extra={
+                    "ad_id": ad_unique_id,
+                    "property_type": property_type,
+                    "geo_id": geo_id,
+                },
+            )
 
             return process_and_insert_ad(ad_data, property_type, geo_id)
 
@@ -362,10 +416,12 @@ def _insert_ad_if_new(ad_data: dict, geo_id: int, property_type: str, cutoff_tim
 def handle_new_records(ad_ids: list) -> None:
     """Handler for newly inserted ad IDs."""
     with log_context(logger, ad_ids_count=len(ad_ids)):
-        logger.info(f"Processing new ad records", extra={'ad_ids': ad_ids[:10]})  # Log first 10 IDs
+        logger.info(
+            "Processing new ad records", extra={"ad_ids": ad_ids[:10]}
+        )  # Log first 10 IDs
 
         if not ad_ids:
-            logger.info("No ad IDs to process", extra={'action': 'skip'})
+            logger.info("No ad IDs to process", extra={"action": "skip"})
             return
 
         try:
@@ -378,30 +434,39 @@ def handle_new_records(ad_ids: list) -> None:
                         if ad:
                             new_ads.append(ad)
                         else:
-                            logger.warning(f"Ad not found in database", extra={'ad_id': ad_id})
+                            logger.warning(
+                                "Ad not found in database", extra={"ad_id": ad_id}
+                            )
                     except Exception as e:
-                        logger.error(f"Error fetching ad data", exc_info=True, extra={
-                            'ad_id': ad_id,
-                            'error_type': type(e).__name__
-                        })
+                        logger.error(
+                            "Error fetching ad data",
+                            exc_info=True,
+                            extra={"ad_id": ad_id, "error_type": type(e).__name__},
+                        )
 
                 if not new_ads:
-                    logger.info("No valid ads found", extra={'ad_ids': ad_ids})
+                    logger.info("No valid ads found", extra={"ad_ids": ad_ids})
                     return
 
                 # Dispatch to notifier service
-                celery_app.send_task("notifier_service.app.tasks.sort_and_notify_new_ads", args=[new_ads])
+                celery_app.send_task(
+                    "notifier_service.app.tasks.sort_and_notify_new_ads", args=[new_ads]
+                )
 
-                logger.info("Dispatched ads to notifier", extra={
-                    'ads_count': len(new_ads),
-                    'task': 'sort_and_notify_new_ads'
-                })
+                logger.info(
+                    "Dispatched ads to notifier",
+                    extra={
+                        "ads_count": len(new_ads),
+                        "task": "sort_and_notify_new_ads",
+                    },
+                )
 
         except Exception as e:
-            logger.error(f"Error handling new records", exc_info=True, extra={
-                'ad_ids_count': len(ad_ids),
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error handling new records",
+                exc_info=True,
+                extra={"ad_ids_count": len(ad_ids), "error_type": type(e).__name__},
+            )
 
 
 @log_operation("check_initial_load")
@@ -410,13 +475,15 @@ def is_initial_load_done() -> bool:
     try:
         with db_session() as db:
             count = db.query(func.count(Ad.id)).scalar()
-            logger.info(f"Checking initial load status", extra={'ad_count': count})
+            logger.info("Checking initial load status", extra={"ad_count": count})
             return count > 0
 
     except Exception as e:
-        logger.error(f"Error checking initial load status", exc_info=True, extra={
-            'error_type': type(e).__name__
-        })
+        logger.error(
+            "Error checking initial load status",
+            exc_info=True,
+            extra={"error_type": type(e).__name__},
+        )
         return False  # Safer to return False if we can't determine
 
 
@@ -424,12 +491,12 @@ def is_initial_load_done() -> bool:
 @log_operation("initial_30_day_scrape")
 def initial_30_day_scrape() -> None:
     if is_initial_load_done():
-        logger.info("Initial load already completed", extra={'action': 'skip'})
+        logger.info("Initial load already completed", extra={"action": "skip"})
         return
 
     with redis_lock("initial_scrape", expire_time=3600) as (acquired, lock_id):
         if not acquired:
-            logger.info("Initial scrape already in progress", extra={'action': 'skip'})
+            logger.info("Initial scrape already in progress", extra={"action": "skip"})
             return
 
         with log_context(logger, lock_id=lock_id, operation="initial_scrape"):
@@ -438,18 +505,29 @@ def initial_30_day_scrape() -> None:
             for city_id, city_name in GEO_ID_MAPPING_FOR_INITIAL_RUN.items():
                 with log_context(logger, city_id=city_id, city_name=city_name):
                     try:
-                        logger.info(f"Starting scrape for city", extra={'city_id': city_id, 'city_name': city_name})
+                        logger.info(
+                            "Starting scrape for city",
+                            extra={"city_id": city_id, "city_name": city_name},
+                        )
                         ads_count = scrape_30_days_for_city(city_id)
                         aggregator.add_item(
-                            {'city_id': city_id, 'city_name': city_name, 'ads_count': ads_count}
+                            {
+                                "city_id": city_id,
+                                "city_name": city_name,
+                                "ads_count": ads_count,
+                            }
                         )
                     except Exception as e:
-                        aggregator.add_error(str(e), {'city_id': city_id})
-                        logger.error(f"Failed to scrape city", exc_info=True, extra={
-                            'city_id': city_id,
-                            'city_name': city_name,
-                            'error_type': type(e).__name__
-                        })
+                        aggregator.add_error(str(e), {"city_id": city_id})
+                        logger.error(
+                            "Failed to scrape city",
+                            exc_info=True,
+                            extra={
+                                "city_id": city_id,
+                                "city_name": city_name,
+                                "error_type": type(e).__name__,
+                            },
+                        )
 
             aggregator.log_summary()
 
@@ -460,7 +538,7 @@ def scrape_30_days_for_city(geo_id: int) -> int:
     Scrapes ads for the past 30 days for a given city.
     """
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
-    property_types = {'apartment': 2}  # Extend as needed.
+    property_types = {"apartment": 2}  # Extend as needed.
     total_ads_processed = 0
 
     with log_context(logger, geo_id=geo_id, cutoff_date=cutoff_date.isoformat()):
@@ -468,22 +546,30 @@ def scrape_30_days_for_city(geo_id: int) -> int:
             page_number = 1
             ads_qty = 0
 
-            with log_context(logger, property_type=property_type, section_id=section_id):
-                aggregator = LogAggregator(logger, f"scrape_30_days_{geo_id}_{property_type}")
+            with log_context(
+                logger, property_type=property_type, section_id=section_id
+            ):
+                aggregator = LogAggregator(
+                    logger, f"scrape_30_days_{geo_id}_{property_type}"
+                )
 
                 while True:
                     if ads_qty > 10:
-                        logger.info(f"Reached ad limit for initial scrape", extra={
-                            'ads_qty': ads_qty,
-                            'limit': 10
-                        })
+                        logger.info(
+                            "Reached ad limit for initial scrape",
+                            extra={"ads_qty": ads_qty, "limit": 10},
+                        )
                         break
 
                     try:
-                        data = fetch_ads_flatfy(geo_id=geo_id, page=page_number, section_id=section_id)
+                        data = fetch_ads_flatfy(
+                            geo_id=geo_id, page=page_number, section_id=section_id
+                        )
 
                         if not data:
-                            logger.info(f"No more data on page", extra={'page': page_number})
+                            logger.info(
+                                "No more data on page", extra={"page": page_number}
+                            )
                             break
 
                         any_newer = False
@@ -495,34 +581,46 @@ def scrape_30_days_for_city(geo_id: int) -> int:
                                     ads_qty += 1
                                     insert_ad(ad, property_type, geo_id)
                                     any_newer = True
-                                    aggregator.add_item({'ad_id': ad.get('id')}, success=True)
+                                    aggregator.add_item(
+                                        {"ad_id": ad.get("id")}, success=True
+                                    )
                                 else:
-                                    logger.debug(f"Ad older than cutoff", extra={
-                                        'ad_id': ad.get('id'),
-                                        'ad_time': ad_time.isoformat(),
-                                        'cutoff': cutoff_date.isoformat()
-                                    })
+                                    logger.debug(
+                                        "Ad older than cutoff",
+                                        extra={
+                                            "ad_id": ad.get("id"),
+                                            "ad_time": ad_time.isoformat(),
+                                            "cutoff": cutoff_date.isoformat(),
+                                        },
+                                    )
                                     any_newer = False
                                     break
 
                             except Exception as e:
-                                logger.error(f"Error processing ad", exc_info=True, extra={
-                                    'ad_id': ad.get('id'),
-                                    'error_type': type(e).__name__
-                                })
-                                aggregator.add_error(str(e), {'ad_id': ad.get('id')})
+                                logger.error(
+                                    "Error processing ad",
+                                    exc_info=True,
+                                    extra={
+                                        "ad_id": ad.get("id"),
+                                        "error_type": type(e).__name__,
+                                    },
+                                )
+                                aggregator.add_error(str(e), {"ad_id": ad.get("id")})
 
                         if not any_newer:
-                            logger.info(f"No newer ads found", extra={'page': page_number})
+                            logger.info(
+                                "No newer ads found", extra={"page": page_number}
+                            )
                             break
 
                         page_number += 1
 
                     except Exception as e:
-                        logger.error(f"Error fetching page", exc_info=True, extra={
-                            'page': page_number,
-                            'error_type': type(e).__name__
-                        })
+                        logger.error(
+                            "Error fetching page",
+                            exc_info=True,
+                            extra={"page": page_number, "error_type": type(e).__name__},
+                        )
                         break
 
                 aggregator.log_summary()
@@ -537,17 +635,20 @@ def parse_date(date_str: str) -> datetime:
     Parses an ISO-format date string into a timezone-aware datetime object.
     """
     try:
-        parsed_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S+00:00").replace(tzinfo=timezone.utc)
-        logger.debug(f"Successfully parsed date", extra={
-            'input': date_str,
-            'output': parsed_date.isoformat()
-        })
+        parsed_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S+00:00").replace(
+            tzinfo=timezone.utc
+        )
+        logger.debug(
+            "Successfully parsed date",
+            extra={"input": date_str, "output": parsed_date.isoformat()},
+        )
         return parsed_date
     except ValueError as e:
-        logger.error(f"Failed to parse date", exc_info=True, extra={
-            'date_str': date_str,
-            'error': str(e)
-        })
+        logger.error(
+            "Failed to parse date",
+            exc_info=True,
+            extra={"date_str": date_str, "error": str(e)},
+        )
         raise
 
 
@@ -558,34 +659,40 @@ def insert_ad(ad_data: dict, property_type: str, geo_id: int) -> int:
     """
     ad_unique_id = ad_data.get("id")
 
-    with log_context(logger, ad_id=ad_unique_id, property_type=property_type, geo_id=geo_id):
+    with log_context(
+        logger, ad_id=ad_unique_id, property_type=property_type, geo_id=geo_id
+    ):
         if not ad_unique_id:
-            logger.warning("Ad missing ID, cannot insert", extra={'ad_data': ad_data})
+            logger.warning("Ad missing ID, cannot insert", extra={"ad_data": ad_data})
             return None
 
         # Use the unified ad insertion function
-        logger.info("Inserting ad into database", extra={
-            'ad_id': ad_unique_id,
-            'property_type': property_type,
-            'geo_id': geo_id
-        })
+        logger.info(
+            "Inserting ad into database",
+            extra={
+                "ad_id": ad_unique_id,
+                "property_type": property_type,
+                "geo_id": geo_id,
+            },
+        )
 
         try:
             result = process_and_insert_ad(ad_data, property_type, geo_id)
 
             if result:
-                logger.info(f"Successfully inserted ad", extra={
-                    'ad_id': ad_unique_id,
-                    'db_id': result
-                })
+                logger.info(
+                    "Successfully inserted ad",
+                    extra={"ad_id": ad_unique_id, "db_id": result},
+                )
             else:
-                logger.warning(f"Failed to insert ad", extra={'ad_id': ad_unique_id})
+                logger.warning("Failed to insert ad", extra={"ad_id": ad_unique_id})
 
             return result
 
         except Exception as e:
-            logger.error(f"Error inserting ad", exc_info=True, extra={
-                'ad_id': ad_unique_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error inserting ad",
+                exc_info=True,
+                extra={"ad_id": ad_unique_id, "error_type": type(e).__name__},
+            )
             return None

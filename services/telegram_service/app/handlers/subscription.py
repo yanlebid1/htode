@@ -40,91 +40,101 @@ TRIGGER_MSG_MAP = {}
 async def handle_sub_open(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
 
-    with log_context(logger, telegram_id=telegram_id, callback_data=callback_query.data):
+    with log_context(
+        logger, telegram_id=telegram_id, callback_data=callback_query.data
+    ):
         _, sub_id_str, page_str = callback_query.data.split(":")
         sub_id = int(sub_id_str)
         page = int(page_str)
 
-        logger.info("Opening subscription details", extra={
-            "telegram_id": telegram_id,
-            "sub_id": sub_id,
-            "page": page
-        })
+        logger.info(
+            "Opening subscription details",
+            extra={"telegram_id": telegram_id, "sub_id": sub_id, "page": page},
+        )
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(telegram_id), "telegram")
             if not user:
-                logger.warning("User not found", extra={
-                    "telegram_id": telegram_id
-                })
+                logger.warning("User not found", extra={"telegram_id": telegram_id})
                 await callback_query.answer("Користувач не знайдений.")
                 return
 
             db_user_id = user.id
 
             # Get subscription details
-            sub = db.query(UserFilter).filter(
-                UserFilter.id == sub_id,
-                UserFilter.user_id == db_user_id
-            ).first()
+            sub = (
+                db.query(UserFilter)
+                .filter(UserFilter.id == sub_id, UserFilter.user_id == db_user_id)
+                .first()
+            )
 
             if not sub:
-                logger.warning("Subscription not found", extra={
-                    "telegram_id": telegram_id,
-                    "sub_id": sub_id,
-                    "db_user_id": db_user_id
-                })
+                logger.warning(
+                    "Subscription not found",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "sub_id": sub_id,
+                        "db_user_id": db_user_id,
+                    },
+                )
                 await callback_query.answer("Підписка не знайдена.")
                 return
 
             # Convert to dict for consistency with rest of function
             sub_dict = {
-                'id': sub.id,
-                'user_id': sub.user_id,
-                'property_type': sub.property_type,
-                'city': sub.city,
-                'rooms_count': sub.rooms_count,
-                'price_min': sub.price_min,
-                'price_max': sub.price_max,
-                'is_paused': sub.is_paused
+                "id": sub.id,
+                "user_id": sub.user_id,
+                "property_type": sub.property_type,
+                "city": sub.city,
+                "rooms_count": sub.rooms_count,
+                "price_min": sub.price_min,
+                "price_max": sub.price_max,
+                "is_paused": sub.is_paused,
             }
 
-            logger.info("Subscription details retrieved", extra={
-                "telegram_id": telegram_id,
-                "sub_id": sub_id,
-                "db_user_id": db_user_id,
-                "is_paused": sub_dict['is_paused'],
-                "sub_data": sub_dict  # Log the full subscription data for debugging
-            })
+            logger.info(
+                "Subscription details retrieved",
+                extra={
+                    "telegram_id": telegram_id,
+                    "sub_id": sub_id,
+                    "db_user_id": db_user_id,
+                    "is_paused": sub_dict["is_paused"],
+                    "sub_data": sub_dict,  # Log the full subscription data for debugging
+                },
+            )
 
             # Format the property type (apartment/house)
             mapping_property = {"apartment": "квартира", "house": "будинок"}
-            ua_lang_property_type = mapping_property.get(sub_dict['property_type'], "")
+            ua_lang_property_type = mapping_property.get(sub_dict["property_type"], "")
 
             # Handle city display - use a default if not found in mapping
-            city_code = sub_dict['city']
+            city_code = sub_dict["city"]
             city_name = GEO_ID_MAPPING.get(city_code, "Невідомо")
             if city_name is None:  # Explicitly check for None value
                 city_name = f"Невідомо ({city_code})" if city_code else "Невідомо"
 
             # Format rooms display
             rooms_display = "Не вказано"
-            if sub_dict['rooms_count']:
-                if isinstance(sub_dict['rooms_count'], list):
-                    rooms_list = [str(room) for room in sub_dict['rooms_count'] if room is not None]
+            if sub_dict["rooms_count"]:
+                if isinstance(sub_dict["rooms_count"], list):
+                    rooms_list = [
+                        str(room)
+                        for room in sub_dict["rooms_count"]
+                        if room is not None
+                    ]
                     if rooms_list:
                         rooms_display = ", ".join(rooms_list) + " кімн."
                 else:
                     rooms_display = f"{sub_dict['rooms_count']} кімн."
 
             # Format price display
-            price_min = sub_dict['price_min'] or "Не вказано"
-            price_max = sub_dict['price_max'] or "∞"
+            price_min = sub_dict["price_min"] or "Не вказано"
+            price_max = sub_dict["price_max"] or "∞"
             price_display = f"{price_min} - {price_max} грн."
 
             # Status display
-            active = '✅ Активна' if not sub_dict['is_paused'] else '⏸️ Зупинена'
+            active = "✅ Активна" if not sub_dict["is_paused"] else "⏸️ Зупинена"
 
             # Build text with all information
             text = (
@@ -139,13 +149,25 @@ async def handle_sub_open(callback_query: types.CallbackQuery):
             # Build an inline keyboard with Pause/Resume, Delete, Edit, Back
             kb = InlineKeyboardMarkup()
             if sub_dict["is_paused"]:
-                kb.add(InlineKeyboardButton("Відновити", callback_data=f"sub_resume:{sub_id}:{page}"))
+                kb.add(
+                    InlineKeyboardButton(
+                        "Відновити", callback_data=f"sub_resume:{sub_id}:{page}"
+                    )
+                )
             else:
-                kb.add(InlineKeyboardButton("Зупинити", callback_data=f"sub_pause:{sub_id}:{page}"))
+                kb.add(
+                    InlineKeyboardButton(
+                        "Зупинити", callback_data=f"sub_pause:{sub_id}:{page}"
+                    )
+                )
 
             kb.add(
-                InlineKeyboardButton("Видалити", callback_data=f"sub_delete:{sub_id}:{page}"),
-                InlineKeyboardButton("Редагувати", callback_data=f"sub_edit:{sub_id}:{page}"),
+                InlineKeyboardButton(
+                    "Видалити", callback_data=f"sub_delete:{sub_id}:{page}"
+                ),
+                InlineKeyboardButton(
+                    "Редагувати", callback_data=f"sub_edit:{sub_id}:{page}"
+                ),
             )
             # "Back to list"
             kb.add(InlineKeyboardButton("<< Назад", callback_data=f"subs_page:{page}"))
@@ -159,44 +181,50 @@ async def handle_sub_open(callback_query: types.CallbackQuery):
 async def handle_sub_pause(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
 
-    with log_context(logger, telegram_id=telegram_id, callback_data=callback_query.data):
+    with log_context(
+        logger, telegram_id=telegram_id, callback_data=callback_query.data
+    ):
         _, sub_id_str, page_str = callback_query.data.split(":")
         sub_id = int(sub_id_str)
         page = int(page_str)
 
-        logger.info("Pausing subscription", extra={
-            "telegram_id": telegram_id,
-            "sub_id": sub_id,
-            "page": page
-        })
+        logger.info(
+            "Pausing subscription",
+            extra={"telegram_id": telegram_id, "sub_id": sub_id, "page": page},
+        )
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(telegram_id), "telegram")
             if not user:
-                logger.warning("User not found for pause operation", extra={
-                    "telegram_id": telegram_id
-                })
+                logger.warning(
+                    "User not found for pause operation",
+                    extra={"telegram_id": telegram_id},
+                )
                 await callback_query.answer("Користувач не знайдений.")
                 return
 
             db_user_id = user.id
 
             # Update subscription
-            subscription = db.query(UserFilter).filter(
-                UserFilter.id == sub_id,
-                UserFilter.user_id == db_user_id
-            ).first()
+            subscription = (
+                db.query(UserFilter)
+                .filter(UserFilter.id == sub_id, UserFilter.user_id == db_user_id)
+                .first()
+            )
 
             if subscription:
                 subscription.is_paused = True
                 db.commit()
 
-                logger.info("Subscription paused successfully", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "sub_id": sub_id
-                })
+                logger.info(
+                    "Subscription paused successfully",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "sub_id": sub_id,
+                    },
+                )
 
                 # Invalidate cache using cache managers
                 SubscriptionCacheManager.invalidate_all(db_user_id, sub_id)
@@ -204,11 +232,14 @@ async def handle_sub_pause(callback_query: types.CallbackQuery):
 
                 await callback_query.answer("Підписку призупинено.")
             else:
-                logger.warning("Subscription not found for pause", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "sub_id": sub_id
-                })
+                logger.warning(
+                    "Subscription not found for pause",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "sub_id": sub_id,
+                    },
+                )
                 await callback_query.answer("Підписка не знайдена.")
                 return
 
@@ -221,37 +252,44 @@ async def handle_sub_pause(callback_query: types.CallbackQuery):
 async def handle_sub_resume(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
 
-    with log_context(logger, telegram_id=telegram_id, callback_data=callback_query.data):
+    with log_context(
+        logger, telegram_id=telegram_id, callback_data=callback_query.data
+    ):
         _, sub_id_str, page_str = callback_query.data.split(":")
         sub_id = int(sub_id_str)
         page = int(page_str)
 
-        logger.info("Resuming subscription", extra={
-            "telegram_id": telegram_id,
-            "sub_id": sub_id,
-            "page": page
-        })
+        logger.info(
+            "Resuming subscription",
+            extra={"telegram_id": telegram_id, "sub_id": sub_id, "page": page},
+        )
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(telegram_id), "telegram")
             if not user:
-                logger.warning("User not found for resume operation", extra={
-                    "telegram_id": telegram_id
-                })
+                logger.warning(
+                    "User not found for resume operation",
+                    extra={"telegram_id": telegram_id},
+                )
                 await callback_query.answer("Користувач не знайдений.")
                 return
 
             db_user_id = user.id
 
             # Use repository method
-            success = SubscriptionRepository.enable_subscription_by_id(db, sub_id, db_user_id)
+            success = SubscriptionRepository.enable_subscription_by_id(
+                db, sub_id, db_user_id
+            )
             if success:
-                logger.info("Subscription resumed successfully", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "sub_id": sub_id
-                })
+                logger.info(
+                    "Subscription resumed successfully",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "sub_id": sub_id,
+                    },
+                )
 
                 # Invalidate cache using cache managers
                 SubscriptionCacheManager.invalidate_all(db_user_id, sub_id)
@@ -259,11 +297,14 @@ async def handle_sub_resume(callback_query: types.CallbackQuery):
 
                 await callback_query.answer("Підписку поновлено.")
             else:
-                logger.warning("Subscription not found for resume", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "sub_id": sub_id
-                })
+                logger.warning(
+                    "Subscription not found for resume",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "sub_id": sub_id,
+                    },
+                )
                 await callback_query.answer("Підписка не знайдена.")
                 return
 
@@ -276,24 +317,26 @@ async def handle_sub_resume(callback_query: types.CallbackQuery):
 async def handle_sub_delete(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
 
-    with log_context(logger, telegram_id=telegram_id, callback_data=callback_query.data):
+    with log_context(
+        logger, telegram_id=telegram_id, callback_data=callback_query.data
+    ):
         _, sub_id_str, page_str = callback_query.data.split(":")
         sub_id = int(sub_id_str)
         page = int(page_str)
 
-        logger.info("Deleting subscription", extra={
-            "telegram_id": telegram_id,
-            "sub_id": sub_id,
-            "page": page
-        })
+        logger.info(
+            "Deleting subscription",
+            extra={"telegram_id": telegram_id, "sub_id": sub_id, "page": page},
+        )
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(telegram_id), "telegram")
             if not user:
-                logger.warning("User not found for delete operation", extra={
-                    "telegram_id": telegram_id
-                })
+                logger.warning(
+                    "User not found for delete operation",
+                    extra={"telegram_id": telegram_id},
+                )
                 await callback_query.answer("Користувач не знайдений.")
                 return
 
@@ -303,11 +346,14 @@ async def handle_sub_delete(callback_query: types.CallbackQuery):
             success = SubscriptionRepository.remove_subscription(db, sub_id, db_user_id)
 
             if success:
-                logger.info("Subscription deleted successfully", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "sub_id": sub_id
-                })
+                logger.info(
+                    "Subscription deleted successfully",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "sub_id": sub_id,
+                    },
+                )
 
                 # Invalidate caches using cache managers
                 SubscriptionCacheManager.invalidate_all(db_user_id, sub_id)
@@ -315,11 +361,14 @@ async def handle_sub_delete(callback_query: types.CallbackQuery):
 
                 await callback_query.answer("Підписку видалено.")
             else:
-                logger.warning("Subscription not found for delete", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "sub_id": sub_id
-                })
+                logger.warning(
+                    "Subscription not found for delete",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "sub_id": sub_id,
+                    },
+                )
                 await callback_query.answer("Підписка не знайдена.")
                 return
 
@@ -332,16 +381,17 @@ async def handle_sub_delete(callback_query: types.CallbackQuery):
 async def handle_sub_edit(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id
 
-    with log_context(logger, telegram_id=telegram_id, callback_data=callback_query.data):
+    with log_context(
+        logger, telegram_id=telegram_id, callback_data=callback_query.data
+    ):
         _, sub_id_str, page_str = callback_query.data.split(":")
         sub_id = int(sub_id_str)
         page = int(page_str)
 
-        logger.info("Edit subscription requested", extra={
-            "telegram_id": telegram_id,
-            "sub_id": sub_id,
-            "page": page
-        })
+        logger.info(
+            "Edit subscription requested",
+            extra={"telegram_id": telegram_id, "sub_id": sub_id, "page": page},
+        )
 
         # Retrieve the subscription details so we can pre-load the edit flow
         with db_session() as db:
@@ -353,7 +403,11 @@ async def handle_sub_edit(callback_query: types.CallbackQuery, state: FSMContext
             db_user_id = user.id
 
             # Fetch the exact filter by ID
-            sub: UserFilter = db.query(UserFilter).filter(UserFilter.id == sub_id, UserFilter.user_id == db_user_id).first()
+            sub: UserFilter = (
+                db.query(UserFilter)
+                .filter(UserFilter.id == sub_id, UserFilter.user_id == db_user_id)
+                .first()
+            )
 
             if not sub:
                 await callback_query.answer("Підписка не знайдена.")
@@ -385,14 +439,14 @@ async def handle_sub_edit(callback_query: types.CallbackQuery, state: FSMContext
             rooms=rooms_list,
             price_min=price_min_val,
             price_max=price_max_val,
-            current_edit=None
+            current_edit=None,
         )
 
         # Show edit parameters keyboard similar to creation flow
         await safe_send_message(
             chat_id=telegram_id,
             text="Оберіть параметр для редагування:",
-            reply_markup=edit_parameters_keyboard()
+            reply_markup=edit_parameters_keyboard(),
         )
 
         # Set state so that existing edit handlers continue the flow
@@ -406,22 +460,24 @@ async def handle_sub_edit(callback_query: types.CallbackQuery, state: FSMContext
 async def handle_subs_page(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
 
-    with log_context(logger, telegram_id=telegram_id, callback_data=callback_query.data):
+    with log_context(
+        logger, telegram_id=telegram_id, callback_data=callback_query.data
+    ):
         _, page_str = callback_query.data.split(":")
         page = int(page_str)
 
-        logger.info("Showing subscriptions page", extra={
-            "telegram_id": telegram_id,
-            "page": page
-        })
+        logger.info(
+            "Showing subscriptions page",
+            extra={"telegram_id": telegram_id, "page": page},
+        )
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(telegram_id), "telegram")
             if not user:
-                logger.warning("User not found for page view", extra={
-                    "telegram_id": telegram_id
-                })
+                logger.warning(
+                    "User not found for page view", extra={"telegram_id": telegram_id}
+                )
                 await callback_query.answer("Користувач не знайдений.")
                 return
 
@@ -430,34 +486,47 @@ async def handle_subs_page(callback_query: types.CallbackQuery):
             # Get subscription count and paginated list
             total = SubscriptionRepository.count_subscriptions(db, db_user_id)
 
-            logger.info("Retrieving subscriptions", extra={
-                "telegram_id": telegram_id,
-                "db_user_id": db_user_id,
-                "total_subscriptions": total,
-                "page": page
-            })
+            logger.info(
+                "Retrieving subscriptions",
+                extra={
+                    "telegram_id": telegram_id,
+                    "db_user_id": db_user_id,
+                    "total_subscriptions": total,
+                    "page": page,
+                },
+            )
 
             # Try to get subscriptions from the cache first
-            cache_key = get_entity_cache_key("user_subscriptions_paginated", db_user_id, f"{page}:5")
+            cache_key = get_entity_cache_key(
+                "user_subscriptions_paginated", db_user_id, f"{page}:5"
+            )
             cached_subs = SubscriptionCacheManager.get(cache_key)
 
             if cached_subs:
                 subs = cached_subs
-                logger.info("Subscriptions retrieved from cache", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "page": page,
-                    "count": len(subs)
-                })
+                logger.info(
+                    "Subscriptions retrieved from cache",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "page": page,
+                        "count": len(subs),
+                    },
+                )
             else:
                 # Not in cache, get from a database
-                subs = SubscriptionRepository.list_subscriptions_paginated(db, db_user_id, page)
-                logger.info("Subscriptions retrieved from database", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "page": page,
-                    "count": len(subs)
-                })
+                subs = SubscriptionRepository.list_subscriptions_paginated(
+                    db, db_user_id, page
+                )
+                logger.info(
+                    "Subscriptions retrieved from database",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "page": page,
+                        "count": len(subs),
+                    },
+                )
 
         # Store user's trigger message id
         TRIGGER_MSG_MAP[telegram_id] = callback_query.message.message_id
@@ -474,18 +543,19 @@ async def show_subscriptions_menu(message: types.Message):
     telegram_id = message.from_user.id
 
     with log_context(logger, telegram_id=telegram_id):
-        logger.info("User requested subscriptions menu", extra={
-            "telegram_id": telegram_id,
-            "message_text": message.text
-        })
+        logger.info(
+            "User requested subscriptions menu",
+            extra={"telegram_id": telegram_id, "message_text": message.text},
+        )
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(telegram_id), "telegram")
             if not user:
-                logger.warning("User not found for subscriptions menu", extra={
-                    "telegram_id": telegram_id
-                })
+                logger.warning(
+                    "User not found for subscriptions menu",
+                    extra={"telegram_id": telegram_id},
+                )
                 await message.answer("Користувач не знайдений.")
                 return
 
@@ -494,17 +564,20 @@ async def show_subscriptions_menu(message: types.Message):
             # Get subscription count and first page
             total = SubscriptionRepository.count_subscriptions(db, db_user_id)
 
-            logger.info("Subscription count retrieved", extra={
-                "telegram_id": telegram_id,
-                "db_user_id": db_user_id,
-                "total_subscriptions": total
-            })
+            logger.info(
+                "Subscription count retrieved",
+                extra={
+                    "telegram_id": telegram_id,
+                    "db_user_id": db_user_id,
+                    "total_subscriptions": total,
+                },
+            )
 
         if total == 0:
-            logger.info("No subscriptions found", extra={
-                "telegram_id": telegram_id,
-                "db_user_id": db_user_id
-            })
+            logger.info(
+                "No subscriptions found",
+                extra={"telegram_id": telegram_id, "db_user_id": db_user_id},
+            )
 
             page = 0
             subs = []
@@ -516,24 +589,34 @@ async def show_subscriptions_menu(message: types.Message):
             page = 0
 
             # Try to get from the cache first
-            cache_key = get_entity_cache_key("user_subscriptions_paginated", db_user_id, f"{page}:5")
+            cache_key = get_entity_cache_key(
+                "user_subscriptions_paginated", db_user_id, f"{page}:5"
+            )
             cached_subs = SubscriptionCacheManager.get(cache_key)
 
             if cached_subs:
                 subs = cached_subs
-                logger.info("Initial subscriptions page from cache", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "count": len(subs)
-                })
+                logger.info(
+                    "Initial subscriptions page from cache",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "count": len(subs),
+                    },
+                )
             else:
                 # Not in cache, get from a database
-                subs = SubscriptionRepository.list_subscriptions_paginated(db, db_user_id, page)
-                logger.info("Initial subscriptions page from database", extra={
-                    "telegram_id": telegram_id,
-                    "db_user_id": db_user_id,
-                    "count": len(subs)
-                })
+                subs = SubscriptionRepository.list_subscriptions_paginated(
+                    db, db_user_id, page
+                )
+                logger.info(
+                    "Initial subscriptions page from database",
+                    extra={
+                        "telegram_id": telegram_id,
+                        "db_user_id": db_user_id,
+                        "count": len(subs),
+                    },
+                )
 
         # Store user's trigger message id
         TRIGGER_MSG_MAP[telegram_id] = message.message_id
@@ -543,74 +626,82 @@ async def show_subscriptions_menu(message: types.Message):
         await message.answer("Ваші підписки:", reply_markup=kb)
 
 
-@dp.callback_query_handler(lambda c: c.data == 'menu_my_subscription')
+@dp.callback_query_handler(lambda c: c.data == "menu_my_subscription")
 @log_operation("my_subscription_handler")
 async def my_subscription_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
 
     with log_context(logger, user_id=user_id):
-        logger.info("User clicked my subscription menu", extra={
-            "user_id": user_id
-        })
+        logger.info("User clicked my subscription menu", extra={"user_id": user_id})
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(user_id), "telegram")
             if not user:
-                logger.warning("User not found for subscription menu", extra={
-                    "user_id": user_id
-                })
+                logger.warning(
+                    "User not found for subscription menu", extra={"user_id": user_id}
+                )
                 await callback_query.answer("Користувач не знайдений.")
                 return
 
             db_user_id = user.id
 
             # Try to get subscription data from cache first
-            cached_subscription = SubscriptionCacheManager.get_user_subscriptions(db_user_id)
+            cached_subscription = SubscriptionCacheManager.get_user_subscriptions(
+                db_user_id
+            )
 
             if cached_subscription:
                 subscription_data = cached_subscription
-                logger.info("Subscription data retrieved from cache", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "Subscription data retrieved from cache",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
             else:
                 # Not in cache, get from database
-                subscription_data = SubscriptionRepository.get_subscription_data(db, db_user_id)
-                logger.info("Subscription data retrieved from database", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                subscription_data = SubscriptionRepository.get_subscription_data(
+                    db, db_user_id
+                )
+                logger.info(
+                    "Subscription data retrieved from database",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
 
             # Try to get subscription expiration date from cache
-            cache_key_sub_until = get_entity_cache_key("user_subscription", db_user_id, "free")
+            cache_key_sub_until = get_entity_cache_key(
+                "user_subscription", db_user_id, "free"
+            )
             cached_until = UserCacheManager.get(cache_key_sub_until)
 
             if cached_until:
                 subscription_until = cached_until
-                logger.info("Subscription expiration from cache", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "Subscription expiration from cache",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
             else:
                 # Not in cache, get from database
-                subscription_until = UserRepository.get_subscription_until(db, db_user_id)
-                logger.info("Subscription expiration from database", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                subscription_until = UserRepository.get_subscription_until(
+                    db, db_user_id
+                )
+                logger.info(
+                    "Subscription expiration from database",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
 
             if not subscription_data:
-                logger.info("No active subscription found", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "No active subscription found",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
                 await callback_query.message.answer("У вас немає активної підписки.")
                 return
 
-            city = GEO_ID_MAPPING.get(subscription_data['city'])
+            city = GEO_ID_MAPPING.get(subscription_data["city"])
             mapping_property = {"apartment": "Квартира", "house": "Будинок"}
-            ua_lang_property_type = mapping_property.get(subscription_data['property_type'], "")
+            ua_lang_property_type = mapping_property.get(
+                subscription_data["property_type"], ""
+            )
 
             text = f"""Деталі підписки:
          - 🏙️ Місто: {city}
@@ -623,27 +714,25 @@ async def my_subscription_handler(callback_query: types.CallbackQuery):
             await bot.send_message(
                 chat_id=callback_query.message.chat.id,
                 text=text,
-                reply_markup=subscription_menu_keyboard()
+                reply_markup=subscription_menu_keyboard(),
             )
 
 
-@dp.callback_query_handler(lambda c: c.data == 'subs_disable')
+@dp.callback_query_handler(lambda c: c.data == "subs_disable")
 @log_operation("disable_subscription_handler")
 async def disable_subscription_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
 
     with log_context(logger, user_id=user_id):
-        logger.info("Disabling subscription", extra={
-            "user_id": user_id
-        })
+        logger.info("Disabling subscription", extra={"user_id": user_id})
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(user_id), "telegram")
             if not user:
-                logger.warning("User not found for disable operation", extra={
-                    "user_id": user_id
-                })
+                logger.warning(
+                    "User not found for disable operation", extra={"user_id": user_id}
+                )
                 await callback_query.answer("Користувач не знайдений.")
                 return
 
@@ -653,10 +742,10 @@ async def disable_subscription_handler(callback_query: types.CallbackQuery):
             success = SubscriptionRepository.disable_subscription(db, db_user_id)
 
             if success:
-                logger.info("Subscription disabled successfully", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "Subscription disabled successfully",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
 
                 # Invalidate cache
                 SubscriptionCacheManager.invalidate_all(db_user_id)
@@ -664,33 +753,31 @@ async def disable_subscription_handler(callback_query: types.CallbackQuery):
                 await bot.send_message(
                     chat_id=callback_query.message.chat.id,
                     text="Ваша підписка відключена.",
-                    reply_markup=main_menu_keyboard()
+                    reply_markup=main_menu_keyboard(),
                 )
             else:
-                logger.warning("Subscription not found for disable", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.warning(
+                    "Subscription not found for disable",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
                 await callback_query.answer("Підписка не знайдена.")
 
 
-@dp.callback_query_handler(lambda c: c.data == 'subs_enable')
+@dp.callback_query_handler(lambda c: c.data == "subs_enable")
 @log_operation("enable_subscription_handler")
 async def enable_subscription_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
 
     with log_context(logger, user_id=user_id):
-        logger.info("Enabling subscription", extra={
-            "user_id": user_id
-        })
+        logger.info("Enabling subscription", extra={"user_id": user_id})
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(user_id), "telegram")
             if not user:
-                logger.warning("User not found for enable operation", extra={
-                    "user_id": user_id
-                })
+                logger.warning(
+                    "User not found for enable operation", extra={"user_id": user_id}
+                )
                 await callback_query.answer("Користувач не знайдений.")
                 return
 
@@ -700,10 +787,10 @@ async def enable_subscription_handler(callback_query: types.CallbackQuery):
             success = SubscriptionRepository.enable_subscription(db, db_user_id)
 
             if success:
-                logger.info("Subscription enabled successfully", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "Subscription enabled successfully",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
 
                 # Invalidate cache
                 SubscriptionCacheManager.invalidate_all(db_user_id)
@@ -711,13 +798,13 @@ async def enable_subscription_handler(callback_query: types.CallbackQuery):
                 await bot.send_message(
                     chat_id=callback_query.message.chat.id,
                     text="Ваша підписка включена.",
-                    reply_markup=main_menu_keyboard()
+                    reply_markup=main_menu_keyboard(),
                 )
             else:
-                logger.warning("Subscription not found for enable", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.warning(
+                    "Subscription not found for enable",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
                 await callback_query.answer("Підписка не знайдена.")
 
 
@@ -727,17 +814,17 @@ async def handle_disable_subscription(message: types.Message):
     user_id = message.from_user.id
 
     with log_context(logger, user_id=user_id):
-        logger.info("User requested to disable subscription", extra={
-            "user_id": user_id
-        })
+        logger.info(
+            "User requested to disable subscription", extra={"user_id": user_id}
+        )
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(user_id), "telegram")
             if not user:
-                logger.warning("User not found for disable request", extra={
-                    "user_id": user_id
-                })
+                logger.warning(
+                    "User not found for disable request", extra={"user_id": user_id}
+                )
                 await message.answer("Користувач не знайдений.")
                 return
 
@@ -747,23 +834,22 @@ async def handle_disable_subscription(message: types.Message):
             success = SubscriptionRepository.disable_subscription(db, db_user_id)
 
             if success:
-                logger.info("Subscription disabled via message", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "Subscription disabled via message",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
 
                 # Invalidate cache
                 SubscriptionCacheManager.invalidate_all(db_user_id)
 
                 await message.answer(
-                    "Ваша підписка відключена.",
-                    reply_markup=main_menu_keyboard()
+                    "Ваша підписка відключена.", reply_markup=main_menu_keyboard()
                 )
             else:
-                logger.warning("Subscription not found for disable via message", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.warning(
+                    "Subscription not found for disable via message",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
                 await message.answer("Підписка не знайдена.")
 
 
@@ -773,17 +859,15 @@ async def handle_enable_subscription(message: types.Message):
     user_id = message.from_user.id
 
     with log_context(logger, user_id=user_id):
-        logger.info("User requested to enable subscription", extra={
-            "user_id": user_id
-        })
+        logger.info("User requested to enable subscription", extra={"user_id": user_id})
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(user_id), "telegram")
             if not user:
-                logger.warning("User not found for enable request", extra={
-                    "user_id": user_id
-                })
+                logger.warning(
+                    "User not found for enable request", extra={"user_id": user_id}
+                )
                 await message.answer("Користувач не знайдений.")
                 return
 
@@ -793,23 +877,23 @@ async def handle_enable_subscription(message: types.Message):
             success = SubscriptionRepository.enable_subscription(db, db_user_id)
 
             if success:
-                logger.info("Subscription enabled via message", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "Subscription enabled via message",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
 
                 # Invalidate cache
                 SubscriptionCacheManager.invalidate_all(db_user_id)
 
                 await message.answer(
                     "Ваша підписка включена на безкоштовний період (або на платний, якщо ви вже оплачували).",
-                    reply_markup=main_menu_keyboard()
+                    reply_markup=main_menu_keyboard(),
                 )
             else:
-                logger.warning("Subscription not found for enable via message", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.warning(
+                    "Subscription not found for enable via message",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
                 await message.answer("Підписка не знайдена.")
 
 
@@ -822,81 +906,88 @@ async def handle_my_subscription(message: types.Message):
     user_id = message.from_user.id
 
     with log_context(logger, user_id=user_id):
-        logger.info("User requested subscription details", extra={
-            "user_id": user_id
-        })
+        logger.info("User requested subscription details", extra={"user_id": user_id})
 
         with db_session() as db:
             # Get database user ID
             user = UserRepository.get_by_messenger_id(db, str(user_id), "telegram")
             if not user:
-                logger.warning("User not found for subscription details", extra={
-                    "user_id": user_id
-                })
+                logger.warning(
+                    "User not found for subscription details",
+                    extra={"user_id": user_id},
+                )
                 await message.answer("Користувач не знайдений.")
                 return
 
             db_user_id = user.id
 
-            logger.info("Retrieved user info", extra={
-                "user_id": user_id,
-                "db_user_id": db_user_id
-            })
+            logger.info(
+                "Retrieved user info",
+                extra={"user_id": user_id, "db_user_id": db_user_id},
+            )
 
             # Try to get subscription data from cache first
             cached_data = SubscriptionCacheManager.get_user_subscriptions(db_user_id)
 
             if cached_data:
                 sub_data = cached_data
-                logger.info("Subscription data from cache", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "Subscription data from cache",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
             else:
                 # Not in cache, get from database
                 sub_data = SubscriptionRepository.get_subscription_data(db, db_user_id)
-                logger.info("Subscription data from database", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "Subscription data from database",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
 
             # Try to get subscription until date from cache
-            cache_key_until = get_entity_cache_key("user_subscription", db_user_id, "free")
+            cache_key_until = get_entity_cache_key(
+                "user_subscription", db_user_id, "free"
+            )
             subscription_until = UserCacheManager.get(cache_key_until)
 
             if not subscription_until:
                 # Try paid subscription if free is not available
-                cache_key_until = get_entity_cache_key("user_subscription", db_user_id, "paid")
+                cache_key_until = get_entity_cache_key(
+                    "user_subscription", db_user_id, "paid"
+                )
                 subscription_until = UserCacheManager.get(cache_key_until)
 
                 if not subscription_until:
                     # Not in cache, get from database
-                    subscription_until = UserRepository.get_subscription_until(db, db_user_id, free=True)
+                    subscription_until = UserRepository.get_subscription_until(
+                        db, db_user_id, free=True
+                    )
 
                     if not subscription_until:
-                        subscription_until = UserRepository.get_subscription_until(db, db_user_id, free=False)
-                    logger.info("Subscription expiration from database", extra={
-                        "user_id": user_id,
-                        "db_user_id": db_user_id
-                    })
+                        subscription_until = UserRepository.get_subscription_until(
+                            db, db_user_id, free=False
+                        )
+                    logger.info(
+                        "Subscription expiration from database",
+                        extra={"user_id": user_id, "db_user_id": db_user_id},
+                    )
 
             if not sub_data:
-                logger.info("No active subscription data", extra={
-                    "user_id": user_id,
-                    "db_user_id": db_user_id
-                })
+                logger.info(
+                    "No active subscription data",
+                    extra={"user_id": user_id, "db_user_id": db_user_id},
+                )
                 await message.answer("У вас немає активної підписки.")
                 return
 
-            city = GEO_ID_MAPPING.get(sub_data['city'])
+            city = GEO_ID_MAPPING.get(sub_data["city"])
             mapping_property = {"apartment": "Квартира", "house": "Будинок"}
-            ua_lang_property_type = mapping_property.get(sub_data['property_type'], "")
+            ua_lang_property_type = mapping_property.get(sub_data["property_type"], "")
 
-            rooms_list = sub_data['rooms_count']
+            rooms_list = sub_data["rooms_count"]
             rooms = []
             for el in rooms_list:
                 rooms.append(str(el))
-            rooms = '-'.join(rooms)
+            rooms = "-".join(rooms)
 
             text = (
                 f"Деталі підписки:\n"
@@ -907,10 +998,7 @@ async def handle_my_subscription(message: types.Message):
                 f"Підписка спливає {subscription_until}\n"
             )
 
-        await message.answer(
-            text,
-            reply_markup=subscription_menu_keyboard()
-        )
+        await message.answer(text, reply_markup=subscription_menu_keyboard())
 
 
 @dp.callback_query_handler(lambda c: c.data == "subs_close")
@@ -928,6 +1016,7 @@ async def handle_subs_close(callback_query: types.CallbackQuery):
 
     # Also delete user's trigger message if stored
     from ..utils.message_utils import delete_message_safe
+
     trigger_msg_id = TRIGGER_MSG_MAP.pop(telegram_id, None)
     if trigger_msg_id:
         await delete_message_safe(telegram_id, trigger_msg_id)
@@ -936,7 +1025,9 @@ async def handle_subs_close(callback_query: types.CallbackQuery):
 
 @dp.callback_query_handler(lambda c: c.data == "subs_new")
 @log_operation("handle_new_subscription")
-async def handle_new_subscription(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_new_subscription(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     telegram_id = callback_query.from_user.id
     with log_context(logger, telegram_id=telegram_id):
         # Ensure the user exists in our DB
@@ -947,7 +1038,7 @@ async def handle_new_subscription(callback_query: types.CallbackQuery, state: FS
         city_msg = await safe_send_message(
             chat_id=telegram_id,
             text=intro_text,
-            reply_markup=city_keyboard(AVAILABLE_CITIES, page=0)
+            reply_markup=city_keyboard(AVAILABLE_CITIES, page=0),
         )
 
         # Save needed data to FSM
@@ -956,10 +1047,9 @@ async def handle_new_subscription(callback_query: types.CallbackQuery, state: FS
                 user_db_id=user_db_id,
                 telegram_id=telegram_id,
                 city_panel_msg_id=city_msg.message_id,
-                city_panel_page=0
+                city_panel_page=0,
             )
 
         # Set state so that the existing city handler continues the flow
         await FilterStates.waiting_for_city.set()
         await safe_answer_callback_query(callback_query.id)
-
