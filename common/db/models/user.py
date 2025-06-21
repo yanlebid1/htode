@@ -23,10 +23,18 @@ class User(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     # Relationships (updated to use new model names)
-    filters = relationship("UserFilter", back_populates="user", cascade="all, delete-orphan")
-    favorites = relationship("FavoriteAd", back_populates="user", cascade="all, delete-orphan")
-    payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
-    verifications = relationship("Verification", back_populates="user", cascade="all, delete-orphan")
+    filters = relationship(
+        "UserFilter", back_populates="user", cascade="all, delete-orphan"
+    )
+    favorites = relationship(
+        "FavoriteAd", back_populates="user", cascade="all, delete-orphan"
+    )
+    payments = relationship(
+        "Payment", back_populates="user", cascade="all, delete-orphan"
+    )
+    verifications = relationship(
+        "Verification", back_populates="user", cascade="all, delete-orphan"
+    )
 
     @property
     def is_subscription_active(self) -> bool:

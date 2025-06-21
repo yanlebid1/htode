@@ -19,7 +19,12 @@ class StateManager:
     Supports both synchronous and asynchronous operations.
     """
 
-    def __init__(self, redis_url: str = REDIS_URL, prefix: str = 'state', default_ttl: int = 86400):
+    def __init__(
+        self,
+        redis_url: str = REDIS_URL,
+        prefix: str = "state",
+        default_ttl: int = 86400,
+    ):
         """
         Initialize the state manager.
 
@@ -62,11 +67,11 @@ class StateManager:
             return f"{self.prefix}:{user_id}"
 
     @retry_with_exponential_backoff(
-        max_retries=3,
-        initial_delay=0.5,
-        retryable_exceptions=NETWORK_EXCEPTIONS
+        max_retries=3, initial_delay=0.5, retryable_exceptions=NETWORK_EXCEPTIONS
     )
-    async def get_state(self, user_id: Union[str, int], platform: str = None) -> Optional[Dict[str, Any]]:
+    async def get_state(
+        self, user_id: Union[str, int], platform: str = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Get the state for a user.
 
@@ -83,7 +88,9 @@ class StateManager:
                 handler = self.platform_handlers[platform]
                 return await handler.get_state(user_id)
             except Exception as e:
-                logger.warning(f"Error getting state with platform handler {platform}: {e}")
+                logger.warning(
+                    f"Error getting state with platform handler {platform}: {e}"
+                )
                 # Fall back to direct implementation
 
         # Direct implementation
@@ -106,12 +113,15 @@ class StateManager:
             raise
 
     @retry_with_exponential_backoff(
-        max_retries=3,
-        initial_delay=0.5,
-        retryable_exceptions=NETWORK_EXCEPTIONS
+        max_retries=3, initial_delay=0.5, retryable_exceptions=NETWORK_EXCEPTIONS
     )
-    async def set_state(self, user_id: Union[str, int], data: Dict[str, Any], platform: str = None,
-                        ttl: int = None) -> bool:
+    async def set_state(
+        self,
+        user_id: Union[str, int],
+        data: Dict[str, Any],
+        platform: str = None,
+        ttl: int = None,
+    ) -> bool:
         """
         Set the state for a user.
 
@@ -130,7 +140,9 @@ class StateManager:
                 handler = self.platform_handlers[platform]
                 return await handler.set_state(user_id, data)
             except Exception as e:
-                logger.warning(f"Error setting state with platform handler {platform}: {e}")
+                logger.warning(
+                    f"Error setting state with platform handler {platform}: {e}"
+                )
                 # Fall back to direct implementation
 
         # Direct implementation
@@ -143,16 +155,20 @@ class StateManager:
             # Use asyncio to run the Redis set in a thread pool
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
-                None,
-                lambda: self.redis.setex(key, expire_time, serialized)
+                None, lambda: self.redis.setex(key, expire_time, serialized)
             )
             return True
         except Exception as e:
             logger.error(f"Error setting state for {key}: {e}")
             raise
 
-    async def update_state(self, user_id: Union[str, int], updates: Dict[str, Any], platform: str = None,
-                           ttl: int = None) -> bool:
+    async def update_state(
+        self,
+        user_id: Union[str, int],
+        updates: Dict[str, Any],
+        platform: str = None,
+        ttl: int = None,
+    ) -> bool:
         """
         Update the state for a user (partial update).
 
@@ -171,7 +187,9 @@ class StateManager:
                 handler = self.platform_handlers[platform]
                 return await handler.update_state(user_id, updates)
             except Exception as e:
-                logger.warning(f"Error updating state with platform handler {platform}: {e}")
+                logger.warning(
+                    f"Error updating state with platform handler {platform}: {e}"
+                )
                 # Fall back to direct implementation
 
         # Direct implementation
@@ -180,9 +198,7 @@ class StateManager:
         return await self.set_state(user_id, current_state, platform, ttl)
 
     @retry_with_exponential_backoff(
-        max_retries=3,
-        initial_delay=0.5,
-        retryable_exceptions=NETWORK_EXCEPTIONS
+        max_retries=3, initial_delay=0.5, retryable_exceptions=NETWORK_EXCEPTIONS
     )
     async def clear_state(self, user_id: Union[str, int], platform: str = None) -> bool:
         """
@@ -201,7 +217,9 @@ class StateManager:
                 handler = self.platform_handlers[platform]
                 return await handler.clear_state(user_id)
             except Exception as e:
-                logger.warning(f"Error clearing state with platform handler {platform}: {e}")
+                logger.warning(
+                    f"Error clearing state with platform handler {platform}: {e}"
+                )
                 # Fall back to direct implementation
 
         # Direct implementation
@@ -216,7 +234,9 @@ class StateManager:
             logger.error(f"Error clearing state for {key}: {e}")
             raise
 
-    async def get_current_state_name(self, user_id: Union[str, int], platform: str = None) -> Optional[str]:
+    async def get_current_state_name(
+        self, user_id: Union[str, int], platform: str = None
+    ) -> Optional[str]:
         """
         Get the current state name for a user.
 
@@ -228,11 +248,13 @@ class StateManager:
             Current state name or None
         """
         state_data = await self.get_state(user_id, platform)
-        return state_data.get('state') if state_data else None
+        return state_data.get("state") if state_data else None
 
     # --- Synchronous API equivalents ---
 
-    def get_state_sync(self, user_id: Union[str, int], platform: str = None) -> Optional[Dict[str, Any]]:
+    def get_state_sync(
+        self, user_id: Union[str, int], platform: str = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Synchronous version of get_state.
 
@@ -258,8 +280,13 @@ class StateManager:
             logger.error(f"Error getting state for {key}: {e}")
             return None
 
-    def set_state_sync(self, user_id: Union[str, int], data: Dict[str, Any], platform: str = None,
-                       ttl: int = None) -> bool:
+    def set_state_sync(
+        self,
+        user_id: Union[str, int],
+        data: Dict[str, Any],
+        platform: str = None,
+        ttl: int = None,
+    ) -> bool:
         """
         Synchronous version of set_state.
 
@@ -283,8 +310,13 @@ class StateManager:
             logger.error(f"Error setting state for {key}: {e}")
             return False
 
-    def update_state_sync(self, user_id: Union[str, int], updates: Dict[str, Any], platform: str = None,
-                          ttl: int = None) -> bool:
+    def update_state_sync(
+        self,
+        user_id: Union[str, int],
+        updates: Dict[str, Any],
+        platform: str = None,
+        ttl: int = None,
+    ) -> bool:
         """
         Synchronous version of update_state.
 
@@ -321,7 +353,9 @@ class StateManager:
             logger.error(f"Error clearing state for {key}: {e}")
             return False
 
-    def get_current_state_name_sync(self, user_id: Union[str, int], platform: str = None) -> Optional[str]:
+    def get_current_state_name_sync(
+        self, user_id: Union[str, int], platform: str = None
+    ) -> Optional[str]:
         """
         Synchronous version of get_current_state_name.
 
@@ -333,7 +367,7 @@ class StateManager:
             Current state name or None
         """
         state_data = self.get_state_sync(user_id, platform)
-        return state_data.get('state') if state_data else None
+        return state_data.get("state") if state_data else None
 
 
 class StateMachine:
@@ -351,7 +385,11 @@ class StateMachine:
         self.handlers = {}
         self.initial_state = initial_state
 
-    def add_state(self, state: str, handler: Callable[[Union[str, int], str, Dict[str, Any]], Awaitable[bool]]):
+    def add_state(
+        self,
+        state: str,
+        handler: Callable[[Union[str, int], str, Dict[str, Any]], Awaitable[bool]],
+    ):
         """
         Add a state handler.
 
@@ -361,7 +399,9 @@ class StateMachine:
         """
         self.handlers[state] = handler
 
-    async def process(self, user_id: Union[str, int], platform: str, message: str) -> bool:
+    async def process(
+        self, user_id: Union[str, int], platform: str, message: str
+    ) -> bool:
         """
         Process a message based on the current state.
 
@@ -374,7 +414,9 @@ class StateMachine:
             True if processed successfully, False otherwise
         """
         # Get current state
-        current_state_name = await state_manager.get_current_state_name(user_id, platform)
+        current_state_name = await state_manager.get_current_state_name(
+            user_id, platform
+        )
         current_state_name = current_state_name or self.initial_state
 
         # Get state data

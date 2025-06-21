@@ -12,4 +12,11 @@ from . import support
 from . import favorites
 
 # Make all these modules available when importing from handlers
-__all__ = ['menu_handlers', 'basic_handlers', 'advanced_handlers', 'subscription', 'support', 'favorites']
+__all__ = [
+    "menu_handlers",
+    "basic_handlers",
+    "advanced_handlers",
+    "subscription",
+    "support",
+    "favorites",
+]

@@ -1,0 +1,269 @@
+"""
+Common Celery tasks used across services.
+"""
+
+import asyncio
+from typing import List, Optional
+from common.celery_app import celery_app
+from common.utils.task_versioning import versioned_task
+from common.utils.logging_config import log_operation, log_context
+from common.utils import logger
+
+
+@versioned_task("extract_phones_for_ad", version="v1")
+@log_operation("extract_phones_for_ad")
+def extract_phones_for_ad_v1(ad_id: int, resource_url: str):
+    """
+    Extract phones asynchronously after ad is created.
+
+    This task runs in a separate queue to avoid blocking ad processing.
+    """
+    from common.utils.extraction_client import extraction_client
+    from common.db.session import db_session
+    from common.db.repositories.ad_repository import AdRepository
+
+    with log_context(logger, ad_id=ad_id, resource_url=resource_url):
+        try:
+            # Use the new extraction client
+            result = extraction_client.extract_content(
+                url=resource_url, wait_after_load=3000
+            )
+
+            if result["status"] == "success":
+                # Parse phones from the HTML content we received
+                from common.utils.phone_utils.parsers import get_parser_for_url
+
+                final_url = result.get("final_url", resource_url)
+                parser = get_parser_for_url(final_url)
+
+                if parser:
+                    # Parse the HTML content
+                    from bs4 import BeautifulSoup
+
+                    soup = BeautifulSoup(result.get("content", ""), "html.parser")
+                    phone_result = parser.extract_phones(final_url, soup)
+                else:
+                    # No specific parser, return empty result
+                    from common.utils.phone_utils.phone_models import ExtractionResult
+
+                    phone_result = ExtractionResult(
+                        phone_numbers=[], source_url=final_url
+                    )
+
+                # Store in database
+                phones_stored = 0
+                with db_session() as db:
+                    for phone in phone_result.phone_numbers:
+                        AdRepository.add_phone(db, ad_id, phone)
+                        phones_stored += 1
+
+                    if phone_result.viber_link:
+                        AdRepository.add_phone(db, ad_id, None, phone_result.viber_link)
+
+                    db.commit()
+
+                logger.info(
+                    "Phone extraction completed",
+                    extra={
+                        "ad_id": ad_id,
+                        "phones_found": len(phone_result.phone_numbers),
+                        "phones_stored": phones_stored,
+                        "has_viber": bool(phone_result.viber_link),
+                        "service_used": result.get("service_used"),
+                        "method_used": result.get("method_used"),
+                    },
+                )
+
+                # Clear cache since we updated the ad
+                from common.utils.cache_managers import AdCacheManager
+
+                AdCacheManager.invalidate_all(ad_id, resource_url)
+
+            else:
+                logger.error(
+                    "Content extraction failed",
+                    extra={
+                        "ad_id": ad_id,
+                        "error": result.get("error"),
+                        "service_used": result.get("service_used"),
+                    },
+                )
+
+        except Exception as e:
+            logger.error(
+                "Phone extraction task failed",
+                exc_info=True,
+                extra={
+                    "ad_id": ad_id,
+                    "resource_url": resource_url,
+                    "error_type": type(e).__name__,
+                },
+            )
+            # Could implement retry logic here
+            raise
+
+
+@versioned_task("notify_user_batch", version="v1")
+@log_operation("notify_user_batch")
+def notify_user_batch_v1(
+    user_ids: List[int], ad_data: dict, s3_image_url: Optional[str] = None
+):
+    """
+    Send notifications to a batch of users.
+
+    This reduces the number of tasks in the queue from thousands to dozens.
+    """
+    from common.db.session import db_session
+    from common.db.models import User
+
+    with log_context(logger, user_count=len(user_ids), ad_id=ad_data.get("id")):
+        success_count = 0
+        failed_count = 0
+
+        # Format the ad text once
+        text = (
+            f"💰 Ціна: {int(ad_data.get('price', 0))} грн.\n"
+            f"🏙️ Місто: {ad_data.get('city', 'Невідомо')}\n"
+            f"📍 Адреса: {ad_data.get('address', 'Не вказано')}\n"
+            f"🛏️ Кіл-сть кімнат: {ad_data.get('rooms_count', '?')}\n"
+            f"📐 Площа: {ad_data.get('square_feet', '?')} кв.м.\n"
+            f"🏢 Поверх: {ad_data.get('floor', '?')} из {ad_data.get('total_floors', '?')}\n"
+        )
+
+        # Get user telegram IDs in batch
+        with db_session() as db:
+            users = db.query(User).filter(User.id.in_(user_ids)).all()
+            user_telegram_map = {user.id: user.telegram_id for user in users}
+
+        # Send notifications in parallel using asyncio
+        async def send_all():
+            tasks = []
+
+            for user_id in user_ids:
+                telegram_id = user_telegram_map.get(user_id)
+                if not telegram_id:
+                    logger.warning(f"No telegram ID for user {user_id}")
+                    continue
+
+                # Create task for each user
+                task = send_single_notification(
+                    telegram_id,
+                    text,
+                    s3_image_url,
+                    ad_data.get("resource_url"),
+                    ad_data.get("id"),
+                    ad_data.get("external_id"),
+                )
+                tasks.append(task)
+
+            # Execute all tasks concurrently
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Count successes and failures
+            nonlocal success_count, failed_count
+            for result in results:
+                if isinstance(result, Exception):
+                    failed_count += 1
+                    logger.error(f"Notification failed: {result}")
+                else:
+                    success_count += 1
+
+            return success_count, failed_count
+
+        # Run the async batch
+        asyncio.run(send_all())
+
+        logger.info(
+            "Batch notification completed",
+            extra={
+                "total_users": len(user_ids),
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "ad_id": ad_data.get("id"),
+            },
+        )
+
+        return {
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "total": len(user_ids),
+        }
+
+
+async def send_single_notification(
+    telegram_id: int,
+    text: str,
+    s3_image_url: Optional[str],
+    resource_url: str,
+    ad_id: int,
+    external_id: str,
+):
+    """Helper to send a single notification asynchronously."""
+    try:
+        # Use the existing task but call it directly to avoid more queue overhead
+        from common.messaging.tasks import send_ad_with_extra_buttons
+
+        # Since we're already in an async context, we need to handle this carefully
+        loop = asyncio.get_event_loop()
+        future = loop.run_in_executor(
+            None,
+            send_ad_with_extra_buttons,
+            telegram_id,
+            text,
+            s3_image_url,
+            resource_url,
+            ad_id,
+            external_id,
+        )
+
+        await future
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to send notification to {telegram_id}: {e}")
+        raise
+
+
+@celery_app.task(name="common.tasks.cleanup_stale_extractions")
+@log_operation("cleanup_stale_extractions")
+def cleanup_stale_extractions():
+    """
+    Periodic task to clean up ads that failed phone extraction.
+
+    Can be scheduled to run daily.
+    """
+    from common.db.session import db_session
+    from common.db.models import Ad, Phone
+    from datetime import datetime, timedelta
+
+    # Find ads older than 1 hour with no phones
+    cutoff_time = datetime.utcnow() - timedelta(hours=1)
+
+    with db_session() as db:
+        ads_without_phones = (
+            db.query(Ad)
+            .outerjoin(Phone)
+            .filter(Ad.created_at < cutoff_time, Phone.id.is_(None))
+            .all()
+        )
+
+        retry_count = 0
+        for ad in ads_without_phones:
+            if ad.resource_url:
+                # Retry phone extraction
+                celery_app.send_task(
+                    "extract_phones_for_ad.v1",
+                    args=[ad.id, ad.resource_url],
+                    queue="phone_extraction_queue",
+                    priority=3,  # Lower priority for retries
+                )
+                retry_count += 1
+
+        logger.info(f"Scheduled {retry_count} phone extraction retries")
+
+
+# Register the current versions as defaults
+from common.utils.task_versioning import DeploymentConfig
+
+DeploymentConfig.promote_version("extract_phones_for_ad", "v1")
+DeploymentConfig.promote_version("notify_user_batch", "v1")

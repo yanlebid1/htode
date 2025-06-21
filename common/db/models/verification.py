@@ -24,6 +24,6 @@ class Verification(Base):
 
     # Composite index for efficient lookups
     __table_args__ = (
-        Index('idx_verification_lookup', 'target', 'type', 'code'),
-        Index('idx_verification_target_type', 'target', 'type'),
+        Index("idx_verification_lookup", "target", "type", "code"),
+        Index("idx_verification_target_type", "target", "type"),
     )

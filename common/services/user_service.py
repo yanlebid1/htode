@@ -17,7 +17,9 @@ from . import logger
 class UserService:
     @staticmethod
     @log_operation("get_or_create_user")
-    def get_or_create_user(db: Session, messenger_id: str, messenger_type: str = "telegram") -> int:
+    def get_or_create_user(
+        db: Session, messenger_id: str, messenger_type: str = "telegram"
+    ) -> int:
         """
         Get or create a user with the specified messenger ID.
 
@@ -29,35 +31,45 @@ class UserService:
         Returns:
             User database ID
         """
-        with log_context(logger, messenger_id=messenger_id, messenger_type=messenger_type):
+        with log_context(
+            logger, messenger_id=messenger_id, messenger_type=messenger_type
+        ):
             # Get user by messenger ID
             user = UserRepository.get_by_messenger_id(db, messenger_id, messenger_type)
 
             if user:
-                logger.info("Found existing user", extra={
-                    'messenger_type': messenger_type,
-                    'messenger_id': messenger_id,
-                    'user_id': user.id
-                })
+                logger.info(
+                    "Found existing user",
+                    extra={
+                        "messenger_type": messenger_type,
+                        "messenger_id": messenger_id,
+                        "user_id": user.id,
+                    },
+                )
                 return user.id
 
-            logger.info("Creating new user", extra={
-                'messenger_type': messenger_type,
-                'messenger_id': messenger_id
-            })
+            logger.info(
+                "Creating new user",
+                extra={"messenger_type": messenger_type, "messenger_id": messenger_id},
+            )
 
             # Create a new user with free trial period
             free_until = datetime.now() + timedelta(days=7)
 
             # Create user with the appropriate messenger ID
-            user = UserRepository.create_messenger_user(db, messenger_id, messenger_type, free_until)
+            user = UserRepository.create_messenger_user(
+                db, messenger_id, messenger_type, free_until
+            )
 
-            logger.info("Created new user", extra={
-                'messenger_type': messenger_type,
-                'messenger_id': messenger_id,
-                'user_id': user.id,
-                'free_until': free_until.isoformat()
-            })
+            logger.info(
+                "Created new user",
+                extra={
+                    "messenger_type": messenger_type,
+                    "messenger_id": messenger_id,
+                    "user_id": user.id,
+                    "free_until": free_until.isoformat(),
+                },
+            )
 
             return user.id
 
@@ -84,15 +96,20 @@ class UserService:
 
                 # Get users whose subscription expires on the target date
                 # Using ORM instead of raw SQL
-                users = db.query(User).filter(
-                    func.date(User.subscription_until) == target_date
-                ).all()
+                users = (
+                    db.query(User)
+                    .filter(func.date(User.subscription_until) == target_date)
+                    .all()
+                )
 
-                logger.debug("Checking expiring subscriptions", extra={
-                    'days': days,
-                    'target_date': target_date.isoformat(),
-                    'users_count': len(users)
-                })
+                logger.debug(
+                    "Checking expiring subscriptions",
+                    extra={
+                        "days": days,
+                        "target_date": target_date.isoformat(),
+                        "users_count": len(users),
+                    },
+                )
 
                 for user in users:
                     user_id = user.id
@@ -107,7 +124,9 @@ class UserService:
                         )
                     else:
                         # Determine plural form
-                        days_word = "день" if days == 1 else "дні" if days < 5 else "днів"
+                        days_word = (
+                            "день" if days == 1 else "дні" if days < 5 else "днів"
+                        )
                         template = (
                             "⚠️ Нагадування про підписку\n\n"
                             "Ваша підписка закінчується через {days} "
@@ -123,26 +142,29 @@ class UserService:
                         data={
                             "days": days,
                             "days_word": days_word,
-                            "end_date": end_date
-                        }
+                            "end_date": end_date,
+                        },
                     )
                     reminders_sent += 1
 
-                    aggregator.add_item({
-                        'user_id': user_id,
-                        'days_until_expiry': days,
-                        'end_date': end_date
-                    }, success=True)
+                    aggregator.add_item(
+                        {
+                            "user_id": user_id,
+                            "days_until_expiry": days,
+                            "end_date": end_date,
+                        },
+                        success=True,
+                    )
 
             # Notify on day of expiration
-            users_today = db.query(User).filter(
-                func.date(User.subscription_until) == today
-            ).all()
+            users_today = (
+                db.query(User).filter(func.date(User.subscription_until) == today).all()
+            )
 
-            logger.debug("Checking same-day expiring subscriptions", extra={
-                'today': today.isoformat(),
-                'users_count': len(users_today)
-            })
+            logger.debug(
+                "Checking same-day expiring subscriptions",
+                extra={"today": today.isoformat(), "users_count": len(users_today)},
+            )
 
             for user in users_today:
                 user_id = user.id
@@ -155,20 +177,24 @@ class UserService:
                         "Час закінчення: {end_date}\n\n"
                         "Щоб не втратити доступ до сервісу, оновіть підписку зараз."
                     ),
-                    data={"end_date": end_date}
+                    data={"end_date": end_date},
                 )
                 reminders_sent += 1
 
-                aggregator.add_item({
-                    'user_id': user_id,
-                    'expiry_type': 'same_day',
-                    'end_date': end_date
-                }, success=True)
+                aggregator.add_item(
+                    {
+                        "user_id": user_id,
+                        "expiry_type": "same_day",
+                        "end_date": end_date,
+                    },
+                    success=True,
+                )
 
             aggregator.log_summary()
 
-            logger.info("Completed subscription expiry check", extra={
-                'reminders_sent': reminders_sent
-            })
+            logger.info(
+                "Completed subscription expiry check",
+                extra={"reminders_sent": reminders_sent},
+            )
 
             return {"reminders_sent": reminders_sent}

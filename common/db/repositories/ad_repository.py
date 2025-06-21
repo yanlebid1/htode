@@ -2,10 +2,10 @@
 
 from typing import List, Optional, Dict, Any
 import decimal
-import json
 from datetime import datetime, timedelta
 
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from common.db.models import FavoriteAd
@@ -30,9 +30,9 @@ class AdRepository:
         with log_context(logger, ad_id=ad_id):
             ad = db.query(Ad).filter(Ad.id == ad_id).first()
             if ad:
-                logger.debug("Found ad by ID", extra={'ad_id': ad_id})
+                logger.debug("Found ad by ID", extra={"ad_id": ad_id})
             else:
-                logger.debug("No ad found for ID", extra={'ad_id': ad_id})
+                logger.debug("No ad found for ID", extra={"ad_id": ad_id})
             return ad
 
     @staticmethod
@@ -42,12 +42,14 @@ class AdRepository:
         with log_context(logger, external_id=external_id):
             ad = db.query(Ad).filter(Ad.external_id == external_id).first()
             if ad:
-                logger.debug("Found ad by external ID", extra={
-                    'external_id': external_id,
-                    'ad_id': ad.id
-                })
+                logger.debug(
+                    "Found ad by external ID",
+                    extra={"external_id": external_id, "ad_id": ad.id},
+                )
             else:
-                logger.debug("No ad found for external ID", extra={'external_id': external_id})
+                logger.debug(
+                    "No ad found for external ID", extra={"external_id": external_id}
+                )
             return ad
 
     @staticmethod
@@ -57,28 +59,59 @@ class AdRepository:
         with log_context(logger, resource_url=resource_url[:100]):
             ad = db.query(Ad).filter(Ad.resource_url == resource_url).first()
             if ad:
-                logger.debug("Found ad by resource URL", extra={
-                    'resource_url': resource_url[:100],
-                    'ad_id': ad.id
-                })
+                logger.debug(
+                    "Found ad by resource URL",
+                    extra={"resource_url": resource_url[:100], "ad_id": ad.id},
+                )
             else:
-                logger.debug("No ad found for resource URL", extra={'resource_url': resource_url[:100]})
+                logger.debug(
+                    "No ad found for resource URL",
+                    extra={"resource_url": resource_url[:100]},
+                )
             return ad
 
     @staticmethod
     @log_operation("create_ad")
     def create_ad(db: Session, ad_data: Dict[str, Any]) -> Ad:
-        """Create a new ad"""
-        with log_context(logger, external_id=ad_data.get('external_id')):
-            ad = Ad(**ad_data)
-            db.add(ad)
-            db.commit()
-            db.refresh(ad)
-            logger.info("Created new ad", extra={
-                'ad_id': ad.id,
-                'external_id': ad.external_id
-            })
-            return ad
+        """Create a new ad with duplicate handling"""
+        external_id = ad_data.get("external_id")
+
+        with log_context(logger, external_id=external_id):
+            # First, check if ad already exists
+            existing_ad = AdRepository.get_by_external_id(db, external_id)
+            if existing_ad:
+                logger.info(
+                    "Ad already exists, returning existing",
+                    extra={"ad_id": existing_ad.id, "external_id": external_id},
+                )
+                return existing_ad
+
+            try:
+                ad = Ad(**ad_data)
+                db.add(ad)
+                db.commit()
+                db.refresh(ad)
+                logger.info(
+                    "Created new ad",
+                    extra={"ad_id": ad.id, "external_id": ad.external_id},
+                )
+                return ad
+            except IntegrityError:
+                # Handle race condition where another process inserted the same ad
+                db.rollback()
+                logger.warning(
+                    "Duplicate detected during insert, fetching existing",
+                    extra={"external_id": external_id},
+                )
+                existing_ad = AdRepository.get_by_external_id(db, external_id)
+                if existing_ad:
+                    return existing_ad
+                else:
+                    logger.error(
+                        "Failed to find existing ad after duplicate error",
+                        extra={"external_id": external_id},
+                    )
+                    raise
 
     @staticmethod
     @log_operation("update_ad")
@@ -87,7 +120,7 @@ class AdRepository:
         with log_context(logger, ad_id=ad_id):
             ad = AdRepository.get_by_id(db, ad_id)
             if not ad:
-                logger.warning("Cannot update ad - not found", extra={'ad_id': ad_id})
+                logger.warning("Cannot update ad - not found", extra={"ad_id": ad_id})
                 return None
 
             for key, value in ad_data.items():
@@ -96,10 +129,10 @@ class AdRepository:
 
             db.commit()
             db.refresh(ad)
-            logger.info("Updated ad", extra={
-                'ad_id': ad_id,
-                'updated_fields': list(ad_data.keys())
-            })
+            logger.info(
+                "Updated ad",
+                extra={"ad_id": ad_id, "updated_fields": list(ad_data.keys())},
+            )
             return ad
 
     @staticmethod
@@ -109,51 +142,48 @@ class AdRepository:
         with log_context(logger, ad_id=ad_id):
             ad = AdRepository.get_by_id(db, ad_id)
             if not ad:
-                logger.warning("Cannot delete ad - not found", extra={'ad_id': ad_id})
+                logger.warning("Cannot delete ad - not found", extra={"ad_id": ad_id})
                 return False
 
             db.delete(ad)
             db.commit()
-            logger.info("Deleted ad", extra={'ad_id': ad_id})
+            logger.info("Deleted ad", extra={"ad_id": ad_id})
             return True
 
     @staticmethod
     @log_operation("get_ads_by_filter")
     def get_ads_by_filter(
-            db: Session,
-            filter_data: Dict[str, Any],
-            limit: int = 10,
-            offset: int = 0
+        db: Session, filter_data: Dict[str, Any], limit: int = 10, offset: int = 0
     ) -> List[Ad]:
         """Get ads based on filter criteria"""
         with log_context(logger, limit=limit, offset=offset):
             query = db.query(Ad)
 
             # Apply filters
-            if 'property_type' in filter_data and filter_data['property_type']:
-                query = query.filter(Ad.property_type == filter_data['property_type'])
+            if "property_type" in filter_data and filter_data["property_type"]:
+                query = query.filter(Ad.property_type == filter_data["property_type"])
 
-            if 'city' in filter_data and filter_data['city']:
-                query = query.filter(Ad.city == filter_data['city'])
+            if "city" in filter_data and filter_data["city"]:
+                query = query.filter(Ad.city == filter_data["city"])
 
-            if 'rooms_count' in filter_data and filter_data['rooms_count']:
-                query = query.filter(Ad.rooms_count.in_(filter_data['rooms_count']))
+            if "rooms_count" in filter_data and filter_data["rooms_count"]:
+                query = query.filter(Ad.rooms_count.in_(filter_data["rooms_count"]))
 
-            if 'price_min' in filter_data and filter_data['price_min']:
-                query = query.filter(Ad.price >= filter_data['price_min'])
+            if "price_min" in filter_data and filter_data["price_min"]:
+                query = query.filter(Ad.price >= filter_data["price_min"])
 
-            if 'price_max' in filter_data and filter_data['price_max']:
-                query = query.filter(Ad.price <= filter_data['price_max'])
+            if "price_max" in filter_data and filter_data["price_max"]:
+                query = query.filter(Ad.price <= filter_data["price_max"])
 
             # Apply ordering and pagination
             query = query.order_by(Ad.insert_time.desc())
             query = query.limit(limit).offset(offset)
 
             ads = query.all()
-            logger.debug("Found ads by filter", extra={
-                'filter_count': len(filter_data),
-                'result_count': len(ads)
-            })
+            logger.debug(
+                "Found ads by filter",
+                extra={"filter_count": len(filter_data), "result_count": len(ads)},
+            )
             return ads
 
     @staticmethod
@@ -164,20 +194,19 @@ class AdRepository:
             # Try to get from cache first using the cache manager
             cached_data = AdCacheManager.get_full_ad_data(ad_id)
             if cached_data:
-                logger.debug("Cache hit for full ad data", extra={'ad_id': ad_id})
+                logger.debug("Cache hit for full ad data", extra={"ad_id": ad_id})
                 return cached_data
 
             # Cache miss, query database
-            ad = db.query(Ad) \
-                .options(
-                joinedload(Ad.images),
-                joinedload(Ad.phones)
-            ) \
-                .filter(Ad.id == ad_id) \
+            ad = (
+                db.query(Ad)
+                .options(joinedload(Ad.images), joinedload(Ad.phones))
+                .filter(Ad.id == ad_id)
                 .first()
+            )
 
             if not ad:
-                logger.debug("No ad found for full data", extra={'ad_id': ad_id})
+                logger.debug("No ad found for full data", extra={"ad_id": ad_id})
                 return None
 
             # Convert to dict
@@ -187,8 +216,16 @@ class AdRepository:
                 "property_type": ad.property_type,
                 "city": ad.city,
                 "address": ad.address,
-                "price": float(ad.price) if isinstance(ad.price, decimal.Decimal) else ad.price,
-                "square_feet": float(ad.square_feet) if isinstance(ad.square_feet, decimal.Decimal) else ad.square_feet,
+                "price": (
+                    float(ad.price)
+                    if isinstance(ad.price, decimal.Decimal)
+                    else ad.price
+                ),
+                "square_feet": (
+                    float(ad.square_feet)
+                    if isinstance(ad.square_feet, decimal.Decimal)
+                    else ad.square_feet
+                ),
                 "rooms_count": ad.rooms_count,
                 "floor": ad.floor,
                 "total_floors": ad.total_floors,
@@ -196,14 +233,20 @@ class AdRepository:
                 "description": ad.description,
                 "resource_url": ad.resource_url,
                 "original_currency": ad.original_currency,
-                "images": [img.image_url for img in ad.images][:20],  # Limit to 20 images
-                "phones": [phone.phone for phone in ad.phones if phone.phone][:10],  # Limit to 10 phones
-                "viber_link": next((phone.viber_link for phone in ad.phones if phone.viber_link), None)
+                "images": [img.image_url for img in ad.images][
+                    :20
+                ],  # Limit to 20 images
+                "phones": [phone.phone for phone in ad.phones if phone.phone][
+                    :10
+                ],  # Limit to 10 phones
+                "viber_link": next(
+                    (phone.viber_link for phone in ad.phones if phone.viber_link), None
+                ),
             }
 
             # Cache the result
             AdCacheManager.set_full_ad_data(ad_id, ad_dict)
-            logger.debug("Cached full ad data", extra={'ad_id': ad_id})
+            logger.debug("Cached full ad data", extra={"ad_id": ad_id})
 
             return ad_dict
 
@@ -220,15 +263,16 @@ class AdRepository:
             # Use centralized cache invalidation
             invalidate_ad_caches(ad_id)
 
-            logger.info("Added image to ad", extra={
-                'ad_id': ad_id,
-                'image_id': image.id
-            })
+            logger.info(
+                "Added image to ad", extra={"ad_id": ad_id, "image_id": image.id}
+            )
             return image
 
     @staticmethod
     @log_operation("add_phone")
-    def add_phone(db: Session, ad_id: int, phone: str, viber_link: Optional[str] = None) -> AdPhone:
+    def add_phone(
+        db: Session, ad_id: int, phone: str, viber_link: Optional[str] = None
+    ) -> AdPhone:
         """Add a phone to an ad"""
         with log_context(logger, ad_id=ad_id, has_viber=bool(viber_link)):
             ad_phone = AdPhone(ad_id=ad_id, phone=phone, viber_link=viber_link)
@@ -239,11 +283,14 @@ class AdRepository:
             # Use centralized cache invalidation
             invalidate_ad_caches(ad_id)
 
-            logger.info("Added phone to ad", extra={
-                'ad_id': ad_id,
-                'phone_id': ad_phone.id,
-                'has_viber': bool(viber_link)
-            })
+            logger.info(
+                "Added phone to ad",
+                extra={
+                    "ad_id": ad_id,
+                    "phone_id": ad_phone.id,
+                    "has_viber": bool(viber_link),
+                },
+            )
             return ad_phone
 
     @staticmethod
@@ -254,7 +301,7 @@ class AdRepository:
             # Try to get from cache first using the cache manager
             cached_images = AdCacheManager.get_ad_images(ad_id)
             if cached_images:
-                logger.debug("Cache hit for ad images", extra={'ad_id': ad_id})
+                logger.debug("Cache hit for ad images", extra={"ad_id": ad_id})
                 return cached_images
 
             # Cache miss, query database
@@ -263,10 +310,10 @@ class AdRepository:
 
             # Cache the result
             AdCacheManager.set_ad_images(ad_id, image_urls)
-            logger.debug("Cached ad images", extra={
-                'ad_id': ad_id,
-                'image_count': len(image_urls)
-            })
+            logger.debug(
+                "Cached ad images",
+                extra={"ad_id": ad_id, "image_count": len(image_urls)},
+            )
 
             return image_urls
 
@@ -276,14 +323,11 @@ class AdRepository:
         """Get all phones for an ad"""
         with log_context(logger, ad_id=ad_id):
             phones = db.query(AdPhone).filter(AdPhone.ad_id == ad_id).all()
-            result = [
-                {"phone": p.phone, "viber_link": p.viber_link}
-                for p in phones
-            ]
-            logger.debug("Retrieved ad phones", extra={
-                'ad_id': ad_id,
-                'phone_count': len(result)
-            })
+            result = [{"phone": p.phone, "viber_link": p.viber_link} for p in phones]
+            logger.debug(
+                "Retrieved ad phones",
+                extra={"ad_id": ad_id, "phone_count": len(result)},
+            )
             return result
 
     @staticmethod
@@ -294,7 +338,10 @@ class AdRepository:
             # Try to get from cache first using the cache manager
             cached_description = AdCacheManager.get_ad_description(resource_url)
             if cached_description:
-                logger.debug("Cache hit for ad description", extra={'resource_url': resource_url[:100]})
+                logger.debug(
+                    "Cache hit for ad description",
+                    extra={"resource_url": resource_url[:100]},
+                )
                 return cached_description
 
             # Cache miss, query database
@@ -304,14 +351,18 @@ class AdRepository:
             # Cache the result if found
             if description:
                 AdCacheManager.set_ad_description(resource_url, description)
-                logger.debug("Cached ad description", extra={'resource_url': resource_url[:100]})
+                logger.debug(
+                    "Cached ad description", extra={"resource_url": resource_url[:100]}
+                )
 
             return description
 
     @staticmethod
     @redis_cache("ads_period", ttl=300)  # 5 minute cache
     @log_operation("fetch_ads_for_period")
-    def fetch_ads_for_period(db: Session, filters: Dict[str, Any], days: int, limit: int = 3) -> List[Ad]:
+    def fetch_ads_for_period(
+        db: Session, filters: Dict[str, Any], days: int, limit: int = 3
+    ) -> List[Ad]:
         """
         Query ads table, matching the user's filters,
         for ads from the last `days` days. Return up to `limit` ads.
@@ -320,26 +371,26 @@ class AdRepository:
             query = db.query(Ad)
 
             # Apply filters
-            city = filters.get('city')
+            city = filters.get("city")
             if city:
                 geo_id = get_key_by_value(city, GEO_ID_MAPPING)
                 if geo_id:
                     query = query.filter(Ad.city == geo_id)
 
-            if filters.get('property_type'):
-                query = query.filter(Ad.property_type == filters['property_type'])
+            if filters.get("property_type"):
+                query = query.filter(Ad.property_type == filters["property_type"])
 
-            if filters.get('rooms') is not None:
+            if filters.get("rooms") is not None:
                 # Handle array membership
-                rooms = filters['rooms']
+                rooms = filters["rooms"]
                 if rooms:
                     query = query.filter(Ad.rooms_count.in_(rooms))
 
-            if filters.get('price_min') is not None:
-                query = query.filter(Ad.price >= filters['price_min'])
+            if filters.get("price_min") is not None:
+                query = query.filter(Ad.price >= filters["price_min"])
 
-            if filters.get('price_max') is not None:
-                query = query.filter(Ad.price <= filters['price_max'])
+            if filters.get("price_max") is not None:
+                query = query.filter(Ad.price <= filters["price_max"])
 
             # Filter by date
             days_ago = datetime.now() - timedelta(days=days)
@@ -352,10 +403,9 @@ class AdRepository:
             query = query.limit(limit)
 
             ads = query.all()
-            logger.debug("Fetched ads for period", extra={
-                'days': days,
-                'result_count': len(ads)
-            })
+            logger.debug(
+                "Fetched ads for period", extra={"days": days, "result_count": len(ads)}
+            )
             return ads
 
     @staticmethod
@@ -369,7 +419,7 @@ class AdRepository:
         from common.db.models.subscription import UserFilter
 
         # Get ad ID for logging
-        ad_id = ad.id if hasattr(ad, 'id') else ad.get('id')
+        ad_id = ad.id if hasattr(ad, "id") else ad.get("id")
 
         with log_context(logger, ad_id=ad_id):
             try:
@@ -383,12 +433,12 @@ class AdRepository:
                 # Try to get from cache
                 cached_users = BaseCacheManager.get(key)
                 if cached_users:
-                    logger.debug("Cache hit for matching users", extra={'ad_id': ad_id})
+                    logger.debug("Cache hit for matching users", extra={"ad_id": ad_id})
                     return cached_users
 
                 # Cache miss, perform the query
                 # Get ad properties for matching
-                if hasattr(ad, 'property_type'):
+                if hasattr(ad, "property_type"):
                     # It's an ORM object
                     ad_property_type = ad.property_type
                     ad_city = ad.city
@@ -396,54 +446,57 @@ class AdRepository:
                     ad_price = ad.price
                 else:
                     # It's a dictionary
-                    ad_property_type = ad.get('property_type')
-                    ad_city = ad.get('city')
-                    ad_rooms = ad.get('rooms_count')
-                    ad_price = ad.get('price')
+                    ad_property_type = ad.get("property_type")
+                    ad_city = ad.get("city")
+                    ad_rooms = ad.get("rooms_count")
+                    ad_price = ad.get("price")
 
                 # Query users with matching filters
-                query = db.query(User.id).join(UserFilter, User.id == UserFilter.user_id)
+                query = db.query(User.id).join(
+                    UserFilter, User.id == UserFilter.user_id
+                )
 
                 # Filter for active users only
-                query = query.filter(or_(
-                    User.free_until > datetime.now(),
-                    User.subscription_until > datetime.now()
-                ))
+                query = query.filter(
+                    or_(
+                        User.free_until > datetime.now(),
+                        User.subscription_until > datetime.now(),
+                    )
+                )
 
                 # Filter for non-paused subscriptions
-                query = query.filter(UserFilter.is_paused == False)
+                query = query.filter(not UserFilter.is_paused)
 
                 # Apply ad property filters
                 filters = []
 
                 # Property type filter (if set)
-                filters.append(or_(
-                    UserFilter.property_type == None,
-                    UserFilter.property_type == ad_property_type
-                ))
+                filters.append(
+                    or_(
+                        UserFilter.property_type is None,
+                        UserFilter.property_type == ad_property_type,
+                    )
+                )
 
                 # City filter (if set)
-                filters.append(or_(
-                    UserFilter.city == None,
-                    UserFilter.city == ad_city
-                ))
+                filters.append(or_(UserFilter.city is None, UserFilter.city == ad_city))
 
                 # Rooms filter (array membership)
-                filters.append(or_(
-                    UserFilter.rooms_count == None,
-                    UserFilter.rooms_count.any(ad_rooms)
-                ))
+                filters.append(
+                    or_(
+                        UserFilter.rooms_count is None,
+                        UserFilter.rooms_count.any(ad_rooms),
+                    )
+                )
 
                 # Price range filter
-                filters.append(or_(
-                    UserFilter.price_min == None,
-                    ad_price >= UserFilter.price_min
-                ))
+                filters.append(
+                    or_(UserFilter.price_min is None, ad_price >= UserFilter.price_min)
+                )
 
-                filters.append(or_(
-                    UserFilter.price_max == None,
-                    ad_price <= UserFilter.price_max
-                ))
+                filters.append(
+                    or_(UserFilter.price_max is None, ad_price <= UserFilter.price_max)
+                )
 
                 # Apply all filters
                 query = query.filter(and_(*filters))
@@ -455,18 +508,19 @@ class AdRepository:
                 # Cache the results
                 BaseCacheManager.set(key, user_ids, CacheTTL.STANDARD)
 
-                logger.info("Found matching users for ad", extra={
-                    'ad_id': ad_id,
-                    'user_count': len(user_ids)
-                })
+                logger.info(
+                    "Found matching users for ad",
+                    extra={"ad_id": ad_id, "user_count": len(user_ids)},
+                )
 
                 return user_ids
 
             except Exception as e:
-                logger.error("Error finding users for ad", exc_info=True, extra={
-                    'ad_id': ad_id,
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Error finding users for ad",
+                    exc_info=True,
+                    extra={"ad_id": ad_id, "error_type": type(e).__name__},
+                )
                 return []
 
     @staticmethod
@@ -480,13 +534,17 @@ class AdRepository:
                 # Get the ad first
                 ad = db.query(Ad).get(ad_id)
                 if not ad:
-                    logger.warning("Attempted to delete non-existent ad", extra={'ad_id': ad_id})
+                    logger.warning(
+                        "Attempted to delete non-existent ad", extra={"ad_id": ad_id}
+                    )
                     return False
 
                 resource_url = ad.resource_url
 
                 # Delete related data
-                favorites_count = db.query(FavoriteAd).filter(FavoriteAd.ad_id == ad_id).delete()
+                favorites_count = (
+                    db.query(FavoriteAd).filter(FavoriteAd.ad_id == ad_id).delete()
+                )
                 phones_count = db.query(AdPhone).filter(AdPhone.ad_id == ad_id).delete()
                 images_count = db.query(AdImage).filter(AdImage.ad_id == ad_id).delete()
 
@@ -497,20 +555,24 @@ class AdRepository:
                 # Use centralized cache invalidation
                 invalidate_ad_caches(ad_id, resource_url)
 
-                logger.info("Successfully deleted ad and related data", extra={
-                    'ad_id': ad_id,
-                    'favorites_deleted': favorites_count,
-                    'phones_deleted': phones_count,
-                    'images_deleted': images_count
-                })
+                logger.info(
+                    "Successfully deleted ad and related data",
+                    extra={
+                        "ad_id": ad_id,
+                        "favorites_deleted": favorites_count,
+                        "phones_deleted": phones_count,
+                        "images_deleted": images_count,
+                    },
+                )
                 return True
 
             except Exception as e:
                 db.rollback()
-                logger.error("Error deleting ad", exc_info=True, extra={
-                    'ad_id': ad_id,
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Error deleting ad",
+                    exc_info=True,
+                    extra={"ad_id": ad_id, "error_type": type(e).__name__},
+                )
                 return False
 
     @staticmethod
@@ -521,28 +583,31 @@ class AdRepository:
         """
         with log_context(logger, cutoff_date=cutoff_date.isoformat()):
             ads = db.query(Ad).filter(Ad.insert_time < cutoff_date).all()
-            logger.debug("Found ads older than cutoff", extra={
-                'cutoff_date': cutoff_date.isoformat(),
-                'ad_count': len(ads)
-            })
+            logger.debug(
+                "Found ads older than cutoff",
+                extra={"cutoff_date": cutoff_date.isoformat(), "ad_count": len(ads)},
+            )
             return ads
 
     @staticmethod
     @log_operation("get_description_by_resource_url")
-    def get_description_by_resource_url(db: Session, resource_url: str) -> Optional[str]:
+    def get_description_by_resource_url(
+        db: Session, resource_url: str
+    ) -> Optional[str]:
         """
         Get the full description of an ad by its resource URL.
         """
         with log_context(logger, resource_url=resource_url[:100]):
             ad = db.query(Ad).filter(Ad.resource_url == resource_url).first()
             if ad:
-                logger.debug("Found description for resource URL", extra={
-                    'resource_url': resource_url[:100],
-                    'ad_id': ad.id
-                })
+                logger.debug(
+                    "Found description for resource URL",
+                    extra={"resource_url": resource_url[:100], "ad_id": ad.id},
+                )
                 return ad.description
             else:
-                logger.debug("No ad found for resource URL", extra={
-                    'resource_url': resource_url[:100]
-                })
+                logger.debug(
+                    "No ad found for resource URL",
+                    extra={"resource_url": resource_url[:100]},
+                )
                 return None

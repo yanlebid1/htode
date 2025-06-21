@@ -28,13 +28,17 @@ def create_verification_code(phone_number: str) -> str:
                 verification_type="phone",
                 target=phone_number,
                 user_id=None,  # Will be linked later
-                expiry_minutes=10
+                expiry_minutes=10,
             )
-            logger.info("Created verification code", extra={
-                'phone_number': phone_number,
-                'code_length': len(code) if code else 0
-            })
+            logger.info(
+                "Created verification code",
+                extra={
+                    "phone_number": phone_number,
+                    "code_length": len(code) if code else 0,
+                },
+            )
             return code
+
 
 @log_operation("get_user_by_phone")
 def get_user_by_phone(phone_number: str) -> Optional[Dict[str, Any]]:
@@ -53,36 +57,43 @@ def get_user_by_phone(phone_number: str) -> Optional[Dict[str, Any]]:
                 user = UserRepository.get_by_phone(db, phone_number)
 
                 if not user:
-                    logger.debug("No user found with phone number", extra={
-                        'phone_number': phone_number
-                    })
+                    logger.debug(
+                        "No user found with phone number",
+                        extra={"phone_number": phone_number},
+                    )
                     return None
 
                 user_data = {
                     "id": user.id,
                     "telegram_id": user.telegram_id,
                     "phone_number": user.phone_number,
-                    "email": user.email
+                    "email": user.email,
                 }
 
-                logger.info("Found user by phone number", extra={
-                    'phone_number': phone_number,
-                    'user_id': user.id,
-                    'has_telegram': bool(user.telegram_id),
-                    'has_email': bool(user.email)
-                })
+                logger.info(
+                    "Found user by phone number",
+                    extra={
+                        "phone_number": phone_number,
+                        "user_id": user.id,
+                        "has_telegram": bool(user.telegram_id),
+                        "has_email": bool(user.email),
+                    },
+                )
 
                 return user_data
         except Exception as e:
-            logger.error("Error getting user by phone", exc_info=True, extra={
-                'phone_number': phone_number,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting user by phone",
+                exc_info=True,
+                extra={"phone_number": phone_number, "error_type": type(e).__name__},
+            )
             return None
 
 
 @log_operation("link_messenger_account")
-def link_messenger_account(phone_number: str, messenger_type: str, messenger_id: str) -> Optional[int]:
+def link_messenger_account(
+    phone_number: str, messenger_type: str, messenger_id: str
+) -> Optional[int]:
     """
     Link a messenger account to a user with this phone number.
     For Telegram-only app, messenger_type should always be "telegram".
@@ -95,37 +106,53 @@ def link_messenger_account(phone_number: str, messenger_type: str, messenger_id:
     Returns:
         User ID if successful, None otherwise
     """
-    with log_context(logger, phone_number=phone_number, messenger_type=messenger_type, messenger_id=messenger_id):
+    with log_context(
+        logger,
+        phone_number=phone_number,
+        messenger_type=messenger_type,
+        messenger_id=messenger_id,
+    ):
         if messenger_type != "telegram":
-            logger.error("Unsupported messenger type", extra={
-                'messenger_type': messenger_type
-            })
+            logger.error(
+                "Unsupported messenger type", extra={"messenger_type": messenger_type}
+            )
             return None
 
         try:
             from common.db.operations import link_telegram_to_phone
+
             user = link_telegram_to_phone(messenger_id, phone_number)
 
             if user:
-                logger.info("Successfully linked messenger account", extra={
-                    'phone_number': phone_number,
-                    'messenger_type': messenger_type,
-                    'user_id': user.id
-                })
+                logger.info(
+                    "Successfully linked messenger account",
+                    extra={
+                        "phone_number": phone_number,
+                        "messenger_type": messenger_type,
+                        "user_id": user.id,
+                    },
+                )
                 return user.id
             else:
-                logger.error("Failed to link messenger account", extra={
-                    'phone_number': phone_number,
-                    'messenger_type': messenger_type
-                })
+                logger.error(
+                    "Failed to link messenger account",
+                    extra={
+                        "phone_number": phone_number,
+                        "messenger_type": messenger_type,
+                    },
+                )
                 return None
 
         except Exception as e:
-            logger.error("Error linking messenger account", exc_info=True, extra={
-                'phone_number': phone_number,
-                'messenger_type': messenger_type,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error linking messenger account",
+                exc_info=True,
+                extra={
+                    "phone_number": phone_number,
+                    "messenger_type": messenger_type,
+                    "error_type": type(e).__name__,
+                },
+            )
             return None
 
 
@@ -144,15 +171,17 @@ def transfer_subscriptions(from_user_id: int, to_user_id: int) -> bool:
     """
     with log_context(logger, from_user_id=from_user_id, to_user_id=to_user_id):
         # This is now handled automatically in link_telegram_to_phone
-        logger.info("Subscription transfer is handled automatically during account linking", extra={
-            'from_user_id': from_user_id,
-            'to_user_id': to_user_id
-        })
+        logger.info(
+            "Subscription transfer is handled automatically during account linking",
+            extra={"from_user_id": from_user_id, "to_user_id": to_user_id},
+        )
         return True
 
 
 @log_operation("send_phone_verification_code")
-def send_phone_verification_code(phone_number: str, user_id: Optional[int] = None) -> str:
+def send_phone_verification_code(
+    phone_number: str, user_id: Optional[int] = None
+) -> str:
     """
     Create and send phone verification code.
     Updated to use unified Verification model.
@@ -165,23 +194,30 @@ def send_phone_verification_code(phone_number: str, user_id: Optional[int] = Non
                     verification_type="phone",
                     target=phone_number,
                     user_id=user_id,
-                    expiry_minutes=10
+                    expiry_minutes=10,
                 )
 
-                logger.info("Phone verification code created", extra={
-                    'phone_number': phone_number[:5] + "...",
-                    'user_id': user_id
-                })
+                logger.info(
+                    "Phone verification code created",
+                    extra={
+                        "phone_number": phone_number[:5] + "...",
+                        "user_id": user_id,
+                    },
+                )
 
                 # In production, send SMS here
                 # For now, just return the code
                 return code
 
         except Exception as e:
-            logger.error("Error creating phone verification", exc_info=True, extra={
-                'phone_number': phone_number[:5] + "...",
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error creating phone verification",
+                exc_info=True,
+                extra={
+                    "phone_number": phone_number[:5] + "...",
+                    "error_type": type(e).__name__,
+                },
+            )
             raise
 
 
@@ -195,26 +231,29 @@ def verify_phone_code(phone_number: str, code: str) -> Tuple[bool, str]:
         try:
             with db_session() as db:
                 is_valid = VerificationRepository.verify_code(
-                    db=db,
-                    verification_type="phone",
-                    target=phone_number,
-                    code=code
+                    db=db, verification_type="phone", target=phone_number, code=code
                 )
 
                 if is_valid:
-                    logger.info("Phone verification successful", extra={
-                        'phone_number': phone_number[:5] + "..."
-                    })
+                    logger.info(
+                        "Phone verification successful",
+                        extra={"phone_number": phone_number[:5] + "..."},
+                    )
                     return True, ""
                 else:
-                    logger.warning("Phone verification failed", extra={
-                        'phone_number': phone_number[:5] + "..."
-                    })
+                    logger.warning(
+                        "Phone verification failed",
+                        extra={"phone_number": phone_number[:5] + "..."},
+                    )
                     return False, "Неправильний код або термін дії коду закінчився"
 
         except Exception as e:
-            logger.error("Error verifying phone code", exc_info=True, extra={
-                'phone_number': phone_number[:5] + "...",
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error verifying phone code",
+                exc_info=True,
+                extra={
+                    "phone_number": phone_number[:5] + "...",
+                    "error_type": type(e).__name__,
+                },
+            )
             return False, "Помилка при перевірці коду"

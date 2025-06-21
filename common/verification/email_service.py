@@ -43,26 +43,29 @@ def send_verification_email_with_token(email: str) -> Optional[str]:
                     verification_type="email",
                     target=email.lower().strip(),
                     user_id=None,  # Will be linked later
-                    expiry_minutes=EMAIL_VERIFICATION_EXPIRY_MINUTES
+                    expiry_minutes=EMAIL_VERIFICATION_EXPIRY_MINUTES,
                 )
 
             # Send email
             if send_verification_email(email, token):
-                logger.info("Verification email sent successfully", extra={
-                    'email': email[:5] + "..."
-                })
+                logger.info(
+                    "Verification email sent successfully",
+                    extra={"email": email[:5] + "..."},
+                )
                 return token
             else:
-                logger.error("Failed to send verification email", extra={
-                    'email': email[:5] + "..."
-                })
+                logger.error(
+                    "Failed to send verification email",
+                    extra={"email": email[:5] + "..."},
+                )
                 return None
 
         except Exception as e:
-            logger.error("Error in send_verification_email_with_token", exc_info=True, extra={
-                'email': email[:5] + "...",
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error in send_verification_email_with_token",
+                exc_info=True,
+                extra={"email": email[:5] + "...", "error_type": type(e).__name__},
+            )
             return None
 
 
@@ -80,20 +83,23 @@ def send_verification_email(email: str, token: str) -> bool:
     """
     with log_context(logger, email=email[:5] + "..."):
         if not all([SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD]):
-            logger.warning("Email configuration incomplete, skipping email send", extra={
-                'smtp_server': SMTP_SERVER,
-                'smtp_port': SMTP_PORT,
-                'has_username': bool(SMTP_USERNAME),
-                'has_password': bool(SMTP_PASSWORD)
-            })
+            logger.warning(
+                "Email configuration incomplete, skipping email send",
+                extra={
+                    "smtp_server": SMTP_SERVER,
+                    "smtp_port": SMTP_PORT,
+                    "has_username": bool(SMTP_USERNAME),
+                    "has_password": bool(SMTP_PASSWORD),
+                },
+            )
             return True
 
         try:
             # Create message
             msg = MIMEMultipart()
-            msg['From'] = FROM_EMAIL
-            msg['To'] = email
-            msg['Subject'] = "Verify your email for RealEstateFinder"
+            msg["From"] = FROM_EMAIL
+            msg["To"] = email
+            msg["Subject"] = "Verify your email for RealEstateFinder"
 
             # Message body
             body = f"""
@@ -107,7 +113,7 @@ def send_verification_email(email: str, token: str) -> bool:
             </body>
             </html>
             """
-            msg.attach(MIMEText(body, 'html'))
+            msg.attach(MIMEText(body, "html"))
 
             # Send email
             server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
@@ -116,16 +122,20 @@ def send_verification_email(email: str, token: str) -> bool:
             server.send_message(msg)
             server.quit()
 
-            logger.info("Sent verification email", extra={'email': email})
+            logger.info("Sent verification email", extra={"email": email})
             return True
 
         except Exception as e:
-            logger.error("Failed to send verification email", exc_info=True, extra={
-                'email': email,
-                'smtp_server': SMTP_SERVER,
-                'smtp_port': SMTP_PORT,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Failed to send verification email",
+                exc_info=True,
+                extra={
+                    "email": email,
+                    "smtp_server": SMTP_SERVER,
+                    "smtp_port": SMTP_PORT,
+                    "error_type": type(e).__name__,
+                },
+            )
             return False
 
 
@@ -148,30 +158,35 @@ def verify_email_token(email: str, token: str) -> bool:
                     db=db,
                     verification_type="email",
                     target=email.lower().strip(),
-                    code=token
+                    code=token,
                 )
 
                 if is_valid:
-                    logger.info("Email token verified successfully", extra={
-                        'email': email[:5] + "..."
-                    })
+                    logger.info(
+                        "Email token verified successfully",
+                        extra={"email": email[:5] + "..."},
+                    )
                 else:
-                    logger.warning("Email token verification failed", extra={
-                        'email': email[:5] + "..."
-                    })
+                    logger.warning(
+                        "Email token verification failed",
+                        extra={"email": email[:5] + "..."},
+                    )
 
                 return is_valid
 
         except Exception as e:
-            logger.error("Error verifying email token", exc_info=True, extra={
-                'email': email[:5] + "...",
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error verifying email token",
+                exc_info=True,
+                extra={"email": email[:5] + "...", "error_type": type(e).__name__},
+            )
             return False
 
 
 @log_operation("link_messenger_account")
-def link_messenger_account(email: str, messenger_type: str, messenger_id: str) -> Optional[int]:
+def link_messenger_account(
+    email: str, messenger_type: str, messenger_id: str
+) -> Optional[int]:
     """
     Link a messenger account to a user with the given email.
     For Telegram-only app, messenger_type should always be "telegram".
@@ -186,32 +201,35 @@ def link_messenger_account(email: str, messenger_type: str, messenger_id: str) -
     """
     with log_context(logger, email=email[:5] + "...", messenger_type=messenger_type):
         if messenger_type != "telegram":
-            logger.error("Unsupported messenger type", extra={
-                'messenger_type': messenger_type
-            })
+            logger.error(
+                "Unsupported messenger type", extra={"messenger_type": messenger_type}
+            )
             return None
 
         try:
             from common.db.operations import link_telegram_to_email
+
             user = link_telegram_to_email(messenger_id, email)
 
             if user:
-                logger.info("Successfully linked email to telegram account", extra={
-                    'email': email[:5] + "...",
-                    'user_id': user.id
-                })
+                logger.info(
+                    "Successfully linked email to telegram account",
+                    extra={"email": email[:5] + "...", "user_id": user.id},
+                )
                 return user.id
             else:
-                logger.error("Failed to link email to telegram account", extra={
-                    'email': email[:5] + "..."
-                })
+                logger.error(
+                    "Failed to link email to telegram account",
+                    extra={"email": email[:5] + "..."},
+                )
                 return None
 
         except Exception as e:
-            logger.error("Error linking email to telegram", exc_info=True, extra={
-                'email': email[:5] + "...",
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error linking email to telegram",
+                exc_info=True,
+                extra={"email": email[:5] + "...", "error_type": type(e).__name__},
+            )
             return None
 
 
@@ -232,9 +250,9 @@ def get_user_by_email(email: str) -> Optional[dict]:
                 user = UserRepository.get_by_email(db, email)
 
                 if not user:
-                    logger.debug("No user found with email", extra={
-                        'email': email[:5] + "..."
-                    })
+                    logger.debug(
+                        "No user found with email", extra={"email": email[:5] + "..."}
+                    )
                     return None
 
                 user_data = {
@@ -242,20 +260,24 @@ def get_user_by_email(email: str) -> Optional[dict]:
                     "telegram_id": user.telegram_id,
                     "email": user.email,
                     "email_verified": user.email_verified,
-                    "phone_number": user.phone_number
+                    "phone_number": user.phone_number,
                 }
 
-                logger.info("Found user by email", extra={
-                    'email': email[:5] + "...",
-                    'user_id': user.id,
-                    'email_verified': user.email_verified
-                })
+                logger.info(
+                    "Found user by email",
+                    extra={
+                        "email": email[:5] + "...",
+                        "user_id": user.id,
+                        "email_verified": user.email_verified,
+                    },
+                )
 
                 return user_data
 
         except Exception as e:
-            logger.error("Error getting user by email", exc_info=True, extra={
-                'email': email[:5] + "...",
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting user by email",
+                exc_info=True,
+                extra={"email": email[:5] + "...", "error_type": type(e).__name__},
+            )
             return None

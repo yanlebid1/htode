@@ -5,7 +5,10 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
 # Import the FastAPI app
-from services.webapps.mini_webapp import app, verify_wayforpay_signature, PaymentCallback
+from services.webapps.mini_webapp import (
+    app,
+    verify_wayforpay_signature,
+)
 
 # Create a test client
 client = TestClient(app)
@@ -20,7 +23,9 @@ def test_health_endpoint():
 
 def test_gallery_endpoint():
     """Test that the gallery endpoint returns HTML."""
-    response = client.get("/gallery?images=https://example.com/image1.jpg,https://example.com/image2.jpg")
+    response = client.get(
+        "/gallery?images=https://example.com/image1.jpg,https://example.com/image2.jpg"
+    )
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/html; charset=utf-8"
     assert "Фотогалерея" in response.text
@@ -38,9 +43,9 @@ def test_phones_endpoint():
 
 def test_verify_wayforpay_signature_success():
     """Test that signature verification works correctly."""
-    with patch("services.webapps.mini_webapp.MERCHANT_SECRET", "test_secret"), \
-            patch("services.webapps.mini_webapp.MERCHANT_ACCOUNT", "test_account"), \
-            patch("services.webapps.mini_webapp.hmac.new") as mock_hmac:
+    with patch("services.webapps.mini_webapp.MERCHANT_SECRET", "test_secret"), patch(
+        "services.webapps.mini_webapp.MERCHANT_ACCOUNT", "test_account"
+    ), patch("services.webapps.mini_webapp.hmac.new") as mock_hmac:
         # Mock the HMAC verification
         mock_hmac_instance = MagicMock()
         mock_hmac_instance.hexdigest.return_value = "valid_signature"
@@ -50,7 +55,7 @@ def test_verify_wayforpay_signature_success():
             "merchantSignature": "valid_signature",
             "merchantAccount": "test_account",
             "orderReference": "test_order",
-            "amount": 100.0
+            "amount": 100.0,
         }
 
         assert verify_wayforpay_signature(data) is True
@@ -58,9 +63,9 @@ def test_verify_wayforpay_signature_success():
 
 def test_verify_wayforpay_signature_failure():
     """Test that signature verification fails with invalid signature."""
-    with patch("services.webapps.mini_webapp.MERCHANT_SECRET", "test_secret"), \
-            patch("services.webapps.mini_webapp.MERCHANT_ACCOUNT", "test_account"), \
-            patch("services.webapps.mini_webapp.hmac.new") as mock_hmac:
+    with patch("services.webapps.mini_webapp.MERCHANT_SECRET", "test_secret"), patch(
+        "services.webapps.mini_webapp.MERCHANT_ACCOUNT", "test_account"
+    ), patch("services.webapps.mini_webapp.hmac.new") as mock_hmac:
         # Mock the HMAC verification
         mock_hmac_instance = MagicMock()
         mock_hmac_instance.hexdigest.return_value = "valid_signature"
@@ -70,7 +75,7 @@ def test_verify_wayforpay_signature_failure():
             "merchantSignature": "invalid_signature",
             "merchantAccount": "test_account",
             "orderReference": "test_order",
-            "amount": 100.0
+            "amount": 100.0,
         }
 
         assert verify_wayforpay_signature(data) is False
@@ -79,8 +84,9 @@ def test_verify_wayforpay_signature_failure():
 @pytest.mark.asyncio
 async def test_payment_callback_approved():
     """Test the payment callback endpoint with approved payment."""
-    with patch("services.webapps.mini_webapp.verify_wayforpay_signature", return_value=True), \
-            patch("services.webapps.mini_webapp.process_approved_payment") as mock_process:
+    with patch(
+        "services.webapps.mini_webapp.verify_wayforpay_signature", return_value=True
+    ), patch("services.webapps.mini_webapp.process_approved_payment") as mock_process:
         payload = {
             "merchantSignature": "valid_signature",
             "merchantAccount": "test_account",
@@ -88,7 +94,7 @@ async def test_payment_callback_approved():
             "transactionStatus": "Approved",
             "amount": 100.0,
             "authCode": "test_auth",
-            "cardPan": "1234********5678"
+            "cardPan": "1234********5678",
         }
 
         response = client.post("/payment/callback", json=payload)
@@ -101,8 +107,11 @@ async def test_payment_callback_approved():
 @pytest.mark.asyncio
 async def test_payment_callback_not_approved():
     """Test the payment callback endpoint with non-approved payment."""
-    with patch("services.webapps.mini_webapp.verify_wayforpay_signature", return_value=True), \
-            patch("services.webapps.mini_webapp.update_non_approved_payment_status") as mock_update:
+    with patch(
+        "services.webapps.mini_webapp.verify_wayforpay_signature", return_value=True
+    ), patch(
+        "services.webapps.mini_webapp.update_non_approved_payment_status"
+    ) as mock_update:
         payload = {
             "merchantSignature": "valid_signature",
             "merchantAccount": "test_account",
@@ -110,7 +119,7 @@ async def test_payment_callback_not_approved():
             "transactionStatus": "Declined",
             "amount": 100.0,
             "authCode": "test_auth",
-            "cardPan": "1234********5678"
+            "cardPan": "1234********5678",
         }
 
         response = client.post("/payment/callback", json=payload)

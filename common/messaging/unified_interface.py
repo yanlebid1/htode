@@ -23,7 +23,6 @@ class MessagingInterface(ABC):
         Returns:
             String identifier for the platform
         """
-        pass
 
     @abstractmethod
     async def format_user_id(self, user_id: str) -> str:
@@ -37,15 +36,10 @@ class MessagingInterface(ABC):
         Returns:
             Properly formatted user ID for the platform
         """
-        pass
 
     @abstractmethod
     async def send_text(
-            self,
-            user_id: str,
-            text: str,
-            keyboard: Optional[Any] = None,
-            **kwargs
+        self, user_id: str, text: str, keyboard: Optional[Any] = None, **kwargs
     ) -> Union[Any, None]:
         """
         Send a text message to a user.
@@ -59,16 +53,15 @@ class MessagingInterface(ABC):
         Returns:
             Platform-specific response or None if failed
         """
-        pass
 
     @abstractmethod
     async def send_media(
-            self,
-            user_id: str,
-            media_url: str,
-            caption: Optional[str] = None,
-            keyboard: Optional[Any] = None,
-            **kwargs
+        self,
+        user_id: str,
+        media_url: str,
+        caption: Optional[str] = None,
+        keyboard: Optional[Any] = None,
+        **kwargs,
     ) -> Union[Any, None]:
         """
         Send a media message to a user.
@@ -83,15 +76,10 @@ class MessagingInterface(ABC):
         Returns:
             Platform-specific response or None if failed
         """
-        pass
 
     @abstractmethod
     async def send_menu(
-            self,
-            user_id: str,
-            text: str,
-            options: List[Dict[str, str]],
-            **kwargs
+        self, user_id: str, text: str, options: List[Dict[str, str]], **kwargs
     ) -> Union[Any, None]:
         """
         Send an interactive menu to a user.
@@ -105,15 +93,14 @@ class MessagingInterface(ABC):
         Returns:
             Platform-specific response or None if failed
         """
-        pass
 
     @abstractmethod
     async def send_ad(
-            self,
-            user_id: str,
-            ad_data: Dict[str, Any],
-            image_url: Optional[str] = None,
-            **kwargs
+        self,
+        user_id: str,
+        ad_data: Dict[str, Any],
+        image_url: Optional[str] = None,
+        **kwargs,
     ) -> Union[Any, None]:
         """
         Send a real estate ad with platform-specific formatting.
@@ -127,15 +114,10 @@ class MessagingInterface(ABC):
         Returns:
             Platform-specific response or None if failed
         """
-        pass
 
     @classmethod
     @abstractmethod
-    def create_keyboard(
-            cls,
-            options: List[Dict[str, str]],
-            **kwargs
-    ) -> Any:
+    def create_keyboard(cls, options: List[Dict[str, str]], **kwargs) -> Any:
         """
         Create a platform-specific keyboard from standardized options.
 
@@ -146,16 +128,11 @@ class MessagingInterface(ABC):
         Returns:
             Platform-specific keyboard object
         """
-        pass
 
     # Extended methods that may be implemented by specific platforms
 
     async def send_document(
-            self,
-            user_id: str,
-            document_url: str,
-            caption: Optional[str] = None,
-            **kwargs
+        self, user_id: str, document_url: str, caption: Optional[str] = None, **kwargs
     ) -> Union[Any, None]:
         """
         Send a document to a user.
@@ -174,12 +151,12 @@ class MessagingInterface(ABC):
             return await self.send_media(user_id, document_url, caption, **kwargs)
 
     async def send_location(
-            self,
-            user_id: str,
-            latitude: float,
-            longitude: float,
-            title: Optional[str] = None,
-            **kwargs
+        self,
+        user_id: str,
+        latitude: float,
+        longitude: float,
+        title: Optional[str] = None,
+        **kwargs,
     ) -> Union[Any, None]:
         """
         Send a location to a user.
@@ -201,11 +178,7 @@ class MessagingInterface(ABC):
                 location_text = f"{title}\n{location_text}"
             return await self.send_text(user_id, location_text, **kwargs)
 
-    async def get_user_info(
-            self,
-            user_id: str,
-            **kwargs
-    ) -> Optional[Dict[str, Any]]:
+    async def get_user_info(self, user_id: str, **kwargs) -> Optional[Dict[str, Any]]:
         """
         Get information about a user.
         Default implementation returns None, but platforms can override.
@@ -240,7 +213,7 @@ class MessengerFactory:
         """
         with log_context(logger, platform=platform):
             cls._messengers[platform] = messenger_class
-            logger.info("Registered messenger", extra={'platform': platform})
+            logger.info("Registered messenger", extra={"platform": platform})
 
     @classmethod
     @log_operation("get_messenger")
@@ -257,25 +230,30 @@ class MessengerFactory:
         with log_context(logger, platform=platform):
             messenger_class = cls._messengers.get(platform)
             if not messenger_class:
-                logger.warning("Messenger class not found", extra={'platform': platform})
+                logger.warning(
+                    "Messenger class not found", extra={"platform": platform}
+                )
                 return None
 
             try:
                 if platform == "telegram":
                     from services.telegram_service.app.bot import bot
+
                     return messenger_class(bot)
                 else:
-                    logger.error("Unknown platform", extra={'platform': platform})
+                    logger.error("Unknown platform", extra={"platform": platform})
                     return None
             except ImportError as e:
-                logger.error("Error importing dependencies", exc_info=True, extra={
-                    'platform': platform,
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Error importing dependencies",
+                    exc_info=True,
+                    extra={"platform": platform, "error_type": type(e).__name__},
+                )
                 return None
             except Exception as e:
-                logger.error("Error creating messenger", exc_info=True, extra={
-                    'platform': platform,
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Error creating messenger",
+                    exc_info=True,
+                    extra={"platform": platform, "error_type": type(e).__name__},
+                )
                 return None

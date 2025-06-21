@@ -16,10 +16,15 @@ from common.utils.logging_config import log_operation, log_context, LogAggregato
 from . import logger
 
 
-@celery_app.task(name='common.messaging.consolidated_tasks.send_notification')
+@celery_app.task(name="common.messaging.consolidated_tasks.send_notification")
 @log_operation("send_notification_task")
-def send_notification(user_id: Union[int, str], template: str, data: Dict[str, Any] = None,
-                      platform: str = None, **kwargs):
+def send_notification(
+    user_id: Union[int, str],
+    template: str,
+    data: Dict[str, Any] = None,
+    platform: str = None,
+    **kwargs,
+):
     """
     Send a notification using a template.
 
@@ -32,7 +37,9 @@ def send_notification(user_id: Union[int, str], template: str, data: Dict[str, A
     """
 
     async def send():
-        with log_context(logger, user_id=user_id, platform=platform, template=template[:50]):
+        with log_context(
+            logger, user_id=user_id, platform=platform, template=template[:50]
+        ):
             try:
                 # Format template if data is provided
                 text = template
@@ -42,32 +49,36 @@ def send_notification(user_id: Union[int, str], template: str, data: Dict[str, A
                         text = template.format(**data)
                     except (KeyError, ValueError):
                         # Fall back to direct template
-                        logger.warning(f"Unable to format template", extra={
-                            'template': template[:100],
-                            'data': str(data)[:100]
-                        })
+                        logger.warning(
+                            "Unable to format template",
+                            extra={"template": template[:100], "data": str(data)[:100]},
+                        )
 
                 # Send the notification
                 success = await safe_send_message(
-                    user_id=user_id,
-                    text=text,
-                    platform=platform,
-                    **kwargs
+                    user_id=user_id, text=text, platform=platform, **kwargs
                 )
 
-                logger.info("Notification sent", extra={
-                    'user_id': user_id,
-                    'platform': platform,
-                    'success': success
-                })
+                logger.info(
+                    "Notification sent",
+                    extra={
+                        "user_id": user_id,
+                        "platform": platform,
+                        "success": success,
+                    },
+                )
 
                 return success
             except Exception as e:
-                logger.error(f"Error sending notification", exc_info=True, extra={
-                    'user_id': user_id,
-                    'platform': platform,
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Error sending notification",
+                    exc_info=True,
+                    extra={
+                        "user_id": user_id,
+                        "platform": platform,
+                        "error_type": type(e).__name__,
+                    },
+                )
                 return False
 
     # Run the async function
@@ -75,9 +86,9 @@ def send_notification(user_id: Union[int, str], template: str, data: Dict[str, A
         return asyncio.run(send())
     except RuntimeError as e:
         # Handle case where there's already an event loop
-        logger.warning(f"RuntimeError in send_notification", extra={
-            'error_type': type(e).__name__
-        })
+        logger.warning(
+            "RuntimeError in send_notification", extra={"error_type": type(e).__name__}
+        )
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -86,9 +97,11 @@ def send_notification(user_id: Union[int, str], template: str, data: Dict[str, A
             loop.close()
 
 
-@celery_app.task(name='common.messaging.consolidated_tasks.send_property_notification')
+@celery_app.task(name="common.messaging.consolidated_tasks.send_property_notification")
 @log_operation("send_property_notification_task")
-def send_property_notification(user_id: Union[int, str], ad_id: int, platform: str = None):
+def send_property_notification(
+    user_id: Union[int, str], ad_id: int, platform: str = None
+):
     """
     Send a property notification with all necessary data and buttons.
 
@@ -106,9 +119,7 @@ def send_property_notification(user_id: Union[int, str], ad_id: int, platform: s
                     ad_data = AdRepository.get_full_ad_data(db, ad_id)
 
                 if not ad_data:
-                    logger.error(f"Ad data not found", extra={
-                        'ad_id': ad_id
-                    })
+                    logger.error("Ad data not found", extra={"ad_id": ad_id})
                     return False
 
                 # Get the primary image
@@ -118,24 +129,26 @@ def send_property_notification(user_id: Union[int, str], ad_id: int, platform: s
                 primary_image = images[0] if images else None
 
                 # Send via the unified messaging service
-                if isinstance(user_id, int) or (isinstance(user_id, str) and user_id.isdigit()):
+                if isinstance(user_id, int) or (
+                    isinstance(user_id, str) and user_id.isdigit()
+                ):
                     # This is a database user ID, we can use the messaging service directly
                     db_user_id = int(user_id)
                     success = await messaging_service.send_ad(
-                        user_id=db_user_id,
-                        ad_data=ad_data,
-                        image_url=primary_image
+                        user_id=db_user_id, ad_data=ad_data, image_url=primary_image
                     )
                 else:
                     # This is a platform-specific ID
-                    platform_name = platform or "telegram"  # Default to telegram if not specified
+                    platform_name = (
+                        platform or "telegram"
+                    )  # Default to telegram if not specified
 
                     # Get the messenger for this platform
                     messenger = messaging_service.get_messenger(platform_name)
                     if not messenger:
-                        logger.error(f"No messenger available", extra={
-                            'platform': platform_name
-                        })
+                        logger.error(
+                            "No messenger available", extra={"platform": platform_name}
+                        )
                         return False
 
                     # Format the user ID
@@ -143,27 +156,32 @@ def send_property_notification(user_id: Union[int, str], ad_id: int, platform: s
 
                     # Send the ad
                     await messenger.send_ad(
-                        user_id=formatted_id,
-                        ad_data=ad_data,
-                        image_url=primary_image
+                        user_id=formatted_id, ad_data=ad_data, image_url=primary_image
                     )
                     success = True
 
-                logger.info("Property notification sent", extra={
-                    'user_id': user_id,
-                    'ad_id': ad_id,
-                    'platform': platform,
-                    'success': success
-                })
+                logger.info(
+                    "Property notification sent",
+                    extra={
+                        "user_id": user_id,
+                        "ad_id": ad_id,
+                        "platform": platform,
+                        "success": success,
+                    },
+                )
 
                 return success
             except Exception as e:
-                logger.error(f"Error sending property notification", exc_info=True, extra={
-                    'user_id': user_id,
-                    'ad_id': ad_id,
-                    'platform': platform,
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Error sending property notification",
+                    exc_info=True,
+                    extra={
+                        "user_id": user_id,
+                        "ad_id": ad_id,
+                        "platform": platform,
+                        "error_type": type(e).__name__,
+                    },
+                )
                 return False
 
     # Run the async function
@@ -171,9 +189,10 @@ def send_property_notification(user_id: Union[int, str], ad_id: int, platform: s
         return asyncio.run(send())
     except RuntimeError as e:
         # Handle case where there's already an event loop
-        logger.warning(f"RuntimeError in send_property_notification", extra={
-            'error_type': type(e).__name__
-        })
+        logger.warning(
+            "RuntimeError in send_property_notification",
+            extra={"error_type": type(e).__name__},
+        )
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -182,7 +201,7 @@ def send_property_notification(user_id: Union[int, str], ad_id: int, platform: s
             loop.close()
 
 
-@celery_app.task(name='common.messaging.consolidated_tasks.send_subscription_reminder')
+@celery_app.task(name="common.messaging.consolidated_tasks.send_subscription_reminder")
 @log_operation("send_subscription_reminder_task")
 def send_subscription_reminder():
     """
@@ -207,17 +226,21 @@ def send_subscription_reminder():
                         future_date = datetime.now() + timedelta(days=days, hours=1)
                         past_date = datetime.now() + timedelta(days=days - 1)
 
-                        users = db.query(User.id, User.subscription_until).filter(
-                            User.subscription_until.isnot(None),
-                            User.subscription_until > datetime.now(),
-                            User.subscription_until < future_date,
-                            User.subscription_until > past_date
-                        ).all()
+                        users = (
+                            db.query(User.id, User.subscription_until)
+                            .filter(
+                                User.subscription_until.isnot(None),
+                                User.subscription_until > datetime.now(),
+                                User.subscription_until < future_date,
+                                User.subscription_until > past_date,
+                            )
+                            .all()
+                        )
 
-                    logger.info(f"Found users with expiring subscriptions", extra={
-                        'days_until_expiry': days,
-                        'user_count': len(users)
-                    })
+                    logger.info(
+                        "Found users with expiring subscriptions",
+                        extra={"days_until_expiry": days, "user_count": len(users)},
+                    )
 
                     for user in users:
                         user_id = user.id
@@ -240,7 +263,9 @@ def send_subscription_reminder():
                             )
 
                         # Determine plural form
-                        days_word = "день" if days == 1 else "дні" if days < 5 else "днів"
+                        days_word = (
+                            "день" if days == 1 else "дні" if days < 5 else "днів"
+                        )
 
                         # Send notification using the consolidated task
                         send_notification.delay(
@@ -249,27 +274,32 @@ def send_subscription_reminder():
                             data={
                                 "days": days,
                                 "days_word": days_word,
-                                "end_date": end_date
-                            }
+                                "end_date": end_date,
+                            },
                         )
                         reminders_sent += 1
-                        aggregator.add_item({
-                            'user_id': user_id,
-                            'days': days,
-                            'end_date': end_date
-                        }, success=True)
+                        aggregator.add_item(
+                            {"user_id": user_id, "days": days, "end_date": end_date},
+                            success=True,
+                        )
 
             # Also notify on the day of expiration
             with db_session() as db:
                 from datetime import date
-                users_today = db.query(User.id, User.subscription_until).filter(
-                    User.subscription_until.isnot(None),
-                    func.date(User.subscription_until) == date.today()
-                ).all()
 
-            logger.info("Found users with subscriptions expiring today", extra={
-                'user_count': len(users_today)
-            })
+                users_today = (
+                    db.query(User.id, User.subscription_until)
+                    .filter(
+                        User.subscription_until.isnot(None),
+                        func.date(User.subscription_until) == date.today(),
+                    )
+                    .all()
+                )
+
+            logger.info(
+                "Found users with subscriptions expiring today",
+                extra={"user_count": len(users_today)},
+            )
 
             for user in users_today:
                 user_id = user.id
@@ -283,33 +313,40 @@ def send_subscription_reminder():
                         "Час закінчення: {end_date}\n\n"
                         "Щоб не втратити доступ до сервісу, оновіть підписку зараз."
                     ),
-                    data={"end_date": end_date}
+                    data={"end_date": end_date},
                 )
                 reminders_sent += 1
-                aggregator.add_item({
-                    'user_id': user_id,
-                    'type': 'same_day',
-                    'end_date': end_date
-                }, success=True)
+                aggregator.add_item(
+                    {"user_id": user_id, "type": "same_day", "end_date": end_date},
+                    success=True,
+                )
 
             aggregator.log_summary()
 
-            logger.info("Subscription reminder task completed", extra={
-                'reminders_sent': reminders_sent
-            })
+            logger.info(
+                "Subscription reminder task completed",
+                extra={"reminders_sent": reminders_sent},
+            )
 
             return {"status": "success", "reminders_sent": reminders_sent}
         except Exception as e:
-            logger.error(f"Error sending subscription reminders", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error sending subscription reminders",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return {"status": "error", "error": str(e)}
 
 
-@celery_app.task(name='common.messaging.consolidated_tasks.send_batch_notifications')
+@celery_app.task(name="common.messaging.consolidated_tasks.send_batch_notifications")
 @log_operation("send_batch_notifications_task")
-def send_batch_notifications(user_ids: List[int], template: str, data: Dict[str, Any] = None,
-                             batch_size: int = 50, **kwargs):
+def send_batch_notifications(
+    user_ids: List[int],
+    template: str,
+    data: Dict[str, Any] = None,
+    batch_size: int = 50,
+    **kwargs,
+):
     """
     Send notifications to a batch of users.
 
@@ -321,41 +358,40 @@ def send_batch_notifications(user_ids: List[int], template: str, data: Dict[str,
         **kwargs: Additional options for the messages
     """
     with log_context(logger, user_count=len(user_ids), batch_size=batch_size):
-        results = {
-            "total": len(user_ids),
-            "success": 0,
-            "failed": 0
-        }
+        results = {"total": len(user_ids), "success": 0, "failed": 0}
 
-        aggregator = LogAggregator(logger, f"send_batch_notifications_{len(user_ids)}_users")
+        aggregator = LogAggregator(
+            logger, f"send_batch_notifications_{len(user_ids)}_users"
+        )
 
         # Process in batches to avoid overwhelming the system
         for i in range(0, len(user_ids), batch_size):
-            batch = user_ids[i:i + batch_size]
+            batch = user_ids[i : i + batch_size]
 
-            logger.info(f"Processing notification batch", extra={
-                'batch_number': i // batch_size + 1,
-                'batch_size': len(batch),
-                'total_users': len(user_ids)
-            })
+            logger.info(
+                "Processing notification batch",
+                extra={
+                    "batch_number": i // batch_size + 1,
+                    "batch_size": len(batch),
+                    "total_users": len(user_ids),
+                },
+            )
 
             for user_id in batch:
                 try:
                     send_notification.delay(
-                        user_id=user_id,
-                        template=template,
-                        data=data,
-                        **kwargs
+                        user_id=user_id, template=template, data=data, **kwargs
                     )
                     results["success"] += 1
-                    aggregator.add_item({'user_id': user_id}, success=True)
+                    aggregator.add_item({"user_id": user_id}, success=True)
                 except Exception as e:
-                    logger.error(f"Error sending notification", exc_info=True, extra={
-                        'user_id': user_id,
-                        'error_type': type(e).__name__
-                    })
+                    logger.error(
+                        "Error sending notification",
+                        exc_info=True,
+                        extra={"user_id": user_id, "error_type": type(e).__name__},
+                    )
                     results["failed"] += 1
-                    aggregator.add_error(str(e), {'user_id': user_id})
+                    aggregator.add_error(str(e), {"user_id": user_id})
 
         aggregator.log_summary()
 
@@ -363,9 +399,11 @@ def send_batch_notifications(user_ids: List[int], template: str, data: Dict[str,
         return results
 
 
-@celery_app.task(name='common.messaging.consolidated_tasks.get_description_and_notify')
+@celery_app.task(name="common.messaging.consolidated_tasks.get_description_and_notify")
 @log_operation("get_description_and_notify_task")
-def get_description_and_notify(user_id: Union[int, str], resource_url: str, platform: str = None):
+def get_description_and_notify(
+    user_id: Union[int, str], resource_url: str, platform: str = None
+):
     """
     Get the full description of an ad and send it to the user.
 
@@ -376,7 +414,9 @@ def get_description_and_notify(user_id: Union[int, str], resource_url: str, plat
     """
 
     async def process():
-        with log_context(logger, user_id=user_id, resource_url=resource_url, platform=platform):
+        with log_context(
+            logger, user_id=user_id, resource_url=resource_url, platform=platform
+        ):
             try:
                 # Get the full description using repository
                 with db_session() as db:
@@ -385,38 +425,43 @@ def get_description_and_notify(user_id: Union[int, str], resource_url: str, plat
                     description = ad.description if ad else None
 
                 if not description:
-                    logger.warning(f"No description found", extra={
-                        'resource_url': resource_url
-                    })
+                    logger.warning(
+                        "No description found", extra={"resource_url": resource_url}
+                    )
                     await safe_send_message(
                         user_id=user_id,
                         text="Немає додаткового опису.",
-                        platform=platform
+                        platform=platform,
                     )
                     return False
 
                 # Send the description
                 success = await safe_send_message(
-                    user_id=user_id,
-                    text=description,
-                    platform=platform
+                    user_id=user_id, text=description, platform=platform
                 )
 
-                logger.info("Description sent", extra={
-                    'user_id': user_id,
-                    'resource_url': resource_url,
-                    'platform': platform,
-                    'success': success
-                })
+                logger.info(
+                    "Description sent",
+                    extra={
+                        "user_id": user_id,
+                        "resource_url": resource_url,
+                        "platform": platform,
+                        "success": success,
+                    },
+                )
 
                 return success
             except Exception as e:
-                logger.error(f"Error getting and sending description", exc_info=True, extra={
-                    'user_id': user_id,
-                    'resource_url': resource_url,
-                    'platform': platform,
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Error getting and sending description",
+                    exc_info=True,
+                    extra={
+                        "user_id": user_id,
+                        "resource_url": resource_url,
+                        "platform": platform,
+                        "error_type": type(e).__name__,
+                    },
+                )
                 return False
 
     # Run the async function
@@ -424,9 +469,10 @@ def get_description_and_notify(user_id: Union[int, str], resource_url: str, plat
         return asyncio.run(process())
     except RuntimeError as e:
         # Handle case where there's already an event loop
-        logger.warning(f"RuntimeError in get_description_and_notify", extra={
-            'error_type': type(e).__name__
-        })
+        logger.warning(
+            "RuntimeError in get_description_and_notify",
+            extra={"error_type": type(e).__name__},
+        )
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -435,7 +481,7 @@ def get_description_and_notify(user_id: Union[int, str], resource_url: str, plat
             loop.close()
 
 
-@celery_app.task(name='common.messaging.consolidated_tasks.process_new_listings')
+@celery_app.task(name="common.messaging.consolidated_tasks.process_new_listings")
 @log_operation("process_new_listings_task")
 def process_new_listings(ad_ids: List[int], max_notifications_per_user: int = 5):
     """
@@ -445,9 +491,15 @@ def process_new_listings(ad_ids: List[int], max_notifications_per_user: int = 5)
         ad_ids: List of new ad IDs
         max_notifications_per_user: Maximum notifications to send to each user
     """
-    with log_context(logger, ad_count=len(ad_ids), max_notifications_per_user=max_notifications_per_user):
+    with log_context(
+        logger,
+        ad_count=len(ad_ids),
+        max_notifications_per_user=max_notifications_per_user,
+    ):
         try:
-            aggregator = LogAggregator(logger, f"process_new_listings_{len(ad_ids)}_ads")
+            aggregator = LogAggregator(
+                logger, f"process_new_listings_{len(ad_ids)}_ads"
+            )
 
             # Find matching users for all ads
             matching_users = {}
@@ -458,8 +510,13 @@ def process_new_listings(ad_ids: List[int], max_notifications_per_user: int = 5)
                     if ad:
                         # Use the repository to find users for this ad
                         matching_users[ad_id] = AdRepository.find_users_for_ad(db, ad)
-                        aggregator.add_item({'ad_id': ad_id, 'matching_users': len(matching_users[ad_id])},
-                                            success=True)
+                        aggregator.add_item(
+                            {
+                                "ad_id": ad_id,
+                                "matching_users": len(matching_users[ad_id]),
+                            },
+                            success=True,
+                        )
 
             # Track notifications sent to each user to avoid spamming
             notifications_sent = {}
@@ -472,11 +529,14 @@ def process_new_listings(ad_ids: List[int], max_notifications_per_user: int = 5)
                 for user_id in user_ids:
                     # Check if user has reached maximum notifications
                     if notifications_sent.get(user_id, 0) >= max_notifications_per_user:
-                        logger.debug("User reached notification limit", extra={
-                            'user_id': user_id,
-                            'notifications_sent': notifications_sent[user_id],
-                            'limit': max_notifications_per_user
-                        })
+                        logger.debug(
+                            "User reached notification limit",
+                            extra={
+                                "user_id": user_id,
+                                "notifications_sent": notifications_sent[user_id],
+                                "limit": max_notifications_per_user,
+                            },
+                        )
                         continue
 
                     # Send notification
@@ -492,15 +552,16 @@ def process_new_listings(ad_ids: List[int], max_notifications_per_user: int = 5)
                 "status": "success",
                 "ads_processed": len(ad_ids),
                 "notifications_sent": sent_count,
-                "users_notified": len(notifications_sent)
+                "users_notified": len(notifications_sent),
             }
 
             logger.info("New listings processed", extra=results)
             return results
 
         except Exception as e:
-            logger.error(f"Error processing new listings", exc_info=True, extra={
-                'ad_count': len(ad_ids),
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error processing new listings",
+                exc_info=True,
+                extra={"ad_count": len(ad_ids), "error_type": type(e).__name__},
+            )
             return {"status": "error", "error": str(e)}

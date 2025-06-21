@@ -2,13 +2,12 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
 from system.maintenance import (
     cleanup_old_ads,
     is_ad_inactive,
     get_ad_images,
     delete_ad,
-    cleanup_expired_verification_codes
+    cleanup_expired_verification_codes,
 )
 
 
@@ -18,7 +17,7 @@ def mock_old_ads():
     return [
         {"id": 1, "external_id": "ext1", "resource_url": "https://example.com/ad1"},
         {"id": 2, "external_id": "ext2", "resource_url": "https://example.com/ad2"},
-        {"id": 3, "external_id": "ext3", "resource_url": "https://example.com/ad3"}
+        {"id": 3, "external_id": "ext3", "resource_url": "https://example.com/ad3"},
     ]
 
 
@@ -27,7 +26,7 @@ def mock_ad_images():
     """Mock data for ad images"""
     return [
         "https://example.com/bucket/image1.jpg",
-        "https://example.com/bucket/image2.jpg"
+        "https://example.com/bucket/image2.jpg",
     ]
 
 
@@ -57,7 +56,7 @@ def test_get_ad_images(mock_execute_query):
     """Test retrieving ad images"""
     mock_execute_query.return_value = [
         {"image_url": "https://example.com/bucket/image1.jpg"},
-        {"image_url": "https://example.com/bucket/image2.jpg"}
+        {"image_url": "https://example.com/bucket/image2.jpg"},
     ]
 
     result = get_ad_images(1)
@@ -91,11 +90,15 @@ def test_delete_ad(mock_execute_query):
 @pytest.mark.asyncio
 async def test_cleanup_old_ads(mock_old_ads, mock_ad_images, mock_execute_query):
     """Test the main cleanup function"""
-    with patch("system.maintenance.get_old_ads_for_cleanup", return_value=mock_old_ads), \
-            patch("system.maintenance.is_ad_inactive", return_value=True), \
-            patch("system.maintenance.get_ad_images", return_value=mock_ad_images), \
-            patch("system.maintenance.delete_ad", return_value=True), \
-            patch("system.maintenance.delete_s3_image", return_value=True):
+    with patch(
+        "system.maintenance.get_old_ads_for_cleanup", return_value=mock_old_ads
+    ), patch("system.maintenance.is_ad_inactive", return_value=True), patch(
+        "system.maintenance.get_ad_images", return_value=mock_ad_images
+    ), patch(
+        "system.maintenance.delete_ad", return_value=True
+    ), patch(
+        "system.maintenance.delete_s3_image", return_value=True
+    ):
         result = cleanup_old_ads(days_old=30, check_activity=True)
 
         assert result["status"] == "completed"

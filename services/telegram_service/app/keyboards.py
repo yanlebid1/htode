@@ -19,12 +19,26 @@ def property_type_keyboard():
 
 def city_keyboard(cities, page=0, show_back=False, show_save=False, selected_city=None):
     """Create keyboard for city selection with pagination"""
-    return KeyboardFactory.create_keyboard("telegram", "city", cities=cities, page=page, show_back=show_back, show_save=show_save, selected_city=selected_city)
+    return KeyboardFactory.create_keyboard(
+        "telegram",
+        "city",
+        cities=cities,
+        page=page,
+        show_back=show_back,
+        show_save=show_save,
+        selected_city=selected_city,
+    )
 
 
 def rooms_keyboard(selected_rooms=None, show_back=False, show_save=False):
     """Create keyboard for room selection"""
-    return KeyboardFactory.create_keyboard("telegram", "rooms", selected_rooms=selected_rooms, show_back=show_back, show_save=show_save)
+    return KeyboardFactory.create_keyboard(
+        "telegram",
+        "rooms",
+        selected_rooms=selected_rooms,
+        show_back=show_back,
+        show_save=show_save,
+    )
 
 
 def price_keyboard(city="Київ"):
@@ -44,7 +58,9 @@ def edit_parameters_keyboard():
 
 def floor_keyboard(floor_opts=None, show_back=False):
     """Create keyboard for floor selection"""
-    return KeyboardFactory.create_keyboard("telegram", "floor", floor_opts=floor_opts, show_back=show_back)
+    return KeyboardFactory.create_keyboard(
+        "telegram", "floor", floor_opts=floor_opts, show_back=show_back
+    )
 
 
 def subscription_menu_keyboard():
@@ -52,36 +68,26 @@ def subscription_menu_keyboard():
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row(
-        KeyboardButton("🛑 Відключити"),
-        KeyboardButton("✅ Включити")
-    )
-    keyboard.row(
-        KeyboardButton("✏️ Редагувати"),
-        KeyboardButton("↪️ Назад")
-    )
+    keyboard.row(KeyboardButton("🛑 Відключити"), KeyboardButton("✅ Включити"))
+    keyboard.row(KeyboardButton("✏️ Редагувати"), KeyboardButton("↪️ Назад"))
     return keyboard
 
 
 def how_to_use_keyboard():
-    """Sub-menu for 'Як це працює?' """
+    """Sub-menu for 'Як це працює?'"""
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(
-        KeyboardButton("↪️ Назад")
-    )
+    keyboard.add(KeyboardButton("↪️ Назад"))
     return keyboard
 
 
 def tech_support_keyboard():
-    """Sub-menu for 'Техпідтримка' """
+    """Sub-menu for 'Техпідтримка'"""
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(
-        KeyboardButton("↪️ Назад")
-    )
+    keyboard.add(KeyboardButton("↪️ Назад"))
     return keyboard
 
 
@@ -95,9 +101,9 @@ def make_subscriptions_page_kb(user_id, page, subscriptions, total_count, per_pa
     # 1) Add each subscription as a separate button:
     for sub in subscriptions:
         sub_id = sub["id"]
-        city = GEO_ID_MAPPING.get(sub['city'], "Невідомо")
+        city = GEO_ID_MAPPING.get(sub["city"], "Невідомо")
         mapping_property = {"apartment": "квартира", "house": "будинок"}
-        ua_lang_property_type = mapping_property.get(sub['property_type'], "")
+        ua_lang_property_type = mapping_property.get(sub["property_type"], "")
 
         # Handle rooms_list being None
         rooms_list = sub["rooms_count"] or []
@@ -109,7 +115,7 @@ def make_subscriptions_page_kb(user_id, page, subscriptions, total_count, per_pa
             if el is not None:  # Check for None values in the list
                 rooms.append(str(el))
 
-        rooms_text = '-'.join(rooms) if rooms else "Будь-яка"
+        rooms_text = "-".join(rooms) if rooms else "Будь-яка"
 
         # Handle price values safely
         price_min = sub.get("price_min", 0)
@@ -121,15 +127,21 @@ def make_subscriptions_page_kb(user_id, page, subscriptions, total_count, per_pa
 
         paused_str = " (Призупинена)" if sub.get("is_paused") else ""
         button_text = f"м.{city}, {ua_lang_property_type}, {rooms_text} к., {price_min}-{price_max} тис.грн.{paused_str}"
-        kb.add(InlineKeyboardButton(button_text, callback_data=f"sub_open:{sub_id}:{page}"))
+        kb.add(
+            InlineKeyboardButton(button_text, callback_data=f"sub_open:{sub_id}:{page}")
+        )
 
     # 2) Build the navigation row (Prev / Next) if needed
     max_pages = (total_count - 1) // per_page  # integer division
     nav_row = []
     if page > 0:
-        nav_row.append(InlineKeyboardButton("<< Prev", callback_data=f"subs_page:{page - 1}"))
+        nav_row.append(
+            InlineKeyboardButton("<< Prev", callback_data=f"subs_page:{page - 1}")
+        )
     if page < max_pages:
-        nav_row.append(InlineKeyboardButton("Next >>", callback_data=f"subs_page:{page + 1}"))
+        nav_row.append(
+            InlineKeyboardButton("Next >>", callback_data=f"subs_page:{page + 1}")
+        )
 
     if nav_row:
         kb.row(*nav_row)
@@ -173,9 +185,7 @@ def phone_request_keyboard():
     keyboard.add(
         KeyboardButton(text="Поділитися номером телефону", request_contact=True)
     )
-    keyboard.add(
-        KeyboardButton(text="↪️ Назад")
-    )
+    keyboard.add(KeyboardButton(text="↪️ Назад"))
     return keyboard
 
 
@@ -184,9 +194,7 @@ def verification_code_keyboard():
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(
-        KeyboardButton(text="↪️ Назад")
-    )
+    keyboard.add(KeyboardButton(text="↪️ Назад"))
     return keyboard
 
 
@@ -196,6 +204,8 @@ def verification_success_keyboard():
 
     keyboard = InlineKeyboardMarkup()
     keyboard.add(
-        InlineKeyboardButton("Повернутися до головного меню", callback_data="return_to_main_menu")
+        InlineKeyboardButton(
+            "Повернутися до головного меню", callback_data="return_to_main_menu"
+        )
     )
     return keyboard

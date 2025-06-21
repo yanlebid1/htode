@@ -1,7 +1,9 @@
 # common/flows/property_search_flow.py
 
 from common.db.operations import (
-    update_user_filter, get_user_by_telegram_id, create_telegram_user
+    update_user_filter,
+    get_user_by_telegram_id,
+    create_telegram_user,
 )
 from common.celery_app import celery_app
 from common.messaging.unified_flow import MessageFlow, FlowContext, flow_library
@@ -14,13 +16,33 @@ from . import logger
 property_search_flow = MessageFlow(
     name="property_search",
     initial_state="start",
-    description="Flow for searching properties and setting up subscriptions"
+    description="Flow for searching properties and setting up subscriptions",
 )
 
 # List of available cities (reused across platforms)
-AVAILABLE_CITIES = ['Івано-Франківськ', 'Вінниця', 'Дніпро', 'Житомир', 'Запоріжжя', 'Київ', 'Кропивницький', 'Луцьк',
-                    'Львів', 'Миколаїв', 'Одеса', 'Полтава', 'Рівне', 'Суми', 'Тернопіль', 'Ужгород', 'Харків',
-                    'Херсон', 'Хмельницький', 'Черкаси', 'Чернівці']
+AVAILABLE_CITIES = [
+    "Івано-Франківськ",
+    "Вінниця",
+    "Дніпро",
+    "Житомир",
+    "Запоріжжя",
+    "Київ",
+    "Кропивницький",
+    "Луцьк",
+    "Львів",
+    "Миколаїв",
+    "Одеса",
+    "Полтава",
+    "Рівне",
+    "Суми",
+    "Тернопіль",
+    "Ужгород",
+    "Харків",
+    "Херсон",
+    "Хмельницький",
+    "Черкаси",
+    "Чернівці",
+]
 
 
 # Helper functions
@@ -52,8 +74,8 @@ def get_price_ranges(city):
     """Get appropriate price ranges based on city size"""
     with log_context(logger, city=city):
         # Group cities by size for price ranges
-        big_cities = {'Київ'}
-        medium_cities = {'Харків', 'Дніпро', 'Одеса', 'Львів'}
+        big_cities = {"Київ"}
+        medium_cities = {"Харків", "Дніпро", "Одеса", "Львів"}
 
         if city in big_cities:
             return [(0, 15000), (15000, 20000), (20000, 30000), (30000, None)]
@@ -77,10 +99,10 @@ async def start_property_search(context: FlowContext):
             # Create a new user if not found
             db_user_id = create_telegram_user(telegram_id)
 
-        logger.info("Starting property search flow", extra={
-            'user_id': telegram_id,
-            'db_user_id': db_user_id
-        })
+        logger.info(
+            "Starting property search flow",
+            extra={"user_id": telegram_id, "db_user_id": db_user_id},
+        )
 
         # Store user_db_id in flow context for later use
         context.update(user_db_id=db_user_id)
@@ -96,13 +118,10 @@ async def start_property_search(context: FlowContext):
         # Send property type options in a platform-appropriate way
         options = [
             {"text": "Квартира", "value": "apartment"},
-            {"text": "Будинок", "value": "house"}
+            {"text": "Будинок", "value": "house"},
         ]
 
-        await context.send_menu(
-            text="🏷 Оберіть тип нерухомості:",
-            options=options
-        )
+        await context.send_menu(text="🏷 Оберіть тип нерухомості:", options=options)
 
 
 @log_operation("handle_property_type")
@@ -118,15 +137,15 @@ async def handle_property_type(context: FlowContext):
             "квартира": "apartment",
             "будинок": "house",
             "1": "apartment",
-            "2": "house"
+            "2": "house",
         }
 
         if message in property_mapping:
             property_type = property_mapping[message]
-            logger.info("Property type selected", extra={
-                'property_type': property_type,
-                'user_id': context.user_id
-            })
+            logger.info(
+                "Property type selected",
+                extra={"property_type": property_type, "user_id": context.user_id},
+            )
 
             # Store the selected property type
             context.update(property_type=property_type)
@@ -136,21 +155,22 @@ async def handle_property_type(context: FlowContext):
 
             # Create menu options for cities
             city_options = []
-            for city in AVAILABLE_CITIES[:10]:  # Limit to first 10 cities to avoid too many options
+            for city in AVAILABLE_CITIES[
+                :10
+            ]:  # Limit to first 10 cities to avoid too many options
                 city_options.append({"text": city, "value": city})
 
             # Add option to enter a custom city
             city_options.append({"text": "Інше місто", "value": "other_city"})
 
             await context.send_menu(
-                text="Оберіть місто зі списку або введіть назву:",
-                options=city_options
+                text="Оберіть місто зі списку або введіть назву:", options=city_options
             )
         else:
-            logger.warning("Invalid property type input", extra={
-                'user_id': context.user_id,
-                'message': message
-            })
+            logger.warning(
+                "Invalid property type input",
+                extra={"user_id": context.user_id, "message": message},
+            )
             # Invalid input
             await context.send_message(
                 "Невідомий тип нерухомості. Будь ласка, оберіть 'Квартира' або 'Будинок'."
@@ -169,21 +189,26 @@ async def handle_city(context: FlowContext):
             if 0 <= index < len(AVAILABLE_CITIES):
                 city = AVAILABLE_CITIES[index]
             else:
-                logger.warning("Invalid city index", extra={
-                    'user_id': context.user_id,
-                    'index': index,
-                    'max_index': len(AVAILABLE_CITIES) - 1
-                })
-                await context.send_message("Невірний номер міста. Будь ласка, оберіть зі списку.")
+                logger.warning(
+                    "Invalid city index",
+                    extra={
+                        "user_id": context.user_id,
+                        "index": index,
+                        "max_index": len(AVAILABLE_CITIES) - 1,
+                    },
+                )
+                await context.send_message(
+                    "Невірний номер міста. Будь ласка, оберіть зі списку."
+                )
                 return
 
         # Check if city is valid
         if city == "other_city":
             # Ask for custom city
-            logger.debug("User requesting custom city input", extra={'user_id': context.user_id})
-            await context.send_message(
-                "Будь ласка, введіть назву міста:"
+            logger.debug(
+                "User requesting custom city input", extra={"user_id": context.user_id}
             )
+            await context.send_message("Будь ласка, введіть назву міста:")
             context.update(awaiting_custom_city=True)
             return
 
@@ -192,16 +217,17 @@ async def handle_city(context: FlowContext):
             # Store selected city
             context.update(city=city, awaiting_custom_city=False)
 
-            logger.info("City selected", extra={
-                'user_id': context.user_id,
-                'city': city,
-                'was_custom': context.data.get("awaiting_custom_city", False)
-            })
+            logger.info(
+                "City selected",
+                extra={
+                    "user_id": context.user_id,
+                    "city": city,
+                    "was_custom": context.data.get("awaiting_custom_city", False),
+                },
+            )
 
             # Move to rooms selection
-            await context.send_message(
-                "🛏️ Виберіть кількість кімнат:"
-            )
+            await context.send_message("🛏️ Виберіть кількість кімнат:")
 
             # Create options for rooms
             room_options = []
@@ -213,15 +239,13 @@ async def handle_city(context: FlowContext):
             room_options.append({"text": "Будь-яка кількість", "value": "any_rooms"})
 
             await context.send_menu(
-                text="Оберіть кількість кімнат:",
-                options=room_options
+                text="Оберіть кількість кімнат:", options=room_options
             )
         else:
             # Invalid city
-            logger.warning("Invalid city input", extra={
-                'user_id': context.user_id,
-                'city': city
-            })
+            logger.warning(
+                "Invalid city input", extra={"user_id": context.user_id, "city": city}
+            )
             await context.send_message(
                 "Місто не знайдено. Будь ласка, оберіть місто зі списку або введіть коректну назву."
             )
@@ -232,18 +256,21 @@ async def handle_rooms(context: FlowContext):
     """Handle rooms selection"""
     with log_context(logger, user_id=context.user_id, message=context.message):
         message = context.message
-        selected_rooms = context.data.get('rooms', [])
+        context.data.get("rooms", [])
 
         if message == "any_rooms":
             # User selected any number of rooms
             context.update(rooms=None)
-            logger.info("Rooms selected: any", extra={'user_id': context.user_id})
+            logger.info("Rooms selected: any", extra={"user_id": context.user_id})
 
             # Move to price selection
             await show_price_options(context)
         elif message == "multiple_rooms":
             # User wants to select multiple rooms
-            logger.debug("User wants to select multiple rooms", extra={'user_id': context.user_id})
+            logger.debug(
+                "User wants to select multiple rooms",
+                extra={"user_id": context.user_id},
+            )
             await context.send_message(
                 "Введіть кількість кімнат через кому (наприклад: 1,2,3):"
             )
@@ -253,43 +280,47 @@ async def handle_rooms(context: FlowContext):
             try:
                 room_number = int(message.split("_")[1])
                 context.update(rooms=[room_number])
-                logger.info("Single room selected", extra={
-                    'user_id': context.user_id,
-                    'room_number': room_number
-                })
+                logger.info(
+                    "Single room selected",
+                    extra={"user_id": context.user_id, "room_number": room_number},
+                )
 
                 # Move to price selection
                 await show_price_options(context)
             except (ValueError, IndexError):
-                logger.error("Invalid room format", extra={
-                    'user_id': context.user_id,
-                    'message': message
-                })
+                logger.error(
+                    "Invalid room format",
+                    extra={"user_id": context.user_id, "message": message},
+                )
                 await context.send_message("Невірний формат вибору кімнат.")
         elif context.data.get("awaiting_multiple_rooms"):
             # User is entering multiple rooms
             try:
                 # Parse room numbers from text
                 parts = message.replace(",", " ").split()
-                room_numbers = [int(part) for part in parts if part.isdigit() and 1 <= int(part) <= 5]
+                room_numbers = [
+                    int(part)
+                    for part in parts
+                    if part.isdigit() and 1 <= int(part) <= 5
+                ]
 
                 if not room_numbers:
                     raise ValueError("No valid room numbers")
 
                 # Store selected rooms
                 context.update(rooms=room_numbers, awaiting_multiple_rooms=False)
-                logger.info("Multiple rooms selected", extra={
-                    'user_id': context.user_id,
-                    'rooms': room_numbers
-                })
+                logger.info(
+                    "Multiple rooms selected",
+                    extra={"user_id": context.user_id, "rooms": room_numbers},
+                )
 
                 # Move to price selection
                 await show_price_options(context)
             except ValueError:
-                logger.warning("Invalid room input format", extra={
-                    'user_id': context.user_id,
-                    'message': message
-                })
+                logger.warning(
+                    "Invalid room input format",
+                    extra={"user_id": context.user_id, "message": message},
+                )
                 await context.send_message(
                     "Невірний формат. Введіть числа від 1 до 5, розділені комами."
                 )
@@ -297,18 +328,18 @@ async def handle_rooms(context: FlowContext):
             # Try to parse direct number input
             if message.isdigit() and 1 <= int(message) <= 5:
                 context.update(rooms=[int(message)])
-                logger.info("Direct room number input", extra={
-                    'user_id': context.user_id,
-                    'room_number': int(message)
-                })
+                logger.info(
+                    "Direct room number input",
+                    extra={"user_id": context.user_id, "room_number": int(message)},
+                )
 
                 # Move to price selection
                 await show_price_options(context)
             else:
-                logger.warning("Unknown room selection", extra={
-                    'user_id': context.user_id,
-                    'message': message
-                })
+                logger.warning(
+                    "Unknown room selection",
+                    extra={"user_id": context.user_id, "message": message},
+                )
                 await context.send_message(
                     "Невідомий вибір кімнат. Будь ласка, використовуйте запропоновані варіанти."
                 )
@@ -322,11 +353,14 @@ async def show_price_options(context: FlowContext):
 
         # Get price ranges based on city
         price_ranges = get_price_ranges(city)
-        logger.debug("Showing price options", extra={
-            'user_id': context.user_id,
-            'city': city,
-            'ranges_count': len(price_ranges)
-        })
+        logger.debug(
+            "Showing price options",
+            extra={
+                "user_id": context.user_id,
+                "city": city,
+                "ranges_count": len(price_ranges),
+            },
+        )
 
         # Create options for price ranges
         price_options = []
@@ -347,8 +381,7 @@ async def show_price_options(context: FlowContext):
         price_options.append({"text": "Вказати свій діапазон", "value": "custom_price"})
 
         await context.send_menu(
-            text="💰 Виберіть діапазон цін (грн):",
-            options=price_options
+            text="💰 Виберіть діапазон цін (грн):", options=price_options
         )
 
 
@@ -360,7 +393,9 @@ async def handle_price(context: FlowContext):
 
         if message == "custom_price":
             # User wants to enter custom price range
-            logger.debug("User requesting custom price input", extra={'user_id': context.user_id})
+            logger.debug(
+                "User requesting custom price input", extra={"user_id": context.user_id}
+            )
             await context.send_message(
                 "Введіть мінімальну та максимальну ціну через дефіс (наприклад: 5000-12000).\n"
                 "Для встановлення тільки мінімальної ціни, введіть: 5000+\n"
@@ -379,22 +414,25 @@ async def handle_price(context: FlowContext):
                 context.update(
                     price_min=low if low > 0 else None,
                     price_max=high,
-                    awaiting_custom_price=False
+                    awaiting_custom_price=False,
                 )
 
-                logger.info("Price range selected", extra={
-                    'user_id': context.user_id,
-                    'price_min': low if low > 0 else None,
-                    'price_max': high
-                })
+                logger.info(
+                    "Price range selected",
+                    extra={
+                        "user_id": context.user_id,
+                        "price_min": low if low > 0 else None,
+                        "price_max": high,
+                    },
+                )
 
                 # Show confirmation
                 await show_confirmation(context)
             except (ValueError, IndexError):
-                logger.error("Invalid price format", extra={
-                    'user_id': context.user_id,
-                    'message': message
-                })
+                logger.error(
+                    "Invalid price format",
+                    extra={"user_id": context.user_id, "message": message},
+                )
                 await context.send_message("Невірний формат діапазону цін.")
         elif context.data.get("awaiting_custom_price"):
             # User is entering custom price range
@@ -422,22 +460,25 @@ async def handle_price(context: FlowContext):
                 context.update(
                     price_min=min_price,
                     price_max=max_price,
-                    awaiting_custom_price=False
+                    awaiting_custom_price=False,
                 )
 
-                logger.info("Custom price range set", extra={
-                    'user_id': context.user_id,
-                    'price_min': min_price,
-                    'price_max': max_price
-                })
+                logger.info(
+                    "Custom price range set",
+                    extra={
+                        "user_id": context.user_id,
+                        "price_min": min_price,
+                        "price_max": max_price,
+                    },
+                )
 
                 # Show confirmation
                 await show_confirmation(context)
             except ValueError:
-                logger.warning("Invalid custom price format", extra={
-                    'user_id': context.user_id,
-                    'message': message
-                })
+                logger.warning(
+                    "Invalid custom price format",
+                    extra={"user_id": context.user_id, "message": message},
+                )
                 await context.send_message(
                     "Невірний формат. Введіть числа в форматі min-max, min+, або -max."
                 )
@@ -450,24 +491,24 @@ async def handle_price(context: FlowContext):
 
                 if 0 <= index < len(price_ranges):
                     low, high = price_ranges[index]
-                    context.update(
-                        price_min=low if low > 0 else None,
-                        price_max=high
+                    context.update(price_min=low if low > 0 else None, price_max=high)
+                    logger.info(
+                        "Price range selected by index",
+                        extra={
+                            "user_id": context.user_id,
+                            "index": index,
+                            "price_min": low if low > 0 else None,
+                            "price_max": high,
+                        },
                     )
-                    logger.info("Price range selected by index", extra={
-                        'user_id': context.user_id,
-                        'index': index,
-                        'price_min': low if low > 0 else None,
-                        'price_max': high
-                    })
                     await show_confirmation(context)
                     return
 
             # If we get here, it's an invalid input
-            logger.warning("Unknown price input format", extra={
-                'user_id': context.user_id,
-                'message': message
-            })
+            logger.warning(
+                "Unknown price input format",
+                extra={"user_id": context.user_id, "message": message},
+            )
             await context.send_message(
                 "Невідомий формат діапазону цін. Використовуйте запропоновані варіанти."
             )
@@ -484,14 +525,17 @@ async def show_confirmation(context: FlowContext):
         price_min = context.data.get("price_min")
         price_max = context.data.get("price_max")
 
-        logger.debug("Showing confirmation", extra={
-            'user_id': context.user_id,
-            'property_type': property_type,
-            'city': city,
-            'rooms': rooms,
-            'price_min': price_min,
-            'price_max': price_max
-        })
+        logger.debug(
+            "Showing confirmation",
+            extra={
+                "user_id": context.user_id,
+                "property_type": property_type,
+                "city": city,
+                "rooms": rooms,
+                "price_min": price_min,
+                "price_max": price_max,
+            },
+        )
 
         # Format for display
         mapping_property = {"apartment": "Квартира", "house": "Будинок"}
@@ -512,13 +556,12 @@ async def show_confirmation(context: FlowContext):
         options = [
             {"text": "Підписатися", "value": "confirm_subscription"},
             {"text": "Редагувати", "value": "edit_parameters"},
-            {"text": "Скасувати", "value": "cancel_subscription"}
+            {"text": "Скасувати", "value": "cancel_subscription"},
         ]
 
         await context.send_message(summary)
         await context.send_menu(
-            text="Підтвердіть вибір або змініть параметри:",
-            options=options
+            text="Підтвердіть вибір або змініть параметри:", options=options
         )
 
 
@@ -529,24 +572,30 @@ async def handle_confirmation(context: FlowContext):
         message = context.message
 
         if message == "confirm_subscription":
-            logger.info("User confirmed subscription", extra={'user_id': context.user_id})
+            logger.info(
+                "User confirmed subscription", extra={"user_id": context.user_id}
+            )
             # Save subscription
             await save_subscription(context)
         elif message == "edit_parameters":
-            logger.info("User wants to edit parameters", extra={'user_id': context.user_id})
+            logger.info(
+                "User wants to edit parameters", extra={"user_id": context.user_id}
+            )
             # Show parameter editing options
             await show_edit_options(context)
         elif message == "cancel_subscription":
-            logger.info("User canceled subscription", extra={'user_id': context.user_id})
+            logger.info(
+                "User canceled subscription", extra={"user_id": context.user_id}
+            )
             # Cancel subscription
             await context.send_message("Налаштування підписки скасовано.")
             # End the flow
             await flow_library.end_active_flow(context.user_id, context.platform)
         else:
-            logger.warning("Unknown confirmation action", extra={
-                'user_id': context.user_id,
-                'message': message
-            })
+            logger.warning(
+                "Unknown confirmation action",
+                extra={"user_id": context.user_id, "message": message},
+            )
             # Unknown command
             await context.send_message(
                 "Будь ласка, виберіть один з варіантів: Підписатися, Редагувати, або Скасувати."
@@ -557,19 +606,18 @@ async def handle_confirmation(context: FlowContext):
 async def show_edit_options(context: FlowContext):
     """Show parameter editing options"""
     with log_context(logger, user_id=context.user_id):
-        logger.debug("Showing edit options", extra={'user_id': context.user_id})
+        logger.debug("Showing edit options", extra={"user_id": context.user_id})
 
         options = [
             {"text": "Тип нерухомості", "value": "edit_property_type"},
             {"text": "Місто", "value": "edit_city"},
             {"text": "Кількість кімнат", "value": "edit_rooms"},
             {"text": "Діапазон цін", "value": "edit_price"},
-            {"text": "Повернутися", "value": "back_to_confirmation"}
+            {"text": "Повернутися", "value": "back_to_confirmation"},
         ]
 
         await context.send_menu(
-            text="Оберіть параметр для редагування:",
-            options=options
+            text="Оберіть параметр для редагування:", options=options
         )
 
 
@@ -579,10 +627,10 @@ async def handle_edit_selection(context: FlowContext):
     with log_context(logger, user_id=context.user_id, message=context.message):
         message = context.message
 
-        logger.info("User editing parameter", extra={
-            'user_id': context.user_id,
-            'parameter': message
-        })
+        logger.info(
+            "User editing parameter",
+            extra={"user_id": context.user_id, "parameter": message},
+        )
 
         if message == "edit_property_type":
             # Back to property type selection
@@ -600,14 +648,11 @@ async def handle_edit_selection(context: FlowContext):
             city_options.append({"text": "Інше місто", "value": "other_city"})
 
             await context.send_menu(
-                text="Оберіть місто зі списку або введіть назву:",
-                options=city_options
+                text="Оберіть місто зі списку або введіть назву:", options=city_options
             )
         elif message == "edit_rooms":
             # Back to rooms selection
-            await context.send_message(
-                "🛏️ Виберіть кількість кімнат:"
-            )
+            await context.send_message("🛏️ Виберіть кількість кімнат:")
 
             # Create options for rooms
             room_options = []
@@ -619,8 +664,7 @@ async def handle_edit_selection(context: FlowContext):
             room_options.append({"text": "Будь-яка кількість", "value": "any_rooms"})
 
             await context.send_menu(
-                text="Оберіть кількість кімнат:",
-                options=room_options
+                text="Оберіть кількість кімнат:", options=room_options
             )
         elif message == "edit_price":
             # Back to price selection
@@ -629,10 +673,10 @@ async def handle_edit_selection(context: FlowContext):
             # Back to confirmation
             await show_confirmation(context)
         else:
-            logger.warning("Unknown edit option", extra={
-                'user_id': context.user_id,
-                'message': message
-            })
+            logger.warning(
+                "Unknown edit option",
+                extra={"user_id": context.user_id, "message": message},
+            )
             # Unknown option
             await context.send_message(
                 "Невідомий параметр. Будь ласка, виберіть один з запропонованих варіантів."
@@ -655,31 +699,37 @@ async def save_subscription(context: FlowContext):
         user_db_id = context.data.get("user_db_id")
 
         if not user_db_id:
-            user = get_user_by_telegram_id(context.user_id, messenger_type=context.platform)
+            user = get_user_by_telegram_id(
+                context.user_id, messenger_type=context.platform
+            )
             user_db_id = user.id if user else None
         if not user_db_id:
             user_db_id = create_telegram_user(context.user_id)
             context.update(user_db_id=user_db_id)
 
         if not user_db_id:
-            logger.error("Failed to determine user ID", extra={'platform_id': context.user_id})
-            await context.send_message("Помилка: Не вдалося визначити вашого користувача.")
+            logger.error(
+                "Failed to determine user ID", extra={"platform_id": context.user_id}
+            )
+            await context.send_message(
+                "Помилка: Не вдалося визначити вашого користувача."
+            )
             return
 
         # Prepare filters for a database
         filters = {
-            'property_type': property_type,
-            'city': city,
-            'rooms': rooms,
-            'price_min': price_min,
-            'price_max': price_max,
+            "property_type": property_type,
+            "city": city,
+            "rooms": rooms,
+            "price_min": price_min,
+            "price_max": price_max,
         }
 
         try:
-            logger.info("Saving subscription", extra={
-                'user_db_id': user_db_id,
-                'filters': filters
-            })
+            logger.info(
+                "Saving subscription",
+                extra={"user_db_id": user_db_id, "filters": filters},
+            )
 
             # Save to database
             update_user_filter(user_db_id, filters)
@@ -692,23 +742,27 @@ async def save_subscription(context: FlowContext):
 
             # Optional: trigger notification task
             celery_app.send_task(
-                'notifier_service.app.tasks.notify_user_with_ads',
-                args=[user_db_id, filters]
+                "notifier_service.app.tasks.notify_user_with_ads",
+                args=[user_db_id, filters],
             )
 
-            logger.info("Subscription saved successfully", extra={
-                'user_db_id': user_db_id,
-                'filters': filters
-            })
+            logger.info(
+                "Subscription saved successfully",
+                extra={"user_db_id": user_db_id, "filters": filters},
+            )
 
             # End the flow
             await flow_library.end_active_flow(context.user_id, context.platform)
         except Exception as e:
-            logger.error("Error saving subscription", exc_info=True, extra={
-                'user_db_id': user_db_id,
-                'filters': filters,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error saving subscription",
+                exc_info=True,
+                extra={
+                    "user_db_id": user_db_id,
+                    "filters": filters,
+                    "error_type": type(e).__name__,
+                },
+            )
             await context.send_message(
                 "❌ Помилка при збереженні підписки. Будь ласка, спробуйте ще раз."
             )
@@ -729,25 +783,37 @@ property_search_flow.add_transition("property_type", "city")
 property_search_flow.add_transition("city", "rooms")
 property_search_flow.add_transition("rooms", "price")
 property_search_flow.add_transition("price", "confirmation")
-property_search_flow.add_transition("confirmation", "edit", lambda msg: msg == "edit_parameters")
-property_search_flow.add_transition("edit", "start", lambda msg: msg == "edit_property_type")
+property_search_flow.add_transition(
+    "confirmation", "edit", lambda msg: msg == "edit_parameters"
+)
+property_search_flow.add_transition(
+    "edit", "start", lambda msg: msg == "edit_property_type"
+)
 property_search_flow.add_transition("edit", "city", lambda msg: msg == "edit_city")
 property_search_flow.add_transition("edit", "rooms", lambda msg: msg == "edit_rooms")
 property_search_flow.add_transition("edit", "price", lambda msg: msg == "edit_price")
-property_search_flow.add_transition("edit", "confirmation", lambda msg: msg == "back_to_confirmation")
+property_search_flow.add_transition(
+    "edit", "confirmation", lambda msg: msg == "back_to_confirmation"
+)
 
 
 # Error handler
 @log_operation("property_search_error_handler")
 async def property_search_error_handler(context, exception):
     """Handle errors in the property search flow"""
-    with log_context(logger, user_id=context.user_id, error_type=type(exception).__name__):
-        logger.error("Error in property search flow", exc_info=True, extra={
-            'user_id': context.user_id,
-            'platform': context.platform,
-            'current_state': context.data,
-            'error_message': str(exception)
-        })
+    with log_context(
+        logger, user_id=context.user_id, error_type=type(exception).__name__
+    ):
+        logger.error(
+            "Error in property search flow",
+            exc_info=True,
+            extra={
+                "user_id": context.user_id,
+                "platform": context.platform,
+                "current_state": context.data,
+                "error_message": str(exception),
+            },
+        )
 
         await context.send_message(
             "⚠️ Сталася помилка при обробці вашого запиту. Будь ласка, спробуйте ще раз."
@@ -759,7 +825,9 @@ async def property_search_error_handler(context, exception):
         else:
             # Start over if we don't have enough data
             await flow_library.end_active_flow(context.user_id, context.platform)
-            await flow_library.start_flow("property_search", context.user_id, context.platform)
+            await flow_library.start_flow(
+                "property_search", context.user_id, context.platform
+            )
 
 
 property_search_flow.set_error_handler(property_search_error_handler)

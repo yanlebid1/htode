@@ -18,26 +18,35 @@ from common.db.repositories.ad_repository import AdRepository
 from common.utils.s3_utils import delete_s3_image
 from common.utils.cache import redis_client, CacheTTL
 from common.config import GEO_ID_MAPPING
-from common.utils.cache_managers import BaseCacheManager, AdCacheManager, UserCacheManager
-from common.utils.logging_config import setup_logging, log_operation, log_context, LogAggregator
+from common.utils.cache_managers import (
+    BaseCacheManager,
+    AdCacheManager,
+    UserCacheManager,
+)
+from common.utils.logging_config import (
+    setup_logging,
+    log_operation,
+    log_context,
+    LogAggregator,
+)
 from common.utils.log_management import setup_file_logging
 
 # Initialize system logger
-logger = setup_logging('system_maintenance', log_level='INFO', log_format='text')
+logger = setup_logging("system_maintenance", log_level="INFO", log_format="text")
 
 # Add file logging if we're in production
-if os.getenv('ENVIRONMENT', 'development') == 'production':
+if os.getenv("ENVIRONMENT", "development") == "production":
     setup_file_logging(
         logger,
         log_dir="/app/logs/system",
         max_bytes=10 * 1024 * 1024,  # 10MB
         backup_count=5,
-        when='d',
-        interval=1
+        when="d",
+        interval=1,
     )
 
 
-@celery_app.task(name='system.maintenance.check_expiring_subscriptions')
+@celery_app.task(name="system.maintenance.check_expiring_subscriptions")
 @log_operation("check_expiring_subscriptions")
 def check_expiring_subscriptions() -> Dict[str, Any]:
     """
@@ -59,21 +68,27 @@ def check_expiring_subscriptions() -> Dict[str, Any]:
                         past_date = datetime.now() + timedelta(days=days - 1)
 
                         # Get users whose subscription expires in the specified time window
-                        users = db.query(User).filter(
-                            User.subscription_until.isnot(None),
-                            User.subscription_until > datetime.now(),
-                            User.subscription_until < future_date,
-                            User.subscription_until > past_date
-                        ).all()
+                        users = (
+                            db.query(User)
+                            .filter(
+                                User.subscription_until.isnot(None),
+                                User.subscription_until > datetime.now(),
+                                User.subscription_until < future_date,
+                                User.subscription_until > past_date,
+                            )
+                            .all()
+                        )
 
-                        logger.info(f"Found users with expiring subscriptions", extra={
-                            'days_until_expiry': days,
-                            'user_count': len(users)
-                        })
+                        logger.info(
+                            "Found users with expiring subscriptions",
+                            extra={"days_until_expiry": days, "user_count": len(users)},
+                        )
 
                         for user in users:
                             # Determine template based on days remaining
-                            days_word = "день" if days == 1 else "дні" if days < 5 else "днів"
+                            days_word = (
+                                "день" if days == 1 else "дні" if days < 5 else "днів"
+                            )
                             end_date = user.subscription_until.strftime("%d.%m.%Y")
 
                             # Build the appropriate template
@@ -94,34 +109,43 @@ def check_expiring_subscriptions() -> Dict[str, Any]:
 
                             # Send notification
                             from common.messaging.tasks import send_notification
+
                             send_notification.delay(
                                 user_id=user.id,
                                 template=template,
                                 data={
                                     "days": days,
                                     "days_word": days_word,
-                                    "end_date": end_date
-                                }
+                                    "end_date": end_date,
+                                },
                             )
                             reminders_sent += 1
-                            aggregator.add_item({'user_id': user.id, 'days': days}, success=True)
+                            aggregator.add_item(
+                                {"user_id": user.id, "days": days}, success=True
+                            )
 
                 # Also notify on the day of expiration
                 today = datetime.now().date()
-                users_today = db.query(User).filter(
-                    User.subscription_until.isnot(None),
-                    func.date(User.subscription_until) == today
-                ).all()
+                users_today = (
+                    db.query(User)
+                    .filter(
+                        User.subscription_until.isnot(None),
+                        func.date(User.subscription_until) == today,
+                    )
+                    .all()
+                )
 
-                logger.info(f"Found users with subscriptions expiring today", extra={
-                    'user_count': len(users_today)
-                })
+                logger.info(
+                    "Found users with subscriptions expiring today",
+                    extra={"user_count": len(users_today)},
+                )
 
                 for user in users_today:
                     end_date = user.subscription_until.strftime("%d.%m.%Y %H:%M")
 
                     # Send notification
                     from common.messaging.tasks import send_notification
+
                     send_notification.delay(
                         user_id=user.id,
                         template=(
@@ -129,38 +153,43 @@ def check_expiring_subscriptions() -> Dict[str, Any]:
                             "Час закінчення: {end_date}\n\n"
                             "Щоб не втратити доступ до сервісу, оновіть підписку зараз."
                         ),
-                        data={"end_date": end_date}
+                        data={"end_date": end_date},
                     )
                     reminders_sent += 1
-                    aggregator.add_item({'user_id': user.id, 'days': 0}, success=True)
+                    aggregator.add_item({"user_id": user.id, "days": 0}, success=True)
 
             execution_time = time.time() - start_time
             aggregator.log_summary()
 
-            logger.info(f"Checked expiring subscriptions", extra={
-                'reminders_sent': reminders_sent,
-                'execution_time': execution_time
-            })
+            logger.info(
+                "Checked expiring subscriptions",
+                extra={
+                    "reminders_sent": reminders_sent,
+                    "execution_time": execution_time,
+                },
+            )
 
             return {
                 "status": "success",
                 "reminders_sent": reminders_sent,
-                "execution_time_seconds": execution_time
+                "execution_time_seconds": execution_time,
             }
         except Exception as e:
-            logger.error("Error checking expiring subscriptions", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error checking expiring subscriptions",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             aggregator.add_error(str(e), {})
             aggregator.log_summary()
             return {
                 "status": "error",
                 "error": str(e),
-                "execution_time_seconds": time.time() - start_time
+                "execution_time_seconds": time.time() - start_time,
             }
 
 
-@celery_app.task(name='system.maintenance.cleanup_old_ads')
+@celery_app.task(name="system.maintenance.cleanup_old_ads")
 @log_operation("cleanup_old_ads")
 def cleanup_old_ads(days_old: int = 30, check_activity: bool = True) -> Dict[str, Any]:
     """
@@ -180,9 +209,10 @@ def cleanup_old_ads(days_old: int = 30, check_activity: bool = True) -> Dict[str
     aggregator = LogAggregator(logger, f"cleanup_old_ads_{days_old}days")
 
     with log_context(logger, days_old=days_old, check_activity=check_activity):
-        logger.info(f"Starting cleanup of ads older than {days_old} days", extra={
-            'check_activity': check_activity
-        })
+        logger.info(
+            f"Starting cleanup of ads older than {days_old} days",
+            extra={"check_activity": check_activity},
+        )
 
         try:
             with db_session() as db:
@@ -191,10 +221,13 @@ def cleanup_old_ads(days_old: int = 30, check_activity: bool = True) -> Dict[str
 
                 # Get old ads
                 old_ads = AdRepository.get_older_than(db, cutoff_date)
-                logger.info(f"Found old ads for cleanup", extra={
-                    'ad_count': len(old_ads),
-                    'cutoff_date': cutoff_date.isoformat()
-                })
+                logger.info(
+                    "Found old ads for cleanup",
+                    extra={
+                        "ad_count": len(old_ads),
+                        "cutoff_date": cutoff_date.isoformat(),
+                    },
+                )
 
                 for ad in old_ads:
                     should_delete = True
@@ -202,12 +235,13 @@ def cleanup_old_ads(days_old: int = 30, check_activity: bool = True) -> Dict[str
                     # Check if ad is still active if requested
                     if check_activity:
                         from common.services.ad_service import AdService
+
                         if not AdService.is_ad_inactive(ad.resource_url):
                             should_delete = False
-                            logger.debug(f"Ad is still active, skipping", extra={
-                                'ad_id': ad.id,
-                                'resource_url': ad.resource_url
-                            })
+                            logger.debug(
+                                "Ad is still active, skipping",
+                                extra={"ad_id": ad.id, "resource_url": ad.resource_url},
+                            )
 
                     if should_delete:
                         # Get ad images before deleting
@@ -216,7 +250,7 @@ def cleanup_old_ads(days_old: int = 30, check_activity: bool = True) -> Dict[str
                         # Delete the ad and related data
                         if AdRepository.delete_with_related(db, ad.id):
                             deleted_count += 1
-                            aggregator.add_item({'ad_id': ad.id}, success=True)
+                            aggregator.add_item({"ad_id": ad.id}, success=True)
 
                             # Delete images from S3
                             for image_url in images:
@@ -226,33 +260,40 @@ def cleanup_old_ads(days_old: int = 30, check_activity: bool = True) -> Dict[str
                             # Clear cache
                             clear_ad_cache(ad.id, ad.resource_url)
                         else:
-                            aggregator.add_error("Failed to delete ad", {'ad_id': ad.id})
+                            aggregator.add_error(
+                                "Failed to delete ad", {"ad_id": ad.id}
+                            )
 
             execution_time = time.time() - start_time
             aggregator.log_summary()
 
-            logger.info(f"Cleanup completed", extra={
-                'execution_time': execution_time,
-                'ads_deleted': deleted_count,
-                'images_deleted': images_deleted_count
-            })
+            logger.info(
+                "Cleanup completed",
+                extra={
+                    "execution_time": execution_time,
+                    "ads_deleted": deleted_count,
+                    "images_deleted": images_deleted_count,
+                },
+            )
 
             return {
                 "status": "completed",
                 "ads_deleted": deleted_count,
                 "images_deleted": images_deleted_count,
-                "execution_time_seconds": execution_time
+                "execution_time_seconds": execution_time,
             }
         except Exception as e:
-            logger.error("Error in cleanup_old_ads", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error in cleanup_old_ads",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             aggregator.add_error(str(e), {})
             aggregator.log_summary()
             return {
                 "status": "error",
                 "error": str(e),
-                "execution_time_seconds": time.time() - start_time
+                "execution_time_seconds": time.time() - start_time,
             }
 
 
@@ -270,13 +311,13 @@ def clear_ad_cache(ad_id: int, resource_url: str = None):
     with log_context(logger, ad_id=ad_id, resource_url=resource_url):
         # Use the cache manager to handle invalidation
         deleted_count = AdCacheManager.invalidate_all(ad_id, resource_url)
-        logger.debug(f"Cleared cache for ad", extra={
-            'ad_id': ad_id,
-            'deleted_count': deleted_count
-        })
+        logger.debug(
+            "Cleared cache for ad",
+            extra={"ad_id": ad_id, "deleted_count": deleted_count},
+        )
 
 
-@celery_app.task(name='system.maintenance.cleanup_expired_verification_codes')
+@celery_app.task(name="system.maintenance.cleanup_expired_verification_codes")
 @log_operation("cleanup_expired_verification_codes")
 def cleanup_expired_verification_codes() -> Dict[str, int]:
     """
@@ -289,43 +330,55 @@ def cleanup_expired_verification_codes() -> Dict[str, int]:
         try:
             with db_session() as db:
                 # Cleanup verification codes
-                verification_codes_deleted = db.query(VerificationCode).filter(
-                    VerificationCode.expires_at < datetime.now()
-                ).delete()
+                verification_codes_deleted = (
+                    db.query(VerificationCode)
+                    .filter(VerificationCode.expires_at < datetime.now())
+                    .delete()
+                )
 
                 # Cleanup email verification tokens
                 # Using raw SQL because the EmailVerificationToken model appears to be missing
                 from sqlalchemy import text
+
                 result = db.execute(
-                    text("DELETE FROM email_verification_tokens WHERE expires_at < CURRENT_TIMESTAMP")
+                    text(
+                        "DELETE FROM email_verification_tokens WHERE expires_at < CURRENT_TIMESTAMP"
+                    )
                 )
                 email_tokens_deleted = result.rowcount
 
                 db.commit()
 
-                logger.info(f"Cleaned up verification codes and tokens", extra={
-                    'verification_codes_deleted': verification_codes_deleted,
-                    'email_tokens_deleted': email_tokens_deleted
-                })
+                logger.info(
+                    "Cleaned up verification codes and tokens",
+                    extra={
+                        "verification_codes_deleted": verification_codes_deleted,
+                        "email_tokens_deleted": email_tokens_deleted,
+                    },
+                )
 
                 return {
                     "verification_codes_deleted": verification_codes_deleted,
-                    "email_tokens_deleted": email_tokens_deleted
+                    "email_tokens_deleted": email_tokens_deleted,
                 }
         except Exception as e:
-            logger.error("Error cleaning up expired verification codes", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error cleaning up expired verification codes",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return {
                 "verification_codes_deleted": 0,
                 "email_tokens_deleted": 0,
-                "error": str(e)
+                "error": str(e),
             }
 
 
-@celery_app.task(name='system.maintenance.cleanup_redis_cache')
+@celery_app.task(name="system.maintenance.cleanup_redis_cache")
 @log_operation("cleanup_redis_cache")
-def cleanup_redis_cache(pattern: str = None, older_than_days: int = None) -> Dict[str, int]:
+def cleanup_redis_cache(
+    pattern: str = None, older_than_days: int = None
+) -> Dict[str, int]:
     """
     Clean up Redis cache entries matching a pattern and/or older than specified days
 
@@ -353,10 +406,10 @@ def cleanup_redis_cache(pattern: str = None, older_than_days: int = None) -> Dic
 
             # Get all keys matching the pattern
             matching_keys = redis_client.keys(pattern)
-            logger.info(f"Found keys matching pattern", extra={
-                'pattern': pattern,
-                'key_count': len(matching_keys)
-            })
+            logger.info(
+                "Found keys matching pattern",
+                extra={"pattern": pattern, "key_count": len(matching_keys)},
+            )
 
             if matching_keys:
                 # Check TTL for each key
@@ -375,7 +428,9 @@ def cleanup_redis_cache(pattern: str = None, older_than_days: int = None) -> Dic
 
                     if age_days > older_than_days:
                         keys_to_delete.append(key)
-                        aggregator.add_item({'key': str(key), 'age_days': age_days}, success=True)
+                        aggregator.add_item(
+                            {"key": str(key), "age_days": age_days}, success=True
+                        )
 
                 # Delete the filtered keys
                 if keys_to_delete:
@@ -383,23 +438,25 @@ def cleanup_redis_cache(pattern: str = None, older_than_days: int = None) -> Dic
         else:
             # Delete all matching keys
             deleted_count = BaseCacheManager.delete_pattern(pattern)
-            aggregator.add_item({'pattern': pattern, 'deleted': deleted_count}, success=True)
+            aggregator.add_item(
+                {"pattern": pattern, "deleted": deleted_count}, success=True
+            )
 
         execution_time = time.time() - start_time
         aggregator.log_summary()
 
-        logger.info(f"Cache cleanup completed", extra={
-            'deleted_count': deleted_count,
-            'execution_time': execution_time
-        })
+        logger.info(
+            "Cache cleanup completed",
+            extra={"deleted_count": deleted_count, "execution_time": execution_time},
+        )
 
         return {
             "deleted_count": deleted_count,
-            "execution_time_seconds": execution_time
+            "execution_time_seconds": execution_time,
         }
 
 
-@celery_app.task(name='system.maintenance.optimize_database')
+@celery_app.task(name="system.maintenance.optimize_database")
 @log_operation("optimize_database")
 def optimize_database() -> Dict[str, Any]:
     """
@@ -416,9 +473,16 @@ def optimize_database() -> Dict[str, Any]:
         try:
             # List of tables to optimize
             tables = [
-                "ads", "ad_images", "ad_phones", "users",
-                "user_filters", "favorite_ads", "verification_codes",
-                "email_verification_tokens", "payment_orders", "payment_history"
+                "ads",
+                "ad_images",
+                "ad_phones",
+                "users",
+                "user_filters",
+                "favorite_ads",
+                "verification_codes",
+                "email_verification_tokens",
+                "payment_orders",
+                "payment_history",
             ]
 
             with db_session() as db:
@@ -436,55 +500,64 @@ def optimize_database() -> Dict[str, Any]:
                 try:
                     # VACUUM ANALYZE on each table
                     for table in tables:
-                        logger.info(f"Running VACUUM ANALYZE", extra={'table': table})
+                        logger.info("Running VACUUM ANALYZE", extra={"table": table})
                         db.execute(f"VACUUM ANALYZE {table}")
                         operations.append(f"VACUUM ANALYZE {table}")
-                        aggregator.add_item({'operation': f"VACUUM ANALYZE {table}"}, success=True)
+                        aggregator.add_item(
+                            {"operation": f"VACUUM ANALYZE {table}"}, success=True
+                        )
 
                     # Update table statistics
                     for table in tables:
-                        logger.info(f"Running ANALYZE", extra={'table': table})
+                        logger.info("Running ANALYZE", extra={"table": table})
                         db.execute(f"ANALYZE {table}")
                         operations.append(f"ANALYZE {table}")
-                        aggregator.add_item({'operation': f"ANALYZE {table}"}, success=True)
+                        aggregator.add_item(
+                            {"operation": f"ANALYZE {table}"}, success=True
+                        )
 
                     # Optimize indexes
                     logger.info("Reindexing database")
                     db.execute("REINDEX DATABASE current_database()")
                     operations.append("REINDEX DATABASE")
-                    aggregator.add_item({'operation': "REINDEX DATABASE"}, success=True)
+                    aggregator.add_item({"operation": "REINDEX DATABASE"}, success=True)
                 finally:
                     # Restore previous isolation level
                     connection.connection.set_isolation_level(old_isolation_level)
 
         except Exception as e:
-            logger.error("Error during database optimization", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error during database optimization",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             aggregator.add_error(str(e), {})
             aggregator.log_summary()
             return {
                 "status": "error",
                 "error": str(e),
-                "execution_time_seconds": time.time() - start_time
+                "execution_time_seconds": time.time() - start_time,
             }
 
         execution_time = time.time() - start_time
         aggregator.log_summary()
 
-        logger.info(f"Database optimization completed", extra={
-            'execution_time': execution_time,
-            'operations_count': len(operations)
-        })
+        logger.info(
+            "Database optimization completed",
+            extra={
+                "execution_time": execution_time,
+                "operations_count": len(operations),
+            },
+        )
 
         return {
             "status": "success",
             "operations": operations,
-            "execution_time_seconds": execution_time
+            "execution_time_seconds": execution_time,
         }
 
 
-@celery_app.task(name='system.maintenance.cache_warming')
+@celery_app.task(name="system.maintenance.cache_warming")
 @log_operation("cache_warming")
 def cache_warming() -> Dict[str, int]:
     """
@@ -498,16 +571,23 @@ def cache_warming() -> Dict[str, int]:
         try:
             with db_session() as db:
                 # 1. Warm up cache for active cities
-                active_cities = db.query(UserFilter.city).join(
-                    User, UserFilter.user_id == User.id
-                ).filter(
-                    UserFilter.city.isnot(None),
-                    or_(User.subscription_until > datetime.now(), User.free_until > datetime.now())
-                ).distinct().all()
+                active_cities = (
+                    db.query(UserFilter.city)
+                    .join(User, UserFilter.user_id == User.id)
+                    .filter(
+                        UserFilter.city.isnot(None),
+                        or_(
+                            User.subscription_until > datetime.now(),
+                            User.free_until > datetime.now(),
+                        ),
+                    )
+                    .distinct()
+                    .all()
+                )
 
-                logger.info(f"Found active cities", extra={
-                    'city_count': len(active_cities)
-                })
+                logger.info(
+                    "Found active cities", extra={"city_count": len(active_cities)}
+                )
 
                 # Cache city data using BaseCacheManager
                 for city_row in active_cities:
@@ -515,27 +595,27 @@ def cache_warming() -> Dict[str, int]:
                     city_key = f"city:{city_id}"
                     city_data = {
                         "id": city_id,
-                        "name": GEO_ID_MAPPING.get(city_id, "Unknown")
+                        "name": GEO_ID_MAPPING.get(city_id, "Unknown"),
                     }
                     BaseCacheManager.set(city_key, city_data, CacheTTL.LONG)
                     cached_items += 1
-                    aggregator.add_item({'city_id': city_id}, success=True)
+                    aggregator.add_item({"city_id": city_id}, success=True)
 
                 # 2. Warm up cache for most viewed ads
-                top_ads_subquery = db.query(
-                    FavoriteAd.ad_id,
-                    func.count(FavoriteAd.ad_id).label('view_count')
-                ).group_by(
-                    FavoriteAd.ad_id
-                ).order_by(
-                    func.count(FavoriteAd.ad_id).desc()
-                ).limit(50).subquery()
+                top_ads_subquery = (
+                    db.query(
+                        FavoriteAd.ad_id,
+                        func.count(FavoriteAd.ad_id).label("view_count"),
+                    )
+                    .group_by(FavoriteAd.ad_id)
+                    .order_by(func.count(FavoriteAd.ad_id).desc())
+                    .limit(50)
+                    .subquery()
+                )
 
                 top_ads = db.query(top_ads_subquery.c.ad_id).all()
 
-                logger.info(f"Found top viewed ads", extra={
-                    'ad_count': len(top_ads)
-                })
+                logger.info("Found top viewed ads", extra={"ad_count": len(top_ads)})
 
                 if top_ads:
                     ad_ids = [row[0] for row in top_ads]
@@ -548,16 +628,19 @@ def cache_warming() -> Dict[str, int]:
                         if ad_data:
                             AdCacheManager.set_full_ad_data(ad_id, ad_data)
                             cached_items += 1
-                            aggregator.add_item({'ad_id': ad_id}, success=True)
+                            aggregator.add_item({"ad_id": ad_id}, success=True)
 
                 # 3. Warm up cache for active users
-                active_users = db.query(User.id).filter(
-                    User.last_active > datetime.now() - timedelta(days=7)
-                ).limit(100).all()
+                active_users = (
+                    db.query(User.id)
+                    .filter(User.last_active > datetime.now() - timedelta(days=7))
+                    .limit(100)
+                    .all()
+                )
 
-                logger.info(f"Found active users", extra={
-                    'user_count': len(active_users)
-                })
+                logger.info(
+                    "Found active users", extra={"user_count": len(active_users)}
+                )
 
                 if active_users:
                     user_ids = [row[0] for row in active_users]
@@ -569,37 +652,39 @@ def cache_warming() -> Dict[str, int]:
                     for user_id, filters in user_filters.items():
                         UserCacheManager.set_filters(user_id, filters)
                         cached_items += 1
-                        aggregator.add_item({'user_id': user_id}, success=True)
+                        aggregator.add_item({"user_id": user_id}, success=True)
 
         except Exception as e:
-            logger.error("Error during cache warming", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error during cache warming",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             aggregator.add_error(str(e), {})
             aggregator.log_summary()
             return {
                 "status": "error",
                 "error": str(e),
                 "cached_items": cached_items,
-                "execution_time_seconds": time.time() - start_time
+                "execution_time_seconds": time.time() - start_time,
             }
 
         execution_time = time.time() - start_time
         aggregator.log_summary()
 
-        logger.info(f"Cache warming completed", extra={
-            'cached_items': cached_items,
-            'execution_time': execution_time
-        })
+        logger.info(
+            "Cache warming completed",
+            extra={"cached_items": cached_items, "execution_time": execution_time},
+        )
 
         return {
             "status": "success",
             "cached_items": cached_items,
-            "execution_time_seconds": execution_time
+            "execution_time_seconds": execution_time,
         }
 
 
-@celery_app.task(name='system.maintenance.check_database_connections')
+@celery_app.task(name="system.maintenance.check_database_connections")
 @log_operation("check_database_connections")
 def check_database_connections() -> Dict[str, Any]:
     """
@@ -622,12 +707,14 @@ def check_database_connections() -> Dict[str, Any]:
 
         # If initialization still failed, log and exit early
         if pool is None:
-            logger.error("Database connection pool is still uninitialized after attempting to initialize.")
+            logger.error(
+                "Database connection pool is still uninitialized after attempting to initialize."
+            )
             return {
                 "status": "uninitialized",
                 "min_connections": None,
                 "max_connections": None,
-                "used_connections": None
+                "used_connections": None,
             }
 
         # Get pool statistics
@@ -635,20 +722,24 @@ def check_database_connections() -> Dict[str, Any]:
         max_conn = pool.maxconn
         used_conn = len(pool._used)
 
-        logger.info(f"Database connection pool status", extra={
-            'used_connections': used_conn,
-            'max_connections': max_conn,
-            'usage_percent': (used_conn / max_conn) * 100 if max_conn > 0 else 0
-        })
+        logger.info(
+            "Database connection pool status",
+            extra={
+                "used_connections": used_conn,
+                "max_connections": max_conn,
+                "usage_percent": (used_conn / max_conn) * 100 if max_conn > 0 else 0,
+            },
+        )
 
         # Check if pool is near capacity and should be reset
         if used_conn > max_conn * 0.8:
-            logger.warning(f"Database connection pool is at high capacity", extra={
-                'usage_percent': (used_conn / max_conn) * 100
-            })
+            logger.warning(
+                "Database connection pool is at high capacity",
+                extra={"usage_percent": (used_conn / max_conn) * 100},
+            )
 
         # Check for leaked connections (connections used for very long periods)
-        if hasattr(pool, '_used') and pool._used:
+        if hasattr(pool, "_used") and pool._used:
             old_connections = []
             current_time = time.time()
 
@@ -658,24 +749,25 @@ def check_database_connections() -> Dict[str, Any]:
                     old_connections.append((conn_id, current_time - timestamp))
 
             if old_connections:
-                logger.warning(f"Found potentially leaked database connections", extra={
-                    'leaked_count': len(old_connections)
-                })
+                logger.warning(
+                    "Found potentially leaked database connections",
+                    extra={"leaked_count": len(old_connections)},
+                )
                 for conn_id, age in old_connections:
-                    logger.warning(f"Connection has been active for long time", extra={
-                        'connection_id': conn_id,
-                        'age_seconds': age
-                    })
+                    logger.warning(
+                        "Connection has been active for long time",
+                        extra={"connection_id": conn_id, "age_seconds": age},
+                    )
 
         return {
             "status": "checked",
             "min_connections": min_conn,
             "max_connections": max_conn,
-            "used_connections": used_conn
+            "used_connections": used_conn,
         }
 
 
-@celery_app.task(name='system.maintenance.check_subscription_statistics')
+@celery_app.task(name="system.maintenance.check_subscription_statistics")
 @log_operation("check_subscription_statistics")
 def check_subscription_statistics() -> Dict[str, Any]:
     """
@@ -691,54 +783,69 @@ def check_subscription_statistics() -> Dict[str, Any]:
         try:
             with db_session() as db:
                 # Count active subscribers
-                active_subscribers = db.query(func.count(User.id)).filter(
-                    or_(
-                        User.subscription_until > datetime.now(),
-                        User.free_until > datetime.now()
+                active_subscribers = (
+                    db.query(func.count(User.id))
+                    .filter(
+                        or_(
+                            User.subscription_until > datetime.now(),
+                            User.free_until > datetime.now(),
+                        )
                     )
-                ).scalar()
+                    .scalar()
+                )
 
                 # Count paid subscribers
-                paid_subscribers = db.query(func.count(User.id)).filter(
-                    User.subscription_until > datetime.now()
-                ).scalar()
+                paid_subscribers = (
+                    db.query(func.count(User.id))
+                    .filter(User.subscription_until > datetime.now())
+                    .scalar()
+                )
 
                 # Count free trial subscribers
-                free_trial_subscribers = db.query(func.count(User.id)).filter(
-                    User.free_until > datetime.now(),
-                    or_(
-                        User.subscription_until.is_(None),
-                        User.subscription_until < datetime.now()
+                free_trial_subscribers = (
+                    db.query(func.count(User.id))
+                    .filter(
+                        User.free_until > datetime.now(),
+                        or_(
+                            User.subscription_until.is_(None),
+                            User.subscription_until < datetime.now(),
+                        ),
                     )
-                ).scalar()
+                    .scalar()
+                )
 
                 # Count subscribers by platform
-                telegram_subscribers = db.query(func.count(User.id)).filter(
-                    User.telegram_id.isnot(None),
-                    or_(
-                        User.subscription_until > datetime.now(),
-                        User.free_until > datetime.now()
+                telegram_subscribers = (
+                    db.query(func.count(User.id))
+                    .filter(
+                        User.telegram_id.isnot(None),
+                        or_(
+                            User.subscription_until > datetime.now(),
+                            User.free_until > datetime.now(),
+                        ),
                     )
-                ).scalar()
+                    .scalar()
+                )
 
                 # Count by subscription filter
                 subscription_counts = {}
 
                 # Count by city
-                city_counts = db.query(
-                    UserFilter.city,
-                    func.count(UserFilter.city).label('count')
-                ).join(
-                    User, UserFilter.user_id == User.id
-                ).filter(
-                    or_(
-                        User.subscription_until > datetime.now(),
-                        User.free_until > datetime.now()
-                    ),
-                    UserFilter.city.isnot(None)
-                ).group_by(
-                    UserFilter.city
-                ).all()
+                city_counts = (
+                    db.query(
+                        UserFilter.city, func.count(UserFilter.city).label("count")
+                    )
+                    .join(User, UserFilter.user_id == User.id)
+                    .filter(
+                        or_(
+                            User.subscription_until > datetime.now(),
+                            User.free_until > datetime.now(),
+                        ),
+                        UserFilter.city.isnot(None),
+                    )
+                    .group_by(UserFilter.city)
+                    .all()
+                )
 
                 city_stats = {
                     GEO_ID_MAPPING.get(city_id, f"Unknown ({city_id})"): count
@@ -748,23 +855,26 @@ def check_subscription_statistics() -> Dict[str, Any]:
                 subscription_counts["by_city"] = city_stats
 
                 # Count by property type
-                property_type_counts = db.query(
-                    UserFilter.property_type,
-                    func.count(UserFilter.property_type).label('count')
-                ).join(
-                    User, UserFilter.user_id == User.id
-                ).filter(
-                    or_(
-                        User.subscription_until > datetime.now(),
-                        User.free_until > datetime.now()
-                    ),
-                    UserFilter.property_type.isnot(None)
-                ).group_by(
-                    UserFilter.property_type
-                ).all()
+                property_type_counts = (
+                    db.query(
+                        UserFilter.property_type,
+                        func.count(UserFilter.property_type).label("count"),
+                    )
+                    .join(User, UserFilter.user_id == User.id)
+                    .filter(
+                        or_(
+                            User.subscription_until > datetime.now(),
+                            User.free_until > datetime.now(),
+                        ),
+                        UserFilter.property_type.isnot(None),
+                    )
+                    .group_by(UserFilter.property_type)
+                    .all()
+                )
 
                 property_stats = {
-                    property_type: count for property_type, count in property_type_counts
+                    property_type: count
+                    for property_type, count in property_type_counts
                 }
 
                 subscription_counts["by_property_type"] = property_stats
@@ -778,81 +888,90 @@ def check_subscription_statistics() -> Dict[str, Any]:
                     "platform_breakdown": {
                         "telegram": telegram_subscribers,
                     },
-                    "subscription_counts": subscription_counts
+                    "subscription_counts": subscription_counts,
                 }
 
-                BaseCacheManager.set("subscription_statistics", statistics, CacheTTL.LONG)
+                BaseCacheManager.set(
+                    "subscription_statistics", statistics, CacheTTL.LONG
+                )
 
                 execution_time = time.time() - start_time
 
-                logger.info("Generated subscription statistics", extra={
-                    'active_subscribers': active_subscribers,
-                    'paid_subscribers': paid_subscribers,
-                    'free_trial_subscribers': free_trial_subscribers,
-                    'execution_time': execution_time
-                })
+                logger.info(
+                    "Generated subscription statistics",
+                    extra={
+                        "active_subscribers": active_subscribers,
+                        "paid_subscribers": paid_subscribers,
+                        "free_trial_subscribers": free_trial_subscribers,
+                        "execution_time": execution_time,
+                    },
+                )
 
-                aggregator.add_item({'statistics': "generated"}, success=True)
+                aggregator.add_item({"statistics": "generated"}, success=True)
                 aggregator.log_summary()
 
                 return {
                     "status": "success",
                     "statistics": statistics,
-                    "execution_time_seconds": execution_time
+                    "execution_time_seconds": execution_time,
                 }
         except Exception as e:
-            logger.error("Error generating subscription statistics", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error generating subscription statistics",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             aggregator.add_error(str(e), {})
             aggregator.log_summary()
             return {
                 "status": "error",
                 "error": str(e),
-                "execution_time_seconds": time.time() - start_time
+                "execution_time_seconds": time.time() - start_time,
             }
 
 
-@celery_app.task(name='system.maintenance.update_currency_rate')
+@celery_app.task(name="system.maintenance.update_currency_rate")
 @log_operation("update_currency_rate")
 def update_currency_rate() -> Dict[str, Any]:
     """
     Update the USD to UAH currency exchange rate in the cache.
-    
-    This task is scheduled to run twice daily to ensure we have 
+
+    This task is scheduled to run twice daily to ensure we have
     updated currency rates for price conversions.
-    
+
     Returns:
         Dictionary with operation status and the new rate
     """
     start_time = time.time()
-    
+
     with log_context(logger, task="update_currency_rate"):
         try:
             from common.utils.currency_manager import CurrencyRateManager
-            
+
             # Update the rate in cache
             rate = CurrencyRateManager.update_rate()
-            
+
             execution_time = time.time() - start_time
-            
-            logger.info("Updated currency rate", extra={
-                'rate': str(rate),
-                'execution_time': execution_time
-            })
-            
+
+            logger.info(
+                "Updated currency rate",
+                extra={"rate": str(rate), "execution_time": execution_time},
+            )
+
             return {
                 "status": "success",
                 "rate": str(rate),
-                "execution_time_seconds": execution_time
+                "execution_time_seconds": execution_time,
             }
         except Exception as e:
-            logger.error("Error updating currency rate", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
-            
+            logger.error(
+                "Error updating currency rate",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
+
             return {
                 "status": "error",
                 "error": str(e),
-                "execution_time_seconds": time.time() - start_time
+                "execution_time_seconds": time.time() - start_time,
             }

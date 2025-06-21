@@ -2,7 +2,6 @@
 
 import pytest
 import asyncio
-import redis
 import os
 from unittest.mock import MagicMock, patch
 from dotenv import load_dotenv
@@ -16,6 +15,7 @@ if not os.getenv("REDIS_URL"):
 if not os.getenv("DB_HOST"):
     os.environ["DB_HOST"] = "localhost"
 
+
 @pytest.fixture
 def event_loop():
     """Create an instance of the default event loop for each test."""
@@ -23,12 +23,14 @@ def event_loop():
     yield loop
     loop.close()
 
+
 @pytest.fixture
 def mock_redis():
     """Mock Redis client for testing."""
     mock = MagicMock()
     with patch("redis.from_url", return_value=mock):
         yield mock
+
 
 @pytest.fixture
 def mock_db_connection():
@@ -38,16 +40,19 @@ def mock_db_connection():
         with patch("common.db.database.return_connection"):
             yield mock
 
+
 @pytest.fixture
 def mock_execute_query():
     """Mock execute_query function for testing."""
     with patch("common.db.database.execute_query") as mock:
         yield mock
 
+
 @pytest.fixture
 def test_user_id():
     """Return a test user ID for messaging platforms."""
     return "test_user_123"
+
 
 @pytest.fixture
 def test_telegram_message():
@@ -57,6 +62,7 @@ def test_telegram_message():
     message.from_user.id = 123456789
     message.text = "Test message"
     return message
+
 
 @pytest.fixture
 def test_ad_data():
@@ -73,5 +79,5 @@ def test_ad_data():
         "floor": 3,
         "total_floors": 9,
         "description": "Test description",
-        "resource_url": "https://example.com/ad/123"
+        "resource_url": "https://example.com/ad/123",
     }

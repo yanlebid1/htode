@@ -16,7 +16,9 @@ class Payment(Base):
     order_id = Column(String, unique=True, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
     period = Column(String, nullable=False)
-    status = Column(String, default="pending", index=True)  # 'pending', 'completed', 'cancelled', 'failed'
+    status = Column(
+        String, default="pending", index=True
+    )  # 'pending', 'completed', 'cancelled', 'failed'
 
     # Transaction details
     transaction_id = Column(String, nullable=True)
@@ -32,6 +34,4 @@ class Payment(Base):
     user = relationship("User", back_populates="payments")
 
     # Add index for status queries
-    __table_args__ = (
-        Index('idx_payment_status_created', 'status', 'created_at'),
-    )
+    __table_args__ = (Index("idx_payment_status_created", "status", "created_at"),)

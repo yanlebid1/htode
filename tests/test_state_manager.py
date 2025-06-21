@@ -2,7 +2,7 @@
 
 import pytest
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 from common.unified_state_management import state_manager as RedisStateManager
 
 
@@ -10,7 +10,9 @@ from common.unified_state_management import state_manager as RedisStateManager
 async def test_state_manager_get_state(mock_redis):
     """Test that get_state works correctly."""
     # Mock Redis get
-    mock_redis.get.return_value = json.dumps({"state": "test_state", "data": "test_data"}).encode()
+    mock_redis.get.return_value = json.dumps(
+        {"state": "test_state", "data": "test_data"}
+    ).encode()
 
     state_manager = RedisStateManager(prefix="test")
     state = await state_manager.get_state("test_user")
@@ -36,7 +38,9 @@ async def test_state_manager_get_state_none(mock_redis):
 async def test_state_manager_set_state(mock_redis):
     """Test that set_state works correctly."""
     state_manager = RedisStateManager(prefix="test")
-    await state_manager.set_state("test_user", {"state": "test_state", "data": "test_data"})
+    await state_manager.set_state(
+        "test_user", {"state": "test_state", "data": "test_data"}
+    )
 
     mock_redis.setex.assert_called_once()
     # Check the key

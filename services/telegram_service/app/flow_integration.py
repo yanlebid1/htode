@@ -8,7 +8,7 @@ from common.messaging.unified_flow import flow_library
 from common.messaging.unified_flow import (
     check_and_process_flow,
     process_flow_action,
-    show_available_flows
+    show_available_flows,
 )
 
 # Import service logger and logging utilities
@@ -26,7 +26,9 @@ async def flow_message_handler(message: types.Message, state: FSMContext = None)
     user_id = message.from_user.id
     text = message.text or message.caption or ""
 
-    with log_context(logger, user_id=user_id, message_text=text[:100]):  # Limit message length in logs
+    with log_context(
+        logger, user_id=user_id, message_text=text[:100]
+    ):  # Limit message length in logs
         # Get any state data for extra context
         state_data = {}
         if state:
@@ -37,20 +39,22 @@ async def flow_message_handler(message: types.Message, state: FSMContext = None)
             user_id=user_id,
             platform="telegram",
             message_text=text,
-            extra_context=state_data
+            extra_context=state_data,
         )
 
         if handled:
-            logger.info("Message handled by flow", extra={
-                "user_id": user_id,
-                "flow_handled": True
-            })
+            logger.info(
+                "Message handled by flow",
+                extra={"user_id": user_id, "flow_handled": True},
+            )
             return
 
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith("flow:"), state="*")
 @log_operation("flow_callback_handler")
-async def flow_callback_handler(callback_query: types.CallbackQuery, state: FSMContext = None):
+async def flow_callback_handler(
+    callback_query: types.CallbackQuery, state: FSMContext = None
+):
     """
     Handler for flow-specific callbacks.
     """
@@ -61,20 +65,19 @@ async def flow_callback_handler(callback_query: types.CallbackQuery, state: FSMC
         # Process the flow action
         if await process_flow_action(user_id, "telegram", action_text):
             await callback_query.answer("Action processed")
-            logger.info("Flow action processed", extra={
-                "user_id": user_id,
-                "action": action_text
-            })
+            logger.info(
+                "Flow action processed",
+                extra={"user_id": user_id, "action": action_text},
+            )
         else:
             await callback_query.answer("Invalid flow action")
-            logger.warning("Invalid flow action", extra={
-                "user_id": user_id,
-                "action": action_text
-            })
+            logger.warning(
+                "Invalid flow action", extra={"user_id": user_id, "action": action_text}
+            )
 
 
 # Command handler for starting property search
-@dp.message_handler(commands=['search', 'find', 'property'])
+@dp.message_handler(commands=["search", "find", "property"])
 async def start_property_search(message: types.Message):
     """
     Start the property search flow via command
@@ -86,7 +89,7 @@ async def start_property_search(message: types.Message):
 
 
 # Command handler for starting subscription management
-@dp.message_handler(commands=['subscribe', 'subscription'])
+@dp.message_handler(commands=["subscribe", "subscription"])
 async def start_subscription_flow(message: types.Message):
     """
     Start the subscription management flow via command
@@ -98,7 +101,7 @@ async def start_subscription_flow(message: types.Message):
 
 
 # Command handler for showing all available flows
-@dp.message_handler(commands=['flows'])
+@dp.message_handler(commands=["flows"])
 async def show_flows_command(message: types.Message):
     """
     Show all available flows to the user
@@ -124,14 +127,13 @@ def create_flow_keyboard(flow_name: str, actions: list):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
 
     for action_info in actions:
-        text = action_info['text']
-        action = action_info['action']
+        text = action_info["text"]
+        action = action_info["action"]
 
         # Create button with appropriate callback data
         keyboard.insert(
             types.InlineKeyboardButton(
-                text=text,
-                callback_data=f"flow:{flow_name}:{action}"
+                text=text, callback_data=f"flow:{flow_name}:{action}"
             )
         )
 

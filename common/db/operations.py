@@ -18,16 +18,20 @@ from common.db.repositories.subscription_repository import SubscriptionRepositor
 from common.db.repositories.ad_repository import AdRepository
 from common.db.repositories.favorite_repository import FavoriteRepository
 from common.utils.cache import CacheTTL
-from common.utils.phone_parser import extract_phone_numbers_from_resource
-from common.utils.cache_invalidation import invalidate_favorite_caches, invalidate_subscription_caches, \
-    invalidate_user_caches, invalidate_ad_caches
+from common.utils.phone_utils import extract_phone_numbers_from_resource
+from common.utils.cache_invalidation import (
+    invalidate_favorite_caches,
+    invalidate_subscription_caches,
+    invalidate_user_caches,
+    invalidate_ad_caches,
+)
 
 from common.utils.cache_managers import (
     UserCacheManager,
     SubscriptionCacheManager,
     AdCacheManager,
     FavoriteCacheManager,
-    BaseCacheManager
+    BaseCacheManager,
 )
 from common.utils.cache import get_entity_cache_key
 from common.utils.logging_config import log_operation, log_context, LogAggregator
@@ -50,35 +54,38 @@ def create_telegram_user(telegram_id: str) -> Optional[User]:
         try:
             with db_session() as db:
                 # Check if user already exists
-                existing_user = db.query(User).filter(User.telegram_id == telegram_id).first()
+                existing_user = (
+                    db.query(User).filter(User.telegram_id == telegram_id).first()
+                )
                 if existing_user:
-                    logger.info("User already exists", extra={
-                        'telegram_id': telegram_id,
-                        'user_id': existing_user.id
-                    })
+                    logger.info(
+                        "User already exists",
+                        extra={"telegram_id": telegram_id, "user_id": existing_user.id},
+                    )
                     return existing_user
 
                 # Create new user
                 user = User(
                     telegram_id=telegram_id,
-                    free_until=datetime.now() + timedelta(days=7)
+                    free_until=datetime.now() + timedelta(days=7),
                 )
                 db.add(user)
                 db.commit()
                 db.refresh(user)
 
-                logger.info("Created new user", extra={
-                    'telegram_id': telegram_id,
-                    'user_id': user.id
-                })
+                logger.info(
+                    "Created new user",
+                    extra={"telegram_id": telegram_id, "user_id": user.id},
+                )
 
                 return user
 
         except Exception as e:
-            logger.error("Error creating user", exc_info=True, extra={
-                'telegram_id': telegram_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error creating user",
+                exc_info=True,
+                extra={"telegram_id": telegram_id, "error_type": type(e).__name__},
+            )
             return None
 
 
@@ -95,34 +102,35 @@ def update_user_filter(user_id, filters):
                 # Check if user exists
                 user = UserRepository.get_by_id(db, user_id)
                 if not user:
-                    logger.error(f"Cannot update filters - user_id {user_id} does not exist in database")
+                    logger.error(
+                        f"Cannot update filters - user_id {user_id} does not exist in database"
+                    )
                     raise ValueError(f"User ID {user_id} does not exist")
 
                 # Extract filter data
-                property_type = filters.get('property_type')
-                city = filters.get('city')
-                rooms_count = filters.get('rooms')  # List or None
-                price_min = filters.get('price_min')
-                price_max = filters.get('price_max')
+                property_type = filters.get("property_type")
+                city = filters.get("city")
+                rooms_count = filters.get("rooms")  # List or None
+                price_min = filters.get("price_min")
+                price_max = filters.get("price_max")
 
                 # Pass city name; repository will convert to geo_id
                 filter_data = {
-                    'property_type': property_type,
-                    'city': city,
-                    'rooms_count': rooms_count,
-                    'price_min': price_min,
-                    'price_max': price_max
+                    "property_type": property_type,
+                    "city": city,
+                    "rooms_count": rooms_count,
+                    "price_min": price_min,
+                    "price_max": price_max,
                 }
 
                 # Update or create user filter
-                user_filter = SubscriptionRepository.update_user_filter(db, user_id, filter_data)
+                user_filter = SubscriptionRepository.update_user_filter(
+                    db, user_id, filter_data
+                )
 
                 logger.info(
                     f"Updated filters: [{user_id}, {property_type}, {city}, {rooms_count}, {price_min}, {price_max}]",
-                    extra={
-                        'user_id': user_id,
-                        'filter_data': filter_data
-                    }
+                    extra={"user_id": user_id, "filter_data": filter_data},
                 )
 
                 # Use centralized cache invalidation
@@ -131,10 +139,11 @@ def update_user_filter(user_id, filters):
                 return user_filter
 
         except Exception as e:
-            logger.error(f"Error updating user filters", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error updating user filters",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             raise
 
 
@@ -155,7 +164,7 @@ def get_user_filters(user_id):
         # Try to get from cache first using the cache manager
         filters = UserCacheManager.get_filters(user_id)
         if filters:
-            logger.debug("Cache hit for user filters", extra={'user_id': user_id})
+            logger.debug("Cache hit for user filters", extra={"user_id": user_id})
             return filters
 
         # Cache miss, query the database
@@ -165,9 +174,9 @@ def get_user_filters(user_id):
             # Cache the result if found
             if filters:
                 UserCacheManager.set_filters(user_id, filters)
-                logger.debug("Cached user filters", extra={'user_id': user_id})
+                logger.debug("Cached user filters", extra={"user_id": user_id})
             else:
-                logger.debug("No filters found for user", extra={'user_id': user_id})
+                logger.debug("No filters found for user", extra={"user_id": user_id})
 
             return filters
 
@@ -192,23 +201,25 @@ def batch_get_user_filters(user_ids):
             cached_filters = UserCacheManager.get_filters(user_id)
             if cached_filters:
                 results[user_id] = cached_filters
-                aggregator.add_item({'user_id': user_id, 'from_cache': True}, success=True)
+                aggregator.add_item(
+                    {"user_id": user_id, "from_cache": True}, success=True
+                )
 
         # Step 2: Find which user_ids were not in cache
         missing_user_ids = [uid for uid in user_ids if uid not in results]
 
         # If all users were found in cache, return immediately
         if not missing_user_ids:
-            logger.debug("All user filters found in cache", extra={
-                'user_count': len(user_ids)
-            })
+            logger.debug(
+                "All user filters found in cache", extra={"user_count": len(user_ids)}
+            )
             aggregator.log_summary()
             return results
 
         # Step 3: Fetch missing data from database in batches
         with db_session() as db:
             for i in range(0, len(missing_user_ids), BATCH_SIZE):
-                batch = missing_user_ids[i:i + BATCH_SIZE]
+                batch = missing_user_ids[i : i + BATCH_SIZE]
 
                 # Use repository to get filters for this batch
                 for user_id in batch:
@@ -217,9 +228,13 @@ def batch_get_user_filters(user_ids):
                         results[user_id] = user_filter
                         # Cache each result
                         UserCacheManager.set_filters(user_id, user_filter)
-                        aggregator.add_item({'user_id': user_id, 'from_db': True}, success=True)
+                        aggregator.add_item(
+                            {"user_id": user_id, "from_db": True}, success=True
+                        )
                     else:
-                        aggregator.add_item({'user_id': user_id, 'not_found': True}, success=False)
+                        aggregator.add_item(
+                            {"user_id": user_id, "not_found": True}, success=False
+                        )
 
         aggregator.log_summary()
         return results
@@ -237,20 +252,21 @@ def get_user_by_telegram_id(telegram_id: str) -> Optional[User]:
                 user = db.query(User).filter(User.telegram_id == telegram_id).first()
 
                 if user:
-                    logger.debug("Found user", extra={
-                        'telegram_id': telegram_id,
-                        'user_id': user.id
-                    })
+                    logger.debug(
+                        "Found user",
+                        extra={"telegram_id": telegram_id, "user_id": user.id},
+                    )
                 else:
-                    logger.debug("User not found", extra={'telegram_id': telegram_id})
+                    logger.debug("User not found", extra={"telegram_id": telegram_id})
 
                 return user
 
         except Exception as e:
-            logger.error("Error getting user", exc_info=True, extra={
-                'telegram_id': telegram_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting user",
+                exc_info=True,
+                extra={"telegram_id": telegram_id, "error_type": type(e).__name__},
+            )
             return None
 
 
@@ -266,7 +282,7 @@ def get_platform_ids_for_user(user_id: int) -> dict:
                 user = UserRepository.get_by_id(db, user_id)
 
                 if not user:
-                    logger.warning("User not found", extra={'user_id': user_id})
+                    logger.warning("User not found", extra={"user_id": user_id})
                     return {}
 
                 # Create a cleaned dictionary with only non-None values
@@ -274,16 +290,17 @@ def get_platform_ids_for_user(user_id: int) -> dict:
                 if user.telegram_id is not None:
                     platform_ids["telegram_id"] = user.telegram_id
 
-                logger.debug("Retrieved platform IDs", extra={
-                    'user_id': user_id,
-                    'platforms': list(platform_ids.keys())
-                })
+                logger.debug(
+                    "Retrieved platform IDs",
+                    extra={"user_id": user_id, "platforms": list(platform_ids.keys())},
+                )
                 return platform_ids
         except Exception as e:
-            logger.error("Error getting platform IDs", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting platform IDs",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return {}
 
 
@@ -295,7 +312,11 @@ def find_users_for_ad(ad):
     """
     try:
         # Extract the ad ID for caching
-        ad_id = ad.get('id') if isinstance(ad, dict) else ad.id if hasattr(ad, 'id') else None
+        ad_id = (
+            ad.get("id")
+            if isinstance(ad, dict)
+            else ad.id if hasattr(ad, "id") else None
+        )
 
         if not ad_id:
             logger.error("Cannot find users for ad without ID")
@@ -306,10 +327,10 @@ def find_users_for_ad(ad):
             cache_key = get_entity_cache_key("matching_users", ad_id)
             cached_users = BaseCacheManager.get(cache_key)
             if cached_users:
-                logger.info(f'Cache hit for ad {ad_id} matching users')
+                logger.info(f"Cache hit for ad {ad_id} matching users")
                 return cached_users
 
-            logger.info(f'Looking for users for ad: {ad_id}')
+            logger.info(f"Looking for users for ad: {ad_id}")
 
             with db_session() as db:
                 # Use repository to find matching users
@@ -319,10 +340,10 @@ def find_users_for_ad(ad):
                         # Create temporary Ad object for matching
                         ad_obj = Ad(
                             id=ad_id,
-                            property_type=ad.get('property_type'),
-                            city=ad.get('city'),
-                            rooms_count=ad.get('rooms_count'),
-                            price=ad.get('price')
+                            property_type=ad.get("property_type"),
+                            city=ad.get("city"),
+                            rooms_count=ad.get("rooms_count"),
+                            price=ad.get("price"),
                         )
                     else:
                         ad_obj = existing_ad
@@ -335,14 +356,22 @@ def find_users_for_ad(ad):
             # Cache the results
             BaseCacheManager.set(cache_key, user_ids, CacheTTL.STANDARD)
 
-            logger.info(f'Found {len(user_ids)} users for ad: {ad_id}')
+            logger.info(f"Found {len(user_ids)} users for ad: {ad_id}")
             return user_ids
 
     except Exception as e:
-        logger.error("Error finding users for ad", exc_info=True, extra={
-            'ad_id': ad.get('id') if isinstance(ad, dict) else getattr(ad, 'id', 'unknown'),
-            'error_type': type(e).__name__
-        })
+        logger.error(
+            "Error finding users for ad",
+            exc_info=True,
+            extra={
+                "ad_id": (
+                    ad.get("id")
+                    if isinstance(ad, dict)
+                    else getattr(ad, "id", "unknown")
+                ),
+                "error_type": type(e).__name__,
+            },
+        )
         return []
 
 
@@ -359,7 +388,7 @@ def batch_find_users_for_ads(ads):
         aggregator = LogAggregator(logger, "batch_find_users_for_ads")
 
         results = {}
-        ad_ids = [ad.get('id') for ad in ads if ad.get('id')]
+        ad_ids = [ad.get("id") for ad in ads if ad.get("id")]
 
         # Step 1: Try to get matches from cache
         for ad_id in ad_ids:
@@ -367,11 +396,11 @@ def batch_find_users_for_ads(ads):
             cached_users = BaseCacheManager.get(cache_key)
             if cached_users:
                 results[ad_id] = cached_users
-                aggregator.add_item({'ad_id': ad_id, 'from_cache': True}, success=True)
+                aggregator.add_item({"ad_id": ad_id, "from_cache": True}, success=True)
 
         # Step 2: Find which ads were not in cache
         processed_ad_ids = set(results.keys())
-        ads_to_process = [ad for ad in ads if ad.get('id') not in processed_ad_ids]
+        ads_to_process = [ad for ad in ads if ad.get("id") not in processed_ad_ids]
 
         if not ads_to_process:
             aggregator.log_summary()
@@ -380,12 +409,16 @@ def batch_find_users_for_ads(ads):
         # Step 3: Process the remaining ads
         with db_session() as db:
             # Get all active users
-            active_users = db.query(User.id).filter(
-                or_(
-                    User.free_until > datetime.now(),
-                    User.subscription_until > datetime.now()
+            active_users = (
+                db.query(User.id)
+                .filter(
+                    or_(
+                        User.free_until > datetime.now(),
+                        User.subscription_until > datetime.now(),
+                    )
                 )
-            ).all()
+                .all()
+            )
 
             active_user_ids = [row[0] for row in active_users]
 
@@ -395,11 +428,11 @@ def batch_find_users_for_ads(ads):
                 return results
 
             # Get all user filters in one query
-            user_filters = batch_get_user_filters(active_user_ids)
+            batch_get_user_filters(active_user_ids)
 
             # Process each ad against all user filters in memory
             for ad in ads_to_process:
-                ad_id = ad.get('id')
+                ad_id = ad.get("id")
                 if not ad_id:
                     continue
 
@@ -410,10 +443,10 @@ def batch_find_users_for_ads(ads):
                         # Create temporary Ad object for matching
                         ad_obj = Ad(
                             id=ad_id,
-                            property_type=ad.get('property_type'),
-                            city=ad.get('city'),
-                            rooms_count=ad.get('rooms_count'),
-                            price=ad.get('price')
+                            property_type=ad.get("property_type"),
+                            city=ad.get("city"),
+                            rooms_count=ad.get("rooms_count"),
+                            price=ad.get("price"),
                         )
                     else:
                         ad_obj = existing_ad
@@ -428,7 +461,10 @@ def batch_find_users_for_ads(ads):
                 cache_key = get_entity_cache_key("matching_users", ad_id)
                 BaseCacheManager.set(cache_key, matching_users, CacheTTL.STANDARD)
 
-                aggregator.add_item({'ad_id': ad_id, 'matching_users': len(matching_users)}, success=True)
+                aggregator.add_item(
+                    {"ad_id": ad_id, "matching_users": len(matching_users)},
+                    success=True,
+                )
 
         aggregator.log_summary()
         return results
@@ -443,7 +479,7 @@ def get_subscription_data_for_user(user_id: int) -> dict:
         # Try to get from the cache using the cache manager
         cached_data = SubscriptionCacheManager.get_user_subscriptions(user_id)
         if cached_data:
-            logger.debug("Cache hit for subscription data", extra={'user_id': user_id})
+            logger.debug("Cache hit for subscription data", extra={"user_id": user_id})
             return cached_data
 
         try:
@@ -452,17 +488,22 @@ def get_subscription_data_for_user(user_id: int) -> dict:
 
                 if user_filter:
                     # Cache for 5 minutes using the cache manager
-                    SubscriptionCacheManager.set_user_subscriptions(user_id, user_filter)
-                    logger.debug("Cached subscription data", extra={'user_id': user_id})
+                    SubscriptionCacheManager.set_user_subscriptions(
+                        user_id, user_filter
+                    )
+                    logger.debug("Cached subscription data", extra={"user_id": user_id})
                     return user_filter
                 else:
-                    logger.debug("No subscription data found", extra={'user_id': user_id})
+                    logger.debug(
+                        "No subscription data found", extra={"user_id": user_id}
+                    )
                     return None
         except Exception as e:
-            logger.error("Error getting subscription data", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting subscription data",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return None
 
 
@@ -473,7 +514,7 @@ def get_full_ad_data(ad_id: int):
         # Try to get from cache using the cache manager
         cached_data = AdCacheManager.get_full_ad_data(ad_id)
         if cached_data:
-            logger.debug("Cache hit for full ad data", extra={'ad_id': ad_id})
+            logger.debug("Cache hit for full ad data", extra={"ad_id": ad_id})
             return cached_data
 
         try:
@@ -483,16 +524,17 @@ def get_full_ad_data(ad_id: int):
                 if ad_data:
                     # Cache the result using the cache manager
                     AdCacheManager.set_full_ad_data(ad_id, ad_data)
-                    logger.debug("Cached full ad data", extra={'ad_id': ad_id})
+                    logger.debug("Cached full ad data", extra={"ad_id": ad_id})
                 else:
-                    logger.debug("No ad data found", extra={'ad_id': ad_id})
+                    logger.debug("No ad data found", extra={"ad_id": ad_id})
 
                 return ad_data
         except Exception as e:
-            logger.error("Error getting full ad data", exc_info=True, extra={
-                'ad_id': ad_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting full ad data",
+                exc_info=True,
+                extra={"ad_id": ad_id, "error_type": type(e).__name__},
+            )
             return None
 
 
@@ -520,7 +562,7 @@ def batch_get_full_ad_data(ad_ids):
             cached_data = AdCacheManager.get_full_ad_data(ad_id)
             if cached_data:
                 results[ad_id] = cached_data
-                aggregator.add_item({'ad_id': ad_id, 'from_cache': True}, success=True)
+                aggregator.add_item({"ad_id": ad_id, "from_cache": True}, success=True)
 
         # Identify which ads were not in cache
         missing_ad_ids = [ad_id for ad_id in ad_ids if ad_id not in results]
@@ -532,7 +574,7 @@ def batch_get_full_ad_data(ad_ids):
         # Process batches of missing ads
         with db_session() as db:
             for i in range(0, len(missing_ad_ids), BATCH_SIZE):
-                batch = missing_ad_ids[i:i + BATCH_SIZE]
+                batch = missing_ad_ids[i : i + BATCH_SIZE]
 
                 for ad_id in batch:
                     ad_data = AdRepository.get_full_ad_data(db, ad_id)
@@ -540,9 +582,13 @@ def batch_get_full_ad_data(ad_ids):
                         results[ad_id] = ad_data
                         # Cache individual results
                         AdCacheManager.set_full_ad_data(ad_id, ad_data)
-                        aggregator.add_item({'ad_id': ad_id, 'from_db': True}, success=True)
+                        aggregator.add_item(
+                            {"ad_id": ad_id, "from_db": True}, success=True
+                        )
                     else:
-                        aggregator.add_item({'ad_id': ad_id, 'not_found': True}, success=False)
+                        aggregator.add_item(
+                            {"ad_id": ad_id, "not_found": True}, success=False
+                        )
 
         aggregator.log_summary()
         return results
@@ -558,53 +604,63 @@ def list_favorites_with_eager_loading(user_id: int):
         try:
             with db_session() as db:
                 favorites = FavoriteRepository.list_favorites(db, user_id)
-                logger.info("Listed favorites with eager loading", extra={
-                    'user_id': user_id,
-                    'favorites_count': len(favorites)
-                })
+                logger.info(
+                    "Listed favorites with eager loading",
+                    extra={"user_id": user_id, "favorites_count": len(favorites)},
+                )
                 return favorites
         except Exception as e:
-            logger.error("Error listing favorites with eager loading", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error listing favorites with eager loading",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return []
 
 
 @log_operation("add_subscription")
-def add_subscription(user_id, property_type, city_id, rooms_count, price_min, price_max):
+def add_subscription(
+    user_id, property_type, city_id, rooms_count, price_min, price_max
+):
     """Add a subscription with proper cache invalidation"""
-    with log_context(logger, user_id=user_id, property_type=property_type, city_id=city_id):
+    with log_context(
+        logger, user_id=user_id, property_type=property_type, city_id=city_id
+    ):
         with db_session() as db:
             # Check subscription count
             count = SubscriptionRepository.count_subscriptions(db, user_id)
             if count >= 20:
-                logger.warning("Subscription limit reached", extra={
-                    'user_id': user_id,
-                    'current_count': count
-                })
+                logger.warning(
+                    "Subscription limit reached",
+                    extra={"user_id": user_id, "current_count": count},
+                )
                 raise ValueError("You already have 20 subscriptions, cannot add more.")
 
             # Create filter data
             filter_data = {
-                'property_type': property_type,
-                'city': city_id,
-                'rooms_count': rooms_count,
-                'price_min': price_min,
-                'price_max': price_max
+                "property_type": property_type,
+                "city": city_id,
+                "rooms_count": rooms_count,
+                "price_min": price_min,
+                "price_max": price_max,
             }
 
             # Add subscription
-            subscription = SubscriptionRepository.add_subscription(db, user_id, filter_data)
+            subscription = SubscriptionRepository.add_subscription(
+                db, user_id, filter_data
+            )
 
             # Invalidate cache using the cache manager
             SubscriptionCacheManager.invalidate_all(user_id)
 
-            logger.info("Added subscription", extra={
-                'user_id': user_id,
-                'subscription_id': subscription.id,
-                'filter_data': filter_data
-            })
+            logger.info(
+                "Added subscription",
+                extra={
+                    "user_id": user_id,
+                    "subscription_id": subscription.id,
+                    "filter_data": filter_data,
+                },
+            )
             return subscription.id
 
 
@@ -615,7 +671,7 @@ def list_subscriptions(user_id: int):
         # Use the cache manager to get cached subscriptions
         cached_subscriptions = SubscriptionCacheManager.get_user_subscriptions(user_id)
         if cached_subscriptions:
-            logger.debug("Cache hit for user subscriptions", extra={'user_id': user_id})
+            logger.debug("Cache hit for user subscriptions", extra={"user_id": user_id})
             return cached_subscriptions
 
         try:
@@ -625,16 +681,20 @@ def list_subscriptions(user_id: int):
                 # Cache the result using the cache manager
                 SubscriptionCacheManager.set_user_subscriptions(user_id, subscriptions)
 
-                logger.info("Listed subscriptions", extra={
-                    'user_id': user_id,
-                    'subscription_count': len(subscriptions)
-                })
+                logger.info(
+                    "Listed subscriptions",
+                    extra={
+                        "user_id": user_id,
+                        "subscription_count": len(subscriptions),
+                    },
+                )
                 return subscriptions
         except Exception as e:
-            logger.error("Error listing subscriptions", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error listing subscriptions",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return []
 
 
@@ -646,23 +706,32 @@ def remove_subscription(subscription_id: int, user_id: int) -> bool:
     with log_context(logger, subscription_id=subscription_id, user_id=user_id):
         try:
             with db_session() as db:
-                success = SubscriptionRepository.remove_subscription(db, subscription_id, user_id)
+                success = SubscriptionRepository.remove_subscription(
+                    db, subscription_id, user_id
+                )
 
                 # Invalidate relevant cache entries
                 invalidate_user_filter_caches(user_id)
 
-                logger.info("Removed subscription", extra={
-                    'subscription_id': subscription_id,
-                    'user_id': user_id,
-                    'success': success
-                })
+                logger.info(
+                    "Removed subscription",
+                    extra={
+                        "subscription_id": subscription_id,
+                        "user_id": user_id,
+                        "success": success,
+                    },
+                )
                 return success
         except Exception as e:
-            logger.error("Error removing subscription", exc_info=True, extra={
-                'subscription_id': subscription_id,
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error removing subscription",
+                exc_info=True,
+                extra={
+                    "subscription_id": subscription_id,
+                    "user_id": user_id,
+                    "error_type": type(e).__name__,
+                },
+            )
             return False
 
 
@@ -675,16 +744,19 @@ def update_subscription(subscription_id: int, user_id: int, new_values: dict):
         try:
             with db_session() as db:
                 # Get the subscription
-                subscription = db.query(UserFilter).filter(
-                    UserFilter.id == subscription_id,
-                    UserFilter.user_id == user_id
-                ).first()
+                subscription = (
+                    db.query(UserFilter)
+                    .filter(
+                        UserFilter.id == subscription_id, UserFilter.user_id == user_id
+                    )
+                    .first()
+                )
 
                 if not subscription:
-                    logger.warning("Subscription not found", extra={
-                        'subscription_id': subscription_id,
-                        'user_id': user_id
-                    })
+                    logger.warning(
+                        "Subscription not found",
+                        extra={"subscription_id": subscription_id, "user_id": user_id},
+                    )
                     return False
 
                 # Update values
@@ -696,18 +768,25 @@ def update_subscription(subscription_id: int, user_id: int, new_values: dict):
                 # Invalidate cache using the cache manager
                 SubscriptionCacheManager.invalidate_all(user_id, subscription_id)
 
-                logger.info("Updated subscription", extra={
-                    'subscription_id': subscription_id,
-                    'user_id': user_id,
-                    'updates': new_values
-                })
+                logger.info(
+                    "Updated subscription",
+                    extra={
+                        "subscription_id": subscription_id,
+                        "user_id": user_id,
+                        "updates": new_values,
+                    },
+                )
                 return True
         except Exception as e:
-            logger.error("Error updating subscription", exc_info=True, extra={
-                'subscription_id': subscription_id,
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error updating subscription",
+                exc_info=True,
+                extra={
+                    "subscription_id": subscription_id,
+                    "user_id": user_id,
+                    "error_type": type(e).__name__,
+                },
+            )
             return False
 
 
@@ -729,25 +808,32 @@ def add_favorite_ad(user_id: int, ad_id: int) -> Optional[int]:
                 invalidate_favorite_caches(user_id)
 
                 favorite_id = favorite.id if favorite else None
-                logger.info("Added favorite ad", extra={
-                    'user_id': user_id,
-                    'ad_id': ad_id,
-                    'favorite_id': favorite_id
-                })
+                logger.info(
+                    "Added favorite ad",
+                    extra={
+                        "user_id": user_id,
+                        "ad_id": ad_id,
+                        "favorite_id": favorite_id,
+                    },
+                )
                 return favorite_id
         except ValueError as e:
             # This handles the case where user already has 50 favorites
-            logger.warning(f"Couldn't add favorite: {str(e)}", extra={
-                'user_id': user_id,
-                'ad_id': ad_id
-            })
+            logger.warning(
+                f"Couldn't add favorite: {str(e)}",
+                extra={"user_id": user_id, "ad_id": ad_id},
+            )
             raise
         except Exception as e:
-            logger.error("Error adding favorite ad", exc_info=True, extra={
-                'user_id': user_id,
-                'ad_id': ad_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error adding favorite ad",
+                exc_info=True,
+                extra={
+                    "user_id": user_id,
+                    "ad_id": ad_id,
+                    "error_type": type(e).__name__,
+                },
+            )
             return None
 
 
@@ -758,7 +844,7 @@ def list_favorites(user_id):
         # Try to get from cache using the cache manager
         cached_favorites = FavoriteCacheManager.get_user_favorites(user_id)
         if cached_favorites:
-            logger.debug("Cache hit for user favorites", extra={'user_id': user_id})
+            logger.debug("Cache hit for user favorites", extra={"user_id": user_id})
             return cached_favorites
 
         try:
@@ -768,16 +854,17 @@ def list_favorites(user_id):
                 # Cache for 5 minutes using the cache manager
                 FavoriteCacheManager.set_user_favorites(user_id, favorites)
 
-                logger.info("Listed favorites", extra={
-                    'user_id': user_id,
-                    'favorites_count': len(favorites)
-                })
+                logger.info(
+                    "Listed favorites",
+                    extra={"user_id": user_id, "favorites_count": len(favorites)},
+                )
                 return favorites
         except Exception as e:
-            logger.error("Error listing favorites", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error listing favorites",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return []
 
 
@@ -793,18 +880,21 @@ def remove_favorite_ad(user_id: int, ad_id: int) -> bool:
                 # Use centralized cache invalidation
                 invalidate_favorite_caches(user_id)
 
-                logger.info("Removed favorite ad", extra={
-                    'user_id': user_id,
-                    'ad_id': ad_id,
-                    'success': success
-                })
+                logger.info(
+                    "Removed favorite ad",
+                    extra={"user_id": user_id, "ad_id": ad_id, "success": success},
+                )
                 return success
         except Exception as e:
-            logger.error("Error removing favorite ad", exc_info=True, extra={
-                'user_id': user_id,
-                'ad_id': ad_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error removing favorite ad",
+                exc_info=True,
+                extra={
+                    "user_id": user_id,
+                    "ad_id": ad_id,
+                    "error_type": type(e).__name__,
+                },
+            )
             return False
 
 
@@ -818,7 +908,9 @@ def get_extra_images(resource_url):
         # Try to get from cache
         cached_images = BaseCacheManager.get(cache_key)
         if cached_images:
-            logger.debug("Cache hit for extra images", extra={'resource_url': resource_url[:50]})
+            logger.debug(
+                "Cache hit for extra images", extra={"resource_url": resource_url[:50]}
+            )
             return cached_images
 
         try:
@@ -826,7 +918,10 @@ def get_extra_images(resource_url):
                 # First, look up the ad using resource_url
                 ad = AdRepository.get_by_resource_url(db, resource_url)
                 if not ad:
-                    logger.warning("Ad not found by resource URL", extra={'resource_url': resource_url[:50]})
+                    logger.warning(
+                        "Ad not found by resource URL",
+                        extra={"resource_url": resource_url[:50]},
+                    )
                     return []
 
                 # Get images for the ad
@@ -835,16 +930,23 @@ def get_extra_images(resource_url):
                 # Cache the result
                 BaseCacheManager.set(cache_key, images, CacheTTL.LONG)
 
-                logger.info("Retrieved and cached extra images", extra={
-                    'resource_url': resource_url[:50],
-                    'image_count': len(images)
-                })
+                logger.info(
+                    "Retrieved and cached extra images",
+                    extra={
+                        "resource_url": resource_url[:50],
+                        "image_count": len(images),
+                    },
+                )
                 return images
         except Exception as e:
-            logger.error("Error getting extra images", exc_info=True, extra={
-                'resource_url': resource_url[:50],
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting extra images",
+                exc_info=True,
+                extra={
+                    "resource_url": resource_url[:50],
+                    "error_type": type(e).__name__,
+                },
+            )
             return []
 
 
@@ -855,31 +957,45 @@ def get_full_ad_description(resource_url):
         # Try to get from cache using the cache manager
         cached_description = AdCacheManager.get_ad_description(resource_url)
         if cached_description:
-            logger.debug("Cache hit for ad description", extra={'resource_url': resource_url[:50]})
+            logger.debug(
+                "Cache hit for ad description",
+                extra={"resource_url": resource_url[:50]},
+            )
             return cached_description
 
-        logger.info(f'Getting full ad description for resource_url: {resource_url}...')
+        logger.info(f"Getting full ad description for resource_url: {resource_url}...")
 
         try:
             with db_session() as db:
-                description = AdRepository.get_description_by_resource_url(db, resource_url)
+                description = AdRepository.get_description_by_resource_url(
+                    db, resource_url
+                )
 
             if description:
                 # Cache for 1 hour using the cache manager
                 AdCacheManager.set_ad_description(resource_url, description)
-                logger.info("Retrieved and cached ad description", extra={
-                    'resource_url': resource_url[:50],
-                    'description_length': len(description)
-                })
+                logger.info(
+                    "Retrieved and cached ad description",
+                    extra={
+                        "resource_url": resource_url[:50],
+                        "description_length": len(description),
+                    },
+                )
             else:
-                logger.warning("No description found", extra={'resource_url': resource_url[:50]})
+                logger.warning(
+                    "No description found", extra={"resource_url": resource_url[:50]}
+                )
 
             return description
         except Exception as e:
-            logger.error("Error getting full ad description", exc_info=True, extra={
-                'resource_url': resource_url[:50],
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting full ad description",
+                exc_info=True,
+                extra={
+                    "resource_url": resource_url[:50],
+                    "error_type": type(e).__name__,
+                },
+            )
             return None
 
 
@@ -895,7 +1011,9 @@ def store_ad_phones(resource_url: str, ad_id: int) -> int:
                 ad = AdRepository.get_by_id(db, ad_id)
 
                 if not ad:
-                    logger.warning(f"Cannot store phones for ad_id={ad_id} - ad doesn't exist in the database")
+                    logger.warning(
+                        f"Cannot store phones for ad_id={ad_id} - ad doesn't exist in the database"
+                    )
                     return 0
 
                 # Extract phones from resource
@@ -917,7 +1035,7 @@ def store_ad_phones(resource_url: str, ad_id: int) -> int:
                 # Insert viber link if available
                 if viber_link:
                     AdRepository.add_phone(db, ad_id, None, viber_link)
-                    logger.info("Added viber link", extra={'ad_id': ad_id})
+                    logger.info("Added viber link", extra={"ad_id": ad_id})
 
                 # Commit changes
                 db.commit()
@@ -925,18 +1043,25 @@ def store_ad_phones(resource_url: str, ad_id: int) -> int:
                 # Use centralized cache invalidation
                 invalidate_ad_caches(ad_id, resource_url)
 
-                logger.info("Stored phone numbers", extra={
-                    'ad_id': ad_id,
-                    'phones_added': phones_added,
-                    'has_viber_link': bool(viber_link)
-                })
+                logger.info(
+                    "Stored phone numbers",
+                    extra={
+                        "ad_id": ad_id,
+                        "phones_added": phones_added,
+                        "has_viber_link": bool(viber_link),
+                    },
+                )
                 return phones_added
         except Exception as e:
-            logger.error("Error extracting or storing phones", exc_info=True, extra={
-                'ad_id': ad_id,
-                'resource_url': resource_url[:50],
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error extracting or storing phones",
+                exc_info=True,
+                extra={
+                    "ad_id": ad_id,
+                    "resource_url": resource_url[:50],
+                    "error_type": type(e).__name__,
+                },
+            )
             return 0
 
 
@@ -947,10 +1072,11 @@ def warm_cache_for_user(user_id):
     Call this when user logs in or starts interacting with the system
     """
     from common.utils.cache_invalidation import warm_cache_for_user as warm_cache
+
     with log_context(logger, user_id=user_id):
-        logger.info("Starting cache warming for user", extra={'user_id': user_id})
+        logger.info("Starting cache warming for user", extra={"user_id": user_id})
         result = warm_cache(user_id)
-        logger.info("Completed cache warming for user", extra={'user_id': user_id})
+        logger.info("Completed cache warming for user", extra={"user_id": user_id})
         return result
 
 
@@ -973,16 +1099,17 @@ def start_free_subscription_of_user(user_id: int) -> bool:
             # Use centralized cache invalidation
             invalidate_user_caches(user_id)
 
-            logger.info("Started free subscription", extra={
-                'user_id': user_id,
-                'success': result
-            })
+            logger.info(
+                "Started free subscription",
+                extra={"user_id": user_id, "success": result},
+            )
             return result
         except Exception as e:
-            logger.error("Error starting free subscription", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error starting free subscription",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return False
 
 
@@ -1000,15 +1127,17 @@ def get_subscription_until_for_user(user_id: int, free: bool = False) -> Optiona
     """
     with log_context(logger, user_id=user_id, free=free):
         # Create a cache key
-        cache_key = get_entity_cache_key("user_subscription", user_id, "free" if free else "paid")
+        cache_key = get_entity_cache_key(
+            "user_subscription", user_id, "free" if free else "paid"
+        )
 
         # Try to get from cache
         cached_date = BaseCacheManager.get(cache_key)
         if cached_date:
-            logger.debug("Cache hit for subscription date", extra={
-                'user_id': user_id,
-                'free': free
-            })
+            logger.debug(
+                "Cache hit for subscription date",
+                extra={"user_id": user_id, "free": free},
+            )
             return cached_date
 
         try:
@@ -1016,7 +1145,7 @@ def get_subscription_until_for_user(user_id: int, free: bool = False) -> Optiona
                 user = UserRepository.get_by_id(db, user_id)
 
                 if not user:
-                    logger.warning("User not found", extra={'user_id': user_id})
+                    logger.warning("User not found", extra={"user_id": user_id})
                     return None
 
                 # Get the appropriate date field
@@ -1033,24 +1162,30 @@ def get_subscription_until_for_user(user_id: int, free: bool = False) -> Optiona
 
                     # Cache the result
                     BaseCacheManager.set(cache_key, formatted_date, CacheTTL.MEDIUM)
-                    logger.debug("Cached subscription date", extra={
-                        'user_id': user_id,
-                        'free': free,
-                        'date': formatted_date
-                    })
+                    logger.debug(
+                        "Cached subscription date",
+                        extra={
+                            "user_id": user_id,
+                            "free": free,
+                            "date": formatted_date,
+                        },
+                    )
                     return formatted_date
 
-            logger.debug("No subscription date found", extra={
-                'user_id': user_id,
-                'free': free
-            })
+            logger.debug(
+                "No subscription date found", extra={"user_id": user_id, "free": free}
+            )
             return None
         except Exception as e:
-            logger.error("Error getting subscription date", exc_info=True, extra={
-                'user_id': user_id,
-                'free': free,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting subscription date",
+                exc_info=True,
+                extra={
+                    "user_id": user_id,
+                    "free": free,
+                    "error_type": type(e).__name__,
+                },
+            )
             return None
 
 
@@ -1062,7 +1197,7 @@ def get_ad_images(ad_id: Union[int, Dict[str, Any]]) -> List[str]:
     try:
         # Handle either an ad dict or direct ad_id
         if isinstance(ad_id, dict):
-            ad_id = ad_id.get('id')
+            ad_id = ad_id.get("id")
 
         if not ad_id:
             logger.warning("No ad_id provided for get_ad_images")
@@ -1072,7 +1207,7 @@ def get_ad_images(ad_id: Union[int, Dict[str, Any]]) -> List[str]:
             # Try to get from cache using the cache manager
             cached_images = AdCacheManager.get_ad_images(ad_id)
             if cached_images:
-                logger.debug("Cache hit for ad images", extra={'ad_id': ad_id})
+                logger.debug("Cache hit for ad images", extra={"ad_id": ad_id})
                 return cached_images
 
             # Cache miss, query database for images
@@ -1082,20 +1217,24 @@ def get_ad_images(ad_id: Union[int, Dict[str, Any]]) -> List[str]:
                 # Cache the result using the cache manager
                 if image_urls:
                     AdCacheManager.set_ad_images(ad_id, image_urls)
-                    logger.debug("Cached ad images", extra={
-                        'ad_id': ad_id,
-                        'image_count': len(image_urls)
-                    })
+                    logger.debug(
+                        "Cached ad images",
+                        extra={"ad_id": ad_id, "image_count": len(image_urls)},
+                    )
                 else:
-                    logger.debug("No images found for ad", extra={'ad_id': ad_id})
+                    logger.debug("No images found for ad", extra={"ad_id": ad_id})
 
                 return image_urls
 
     except Exception as e:
-        logger.error("Error getting ad images", exc_info=True, extra={
-            'ad_id': ad_id if 'ad_id' in locals() else None,
-            'error_type': type(e).__name__
-        })
+        logger.error(
+            "Error getting ad images",
+            exc_info=True,
+            extra={
+                "ad_id": ad_id if "ad_id" in locals() else None,
+                "error_type": type(e).__name__,
+            },
+        )
         return []
 
 
@@ -1118,16 +1257,17 @@ def disable_subscription_for_user(user_id: int) -> bool:
                 # Use centralized cache invalidation
                 invalidate_subscription_caches(user_id)
 
-                logger.info("Disabled subscription", extra={
-                    'user_id': user_id,
-                    'success': success
-                })
+                logger.info(
+                    "Disabled subscription",
+                    extra={"user_id": user_id, "success": success},
+                )
                 return success
         except Exception as e:
-            logger.error("Error disabling subscription", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error disabling subscription",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return False
 
 
@@ -1150,16 +1290,17 @@ def enable_subscription_for_user(user_id: int) -> bool:
                 # Use centralized cache invalidation
                 invalidate_subscription_caches(user_id)
 
-                logger.info("Enabled subscription", extra={
-                    'user_id': user_id,
-                    'success': success
-                })
+                logger.info(
+                    "Enabled subscription",
+                    extra={"user_id": user_id, "success": success},
+                )
                 return success
         except Exception as e:
-            logger.error("Error enabling subscription", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error enabling subscription",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return False
 
 
@@ -1178,21 +1319,23 @@ def count_subscriptions(user_id: int) -> int:
         try:
             with db_session() as db:
                 count = SubscriptionRepository.count_subscriptions(db, user_id)
-                logger.debug("Counted subscriptions", extra={
-                    'user_id': user_id,
-                    'count': count
-                })
+                logger.debug(
+                    "Counted subscriptions", extra={"user_id": user_id, "count": count}
+                )
                 return count
         except Exception as e:
-            logger.error("Error counting subscriptions", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error counting subscriptions",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return 0
 
 
 @log_operation("list_subscriptions_paginated")
-def list_subscriptions_paginated(user_id: int, page: int = 0, per_page: int = 5) -> list:
+def list_subscriptions_paginated(
+    user_id: int, page: int = 0, per_page: int = 5
+) -> list:
     """
     Get a paginated list of subscriptions for a user
 
@@ -1207,21 +1350,30 @@ def list_subscriptions_paginated(user_id: int, page: int = 0, per_page: int = 5)
     with log_context(logger, user_id=user_id, page=page, per_page=per_page):
         try:
             with db_session() as db:
-                subscriptions = SubscriptionRepository.list_subscriptions_paginated(db, user_id, page, per_page)
-                logger.debug("Listed paginated subscriptions", extra={
-                    'user_id': user_id,
-                    'page': page,
-                    'per_page': per_page,
-                    'count': len(subscriptions)
-                })
+                subscriptions = SubscriptionRepository.list_subscriptions_paginated(
+                    db, user_id, page, per_page
+                )
+                logger.debug(
+                    "Listed paginated subscriptions",
+                    extra={
+                        "user_id": user_id,
+                        "page": page,
+                        "per_page": per_page,
+                        "count": len(subscriptions),
+                    },
+                )
                 return subscriptions
         except Exception as e:
-            logger.error("Error listing paginated subscriptions", exc_info=True, extra={
-                'user_id': user_id,
-                'page': page,
-                'per_page': per_page,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error listing paginated subscriptions",
+                exc_info=True,
+                extra={
+                    "user_id": user_id,
+                    "page": page,
+                    "per_page": per_page,
+                    "error_type": type(e).__name__,
+                },
+            )
             return []
 
 
@@ -1234,7 +1386,9 @@ def get_subscription_status(user_id: int) -> dict:
         # Try to get from cache using the cache manager
         cached_status = UserCacheManager.get_subscription_status(user_id)
         if cached_status:
-            logger.debug("Cache hit for subscription status", extra={'user_id': user_id})
+            logger.debug(
+                "Cache hit for subscription status", extra={"user_id": user_id}
+            )
             return cached_status
 
         try:
@@ -1242,7 +1396,10 @@ def get_subscription_status(user_id: int) -> dict:
                 user = UserRepository.get_by_id(db, user_id)
 
                 if not user:
-                    logger.warning("User not found for subscription status", extra={'user_id': user_id})
+                    logger.warning(
+                        "User not found for subscription status",
+                        extra={"user_id": user_id},
+                    )
                     return {"active": False}
 
                 now = datetime.now()
@@ -1258,24 +1415,30 @@ def get_subscription_status(user_id: int) -> dict:
                     "free_active": free_active,
                     "paid_active": paid_active,
                     "free_until": free_until.isoformat() if free_until else None,
-                    "subscription_until": subscription_until.isoformat() if subscription_until else None
+                    "subscription_until": (
+                        subscription_until.isoformat() if subscription_until else None
+                    ),
                 }
 
                 # Cache the result using the cache manager
                 UserCacheManager.set_subscription_status(user_id, status)
 
-                logger.info("Retrieved subscription status", extra={
-                    'user_id': user_id,
-                    'active': status['active'],
-                    'free_active': status['free_active'],
-                    'paid_active': status['paid_active']
-                })
+                logger.info(
+                    "Retrieved subscription status",
+                    extra={
+                        "user_id": user_id,
+                        "active": status["active"],
+                        "free_active": status["free_active"],
+                        "paid_active": status["paid_active"],
+                    },
+                )
                 return status
         except Exception as e:
-            logger.error("Error getting subscription status", exc_info=True, extra={
-                'user_id': user_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error getting subscription status",
+                exc_info=True,
+                extra={"user_id": user_id, "error_type": type(e).__name__},
+            )
             return {"active": False, "error": str(e)}
 
 
@@ -1287,7 +1450,9 @@ def get_users_for_reminders() -> List[Dict[str, Any]]:
 
         try:
             # Try to get from cache first
-            cache_key = get_entity_cache_key("users_for_reminders", date.today().isoformat())
+            cache_key = get_entity_cache_key(
+                "users_for_reminders", date.today().isoformat()
+            )
             cached_users = BaseCacheManager.get(cache_key)
 
             if cached_users:
@@ -1299,26 +1464,35 @@ def get_users_for_reminders() -> List[Dict[str, Any]]:
                 target_dates = [
                     datetime.now().date() + timedelta(days=3),
                     datetime.now().date() + timedelta(days=7),
-                    datetime.now().date() + timedelta(days=14)
+                    datetime.now().date() + timedelta(days=14),
                 ]
 
-                users = db.query(User).filter(
-                    User.telegram_id.isnot(None),
-                    User.subscription_until.isnot(None),
-                    db.func.date(User.subscription_until).in_(target_dates)
-                ).all()
+                users = (
+                    db.query(User)
+                    .filter(
+                        User.telegram_id.isnot(None),
+                        User.subscription_until.isnot(None),
+                        db.func.date(User.subscription_until).in_(target_dates),
+                    )
+                    .all()
+                )
 
                 # Convert to list of dicts for compatibility
                 result = []
                 for user in users:
                     user_dict = {
-                        'id': user.id,
-                        'telegram_id': user.telegram_id,
-                        'subscription_until': user.subscription_until,
-                        'days_left': (user.subscription_until.date() - datetime.now().date()).days
+                        "id": user.id,
+                        "telegram_id": user.telegram_id,
+                        "subscription_until": user.subscription_until,
+                        "days_left": (
+                            user.subscription_until.date() - datetime.now().date()
+                        ).days,
                     }
                     result.append(user_dict)
-                    aggregator.add_item({'user_id': user.id, 'days_left': user_dict['days_left']}, success=True)
+                    aggregator.add_item(
+                        {"user_id": user.id, "days_left": user_dict["days_left"]},
+                        success=True,
+                    )
 
                 # Cache the results for 1 hour
                 BaseCacheManager.set(cache_key, result, CacheTTL.SHORT)
@@ -1329,7 +1503,7 @@ def get_users_for_reminders() -> List[Dict[str, Any]]:
 
         except Exception as e:
             logger.error("Error getting users for reminders", exc_info=True)
-            aggregator.add_error(str(e), {'error_type': type(e).__name__})
+            aggregator.add_error(str(e), {"error_type": type(e).__name__})
             return []
 
 
@@ -1341,7 +1515,9 @@ def get_expiring_subscriptions() -> List[Dict[str, Any]]:
 
         try:
             # Try to get from cache first
-            cache_key = get_entity_cache_key("expiring_subscriptions", date.today().isoformat())
+            cache_key = get_entity_cache_key(
+                "expiring_subscriptions", date.today().isoformat()
+            )
             cached_subscriptions = BaseCacheManager.get(cache_key)
 
             if cached_subscriptions:
@@ -1353,29 +1529,38 @@ def get_expiring_subscriptions() -> List[Dict[str, Any]]:
                 today = datetime.now().date()
                 seven_days_later = today + timedelta(days=7)
 
-                users = db.query(User).filter(
-                    User.telegram_id.isnot(None),
-                    User.subscription_until.isnot(None),
-                    User.subscription_until > datetime.now(),
-                    User.subscription_until <= datetime.combine(seven_days_later, datetime.min.time())
-                ).order_by(User.subscription_until).all()
+                users = (
+                    db.query(User)
+                    .filter(
+                        User.telegram_id.isnot(None),
+                        User.subscription_until.isnot(None),
+                        User.subscription_until > datetime.now(),
+                        User.subscription_until
+                        <= datetime.combine(seven_days_later, datetime.min.time()),
+                    )
+                    .order_by(User.subscription_until)
+                    .all()
+                )
 
                 # Convert to list of dicts with calculated days left
                 result = []
                 for user in users:
                     days_left = (user.subscription_until.date() - today).days
                     subscription_dict = {
-                        'user_id': user.id,
-                        'telegram_id': user.telegram_id,
-                        'subscription_until': user.subscription_until,
-                        'days_left': days_left
+                        "user_id": user.id,
+                        "telegram_id": user.telegram_id,
+                        "subscription_until": user.subscription_until,
+                        "days_left": days_left,
                     }
                     result.append(subscription_dict)
-                    aggregator.add_item({
-                        'user_id': user.id,
-                        'days_left': days_left,
-                        'telegram_id': user.telegram_id
-                    }, success=True)
+                    aggregator.add_item(
+                        {
+                            "user_id": user.id,
+                            "days_left": days_left,
+                            "telegram_id": user.telegram_id,
+                        },
+                        success=True,
+                    )
 
                 # Cache the results for 1 hour
                 BaseCacheManager.set(cache_key, result, CacheTTL.SHORT)
@@ -1386,7 +1571,7 @@ def get_expiring_subscriptions() -> List[Dict[str, Any]]:
 
         except Exception as e:
             logger.error("Error getting expiring subscriptions", exc_info=True)
-            aggregator.add_error(str(e), {'error_type': type(e).__name__})
+            aggregator.add_error(str(e), {"error_type": type(e).__name__})
             return []
 
 
@@ -1404,25 +1589,27 @@ def send_email_verification_token(email: str, user_id: Optional[int] = None) -> 
                     verification_type="email",
                     target=email.lower().strip(),
                     user_id=user_id,
-                    expiry_minutes=60  # Email tokens valid for 1 hour
+                    expiry_minutes=60,  # Email tokens valid for 1 hour
                 )
 
-                logger.info("Email verification token created", extra={
-                    'email': email[:5] + "...",
-                    'user_id': user_id
-                })
+                logger.info(
+                    "Email verification token created",
+                    extra={"email": email[:5] + "...", "user_id": user_id},
+                )
 
                 # Send email with token
                 from common.verification.email_service import send_verification_email
+
                 send_verification_email(email, token)
 
                 return token
 
         except Exception as e:
-            logger.error("Error creating email verification", exc_info=True, extra={
-                'email': email[:5] + "...",
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error creating email verification",
+                exc_info=True,
+                extra={"email": email[:5] + "...", "error_type": type(e).__name__},
+            )
             raise
 
 
@@ -1439,23 +1626,25 @@ def verify_email_token(email: str, token: str) -> Tuple[bool, str]:
                     db=db,
                     verification_type="email",
                     target=email.lower().strip(),
-                    code=token
+                    code=token,
                 )
 
                 if is_valid:
-                    logger.info("Email verification successful", extra={
-                        'email': email[:5] + "..."
-                    })
+                    logger.info(
+                        "Email verification successful",
+                        extra={"email": email[:5] + "..."},
+                    )
                     return True, ""
                 else:
-                    logger.warning("Email verification failed", extra={
-                        'email': email[:5] + "..."
-                    })
+                    logger.warning(
+                        "Email verification failed", extra={"email": email[:5] + "..."}
+                    )
                     return False, "Недійсний токен або термін дії закінчився"
 
         except Exception as e:
-            logger.error("Error verifying email token", exc_info=True, extra={
-                'email': email[:5] + "...",
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error verifying email token",
+                exc_info=True,
+                extra={"email": email[:5] + "...", "error_type": type(e).__name__},
+            )
             return False, "Помилка при перевірці токену"

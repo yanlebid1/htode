@@ -11,8 +11,11 @@ from . import logger
 
 # ===== Platform Detection and Resolution =====
 
+
 @log_operation("resolve_user_id")
-def resolve_user_id(user_id: Union[int, str], *_ignored, **_kw) -> Tuple[Optional[int], str, str]:
+def resolve_user_id(
+    user_id: Union[int, str], *_ignored, **_kw
+) -> Tuple[Optional[int], str, str]:
     """Simplified Telegram-only resolver.
 
     Returns (db_user_id, "telegram", telegram_id).
@@ -64,7 +67,9 @@ def resolve_user_id(user_id: Union[int, str], *_ignored, **_kw) -> Tuple[Optiona
 
 
 @log_operation("get_messenger_for_user")
-async def get_messenger_for_user(user_id: Union[int, str]) -> Tuple[Optional[str], Optional[str], Optional[Any]]:
+async def get_messenger_for_user(
+    user_id: Union[int, str]
+) -> Tuple[Optional[str], Optional[str], Optional[Any]]:
     """
     Determine the messenger type and platform-specific ID for a user.
     Can handle either database user ID or platform-specific ID.
@@ -80,15 +85,16 @@ async def get_messenger_for_user(user_id: Union[int, str]) -> Tuple[Optional[str
 
         if platform_name and platform_id:
             messenger = get_messenger_instance(platform_name)
-            logger.info("Found messenger for user", extra={
-                'platform': platform_name,
-                'has_messenger': bool(messenger)
-            })
+            logger.info(
+                "Found messenger for user",
+                extra={"platform": platform_name, "has_messenger": bool(messenger)},
+            )
             return platform_name, platform_id, messenger
 
-        logger.warning("Could not determine messenger for user", extra={
-            'user_id': str(user_id)[:20]
-        })
+        logger.warning(
+            "Could not determine messenger for user",
+            extra={"user_id": str(user_id)[:20]},
+        )
         return None, None, None
 
 
@@ -99,16 +105,26 @@ def get_messenger_instance(_platform: str = "telegram"):
         try:
             from common.messaging.telegram_messaging import TelegramMessaging
             from services.telegram_service.app.bot import bot
+
             return TelegramMessaging(bot)
         except ImportError as e:
-            logger.error("Failed to import TelegramMessaging", exc_info=True, extra={'error_type': type(e).__name__})
+            logger.error(
+                "Failed to import TelegramMessaging",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return None
         except Exception as e:
-            logger.error("Error creating Telegram messenger", exc_info=True, extra={'error_type': type(e).__name__})
+            logger.error(
+                "Error creating Telegram messenger",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return None
 
 
 # ===== Messaging Utilities =====
+
 
 class MessageFormatter:
     """
@@ -131,16 +147,16 @@ class MessageFormatter:
         """
         from common.config import GEO_ID_MAPPING
 
-        with log_context(logger, platform=platform, ad_id=ad_data.get('id')):
+        with log_context(logger, platform=platform, ad_id=ad_data.get("id")):
             # Extract ad data with defaults
-            city_id = ad_data.get('city')
+            city_id = ad_data.get("city")
             city_name = GEO_ID_MAPPING.get(city_id, "Невідомо")
-            price = ad_data.get('price', 0)
-            address = ad_data.get('address', "Невідомо")
-            rooms_count = ad_data.get('rooms_count', "Невідомо")
-            square_feet = ad_data.get('square_feet', "Невідомо")
-            floor = ad_data.get('floor', "Невідомо")
-            total_floors = ad_data.get('total_floors', "Невідомо")
+            price = ad_data.get("price", 0)
+            address = ad_data.get("address", "Невідомо")
+            rooms_count = ad_data.get("rooms_count", "Невідомо")
+            square_feet = ad_data.get("square_feet", "Невідомо")
+            floor = ad_data.get("floor", "Невідомо")
+            total_floors = ad_data.get("total_floors", "Невідомо")
 
             # Apply platform-specific formatting
             # Telegram markdown-formatted message (only platform now)
@@ -153,23 +169,24 @@ class MessageFormatter:
                 f"🏢 Поверх: *{floor}* з *{total_floors}*\n"
             )
 
-            logger.info("Formatted ad text", extra={
-                'platform': platform,
-                'text_length': len(text)
-            })
+            logger.info(
+                "Formatted ad text",
+                extra={"platform": platform, "text_length": len(text)},
+            )
             return text
 
 
 # ===== Unified Message Sending Functions =====
 
+
 @log_operation("safe_send_message")
 async def safe_send_message(
-        user_id: Union[str, int],
-        text: str,
-        platform: Optional[str] = None,
-        retry_count: int = 3,
-        retry_delay: int = 1,
-        **kwargs
+    user_id: Union[str, int],
+    text: str,
+    platform: Optional[str] = None,
+    retry_count: int = 3,
+    retry_delay: int = 1,
+    **kwargs,
 ) -> Union[Any, bool, None]:
     """
     Unified function to safely send a text message across any platform.
@@ -187,7 +204,9 @@ async def safe_send_message(
     """
     from common.messaging.service import messaging_service
 
-    with log_context(logger, user_id=str(user_id)[:20], platform=platform, retry_count=retry_count):
+    with log_context(
+        logger, user_id=str(user_id)[:20], platform=platform, retry_count=retry_count
+    ):
         try:
             # Get database user ID, platform and messenger
             db_user_id, platform_name, platform_id = resolve_user_id(user_id)
@@ -196,20 +215,20 @@ async def safe_send_message(
             if db_user_id:
                 try:
                     success = await messaging_service.send_notification(
-                        user_id=db_user_id,
-                        text=text,
-                        **kwargs
+                        user_id=db_user_id, text=text, **kwargs
                     )
                     if success:
-                        logger.info("Message sent via messaging service", extra={
-                            'user_id': db_user_id,
-                            'platform': platform_name
-                        })
+                        logger.info(
+                            "Message sent via messaging service",
+                            extra={"user_id": db_user_id, "platform": platform_name},
+                        )
                         return True
                 except Exception as e:
-                    logger.warning("Error using messaging service", exc_info=True, extra={
-                        'error_type': type(e).__name__
-                    })
+                    logger.warning(
+                        "Error using messaging service",
+                        exc_info=True,
+                        extra={"error_type": type(e).__name__},
+                    )
 
             # If we have platform info, try direct send
             if platform_name and platform_id:
@@ -218,53 +237,66 @@ async def safe_send_message(
                     # Send the message with retry logic
                     for attempt in range(retry_count):
                         try:
-                            result = await messenger.send_text(platform_id, text, **kwargs)
-                            logger.info("Message sent directly", extra={
-                                'platform': platform_name,
-                                'attempt': attempt + 1
-                            })
+                            result = await messenger.send_text(
+                                platform_id, text, **kwargs
+                            )
+                            logger.info(
+                                "Message sent directly",
+                                extra={
+                                    "platform": platform_name,
+                                    "attempt": attempt + 1,
+                                },
+                            )
                             return result
                         except Exception as e:
                             if attempt < retry_count - 1:
-                                current_delay = retry_delay * (2 ** attempt)
+                                current_delay = retry_delay * (2**attempt)
                                 jitter = random.uniform(0.8, 1.2)
                                 final_delay = current_delay * jitter
                                 logger.warning(
-                                    f"Failed to send message, retrying", extra={
-                                        'attempt': attempt + 1,
-                                        'retry_count': retry_count,
-                                        'delay': final_delay,
-                                        'error_type': type(e).__name__
-                                    }
+                                    "Failed to send message, retrying",
+                                    extra={
+                                        "attempt": attempt + 1,
+                                        "retry_count": retry_count,
+                                        "delay": final_delay,
+                                        "error_type": type(e).__name__,
+                                    },
                                 )
                                 await asyncio.sleep(final_delay)
                             else:
-                                logger.error(f"Failed to send message after retries", exc_info=True, extra={
-                                    'attempts': retry_count,
-                                    'error_type': type(e).__name__
-                                })
+                                logger.error(
+                                    "Failed to send message after retries",
+                                    exc_info=True,
+                                    extra={
+                                        "attempts": retry_count,
+                                        "error_type": type(e).__name__,
+                                    },
+                                )
                                 return None
 
-            logger.error(f"Could not send message - unable to resolve user ID or platform", extra={
-                'user_id': str(user_id)[:20]
-            })
+            logger.error(
+                "Could not send message - unable to resolve user ID or platform",
+                extra={"user_id": str(user_id)[:20]},
+            )
             return None
         except Exception as e:
-            logger.error(f"Error in safe_send_message", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error in safe_send_message",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return None
 
 
 @log_operation("safe_send_media")
 async def safe_send_media(
-        user_id: Union[str, int],
-        media_url: str,
-        caption: Optional[str] = None,
-        platform: Optional[str] = None,
-        retry_count: int = 3,
-        retry_delay: int = 1,
-        **kwargs
+    user_id: Union[str, int],
+    media_url: str,
+    caption: Optional[str] = None,
+    platform: Optional[str] = None,
+    retry_count: int = 3,
+    retry_delay: int = 1,
+    **kwargs,
 ) -> Union[Any, bool, None]:
     """
     Unified function to safely send a media message across any platform.
@@ -283,7 +315,9 @@ async def safe_send_media(
     """
     from common.messaging.service import messaging_service
 
-    with log_context(logger, user_id=str(user_id)[:20], platform=platform, media_url=media_url[:50]):
+    with log_context(
+        logger, user_id=str(user_id)[:20], platform=platform, media_url=media_url[:50]
+    ):
         try:
             # Get database user ID, platform and messenger
             db_user_id, platform_name, platform_id = resolve_user_id(user_id)
@@ -292,21 +326,20 @@ async def safe_send_media(
             if db_user_id:
                 try:
                     success = await messaging_service.send_notification(
-                        user_id=db_user_id,
-                        text=caption,
-                        image_url=media_url,
-                        **kwargs
+                        user_id=db_user_id, text=caption, image_url=media_url, **kwargs
                     )
                     if success:
-                        logger.info("Media sent via messaging service", extra={
-                            'user_id': db_user_id,
-                            'platform': platform_name
-                        })
+                        logger.info(
+                            "Media sent via messaging service",
+                            extra={"user_id": db_user_id, "platform": platform_name},
+                        )
                         return True
                 except Exception as e:
-                    logger.warning("Error using messaging service", exc_info=True, extra={
-                        'error_type': type(e).__name__
-                    })
+                    logger.warning(
+                        "Error using messaging service",
+                        exc_info=True,
+                        extra={"error_type": type(e).__name__},
+                    )
 
             # If we have platform info, try direct send
             if platform_name and platform_id:
@@ -315,31 +348,41 @@ async def safe_send_media(
                     # Send the media with retry logic
                     for attempt in range(retry_count):
                         try:
-                            result = await messenger.send_media(platform_id, media_url, caption=caption, **kwargs)
-                            logger.info("Media sent directly", extra={
-                                'platform': platform_name,
-                                'attempt': attempt + 1
-                            })
+                            result = await messenger.send_media(
+                                platform_id, media_url, caption=caption, **kwargs
+                            )
+                            logger.info(
+                                "Media sent directly",
+                                extra={
+                                    "platform": platform_name,
+                                    "attempt": attempt + 1,
+                                },
+                            )
                             return result
                         except Exception as e:
                             if attempt < retry_count - 1:
-                                current_delay = retry_delay * (2 ** attempt)
+                                current_delay = retry_delay * (2**attempt)
                                 jitter = random.uniform(0.8, 1.2)
                                 final_delay = current_delay * jitter
                                 logger.warning(
-                                    f"Failed to send media, retrying", extra={
-                                        'attempt': attempt + 1,
-                                        'retry_count': retry_count,
-                                        'delay': final_delay,
-                                        'error_type': type(e).__name__
-                                    }
+                                    "Failed to send media, retrying",
+                                    extra={
+                                        "attempt": attempt + 1,
+                                        "retry_count": retry_count,
+                                        "delay": final_delay,
+                                        "error_type": type(e).__name__,
+                                    },
                                 )
                                 await asyncio.sleep(final_delay)
                             else:
-                                logger.error(f"Failed to send media after retries", exc_info=True, extra={
-                                    'attempts': retry_count,
-                                    'error_type': type(e).__name__
-                                })
+                                logger.error(
+                                    "Failed to send media after retries",
+                                    exc_info=True,
+                                    extra={
+                                        "attempts": retry_count,
+                                        "error_type": type(e).__name__,
+                                    },
+                                )
                                 # Try sending just text if media fails
                                 if caption:
                                     try:
@@ -347,30 +390,33 @@ async def safe_send_media(
                                             user_id=user_id,
                                             text=f"{caption}\n\n[Media URL: {media_url}]",
                                             platform=platform_name,
-                                            **kwargs
+                                            **kwargs,
                                         )
                                     except Exception:
                                         pass
                                 return None
 
-            logger.error(f"Could not send media - unable to resolve user ID or platform", extra={
-                'user_id': str(user_id)[:20]
-            })
+            logger.error(
+                "Could not send media - unable to resolve user ID or platform",
+                extra={"user_id": str(user_id)[:20]},
+            )
             return None
         except Exception as e:
-            logger.error(f"Error in safe_send_media", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error in safe_send_media",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return None
 
 
 @log_operation("safe_send_menu")
 async def safe_send_menu(
-        user_id: Union[str, int],
-        text: str,
-        options: List[Dict[str, str]],
-        platform: Optional[str] = None,
-        **kwargs
+    user_id: Union[str, int],
+    text: str,
+    options: List[Dict[str, str]],
+    platform: Optional[str] = None,
+    **kwargs,
 ) -> Union[Any, bool, None]:
     """
     Unified function to safely send a menu across any platform.
@@ -385,7 +431,9 @@ async def safe_send_menu(
     Returns:
         Response from the messaging platform or boolean success status
     """
-    with log_context(logger, user_id=str(user_id)[:20], platform=platform, options_count=len(options)):
+    with log_context(
+        logger, user_id=str(user_id)[:20], platform=platform, options_count=len(options)
+    ):
         try:
             # Get database user ID, platform and messenger
             db_user_id, platform_name, platform_id = resolve_user_id(user_id)
@@ -395,21 +443,29 @@ async def safe_send_menu(
                 messenger = get_messenger_instance(platform_name)
                 if messenger:
                     # Send the menu
-                    result = await messenger.send_menu(platform_id, text, options, **kwargs)
-                    logger.info("Menu sent", extra={
-                        'platform': platform_name,
-                        'options_count': len(options)
-                    })
+                    result = await messenger.send_menu(
+                        platform_id, text, options, **kwargs
+                    )
+                    logger.info(
+                        "Menu sent",
+                        extra={
+                            "platform": platform_name,
+                            "options_count": len(options),
+                        },
+                    )
                     return result
 
-            logger.error(f"Could not send menu - unable to resolve user ID or platform", extra={
-                'user_id': str(user_id)[:20]
-            })
+            logger.error(
+                "Could not send menu - unable to resolve user ID or platform",
+                extra={"user_id": str(user_id)[:20]},
+            )
             return None
         except Exception as e:
-            logger.error(f"Error in safe_send_menu", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error in safe_send_menu",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return None
 
 
@@ -417,14 +473,15 @@ async def safe_send_menu(
 
 # Telegram-specific helpers
 
+
 @log_operation("safe_edit_message_telegram")
 async def safe_edit_message_telegram(
-        chat_id: Union[int, str],
-        message_id: int,
-        text: str,
-        parse_mode: Optional[str] = None,
-        reply_markup: Any = None,
-        disable_web_page_preview: bool = False
+    chat_id: Union[int, str],
+    message_id: int,
+    text: str,
+    parse_mode: Optional[str] = None,
+    reply_markup: Any = None,
+    disable_web_page_preview: bool = False,
 ) -> Optional[Any]:
     """
     Telegram-specific function to safely edit a message.
@@ -452,7 +509,7 @@ async def safe_edit_message_telegram(
                     text=text,
                     parse_mode=parse_mode,
                     reply_markup=reply_markup,
-                    disable_web_page_preview=disable_web_page_preview
+                    disable_web_page_preview=disable_web_page_preview,
                 )
                 logger.info("Message edited successfully")
                 return result
@@ -460,22 +517,24 @@ async def safe_edit_message_telegram(
                 logger.info("Message not modified (content is the same)")
                 return None
             except TelegramAPIError as e:
-                logger.error(f"Failed to edit message", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Failed to edit message",
+                    exc_info=True,
+                    extra={"error_type": type(e).__name__},
+                )
                 return None
         except ImportError as e:
-            logger.error(f"Telegram dependencies not available", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Telegram dependencies not available",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return None
 
 
 @log_operation("safe_answer_callback_query_telegram")
 async def safe_answer_callback_query_telegram(
-        callback_query_id: str,
-        text: Optional[str] = None,
-        show_alert: bool = False
+    callback_query_id: str, text: Optional[str] = None, show_alert: bool = False
 ) -> bool:
     """
     Telegram-specific function to safely answer a callback query.
@@ -497,7 +556,7 @@ async def safe_answer_callback_query_telegram(
                 await bot.answer_callback_query(
                     callback_query_id=callback_query_id,
                     text=text,
-                    show_alert=show_alert
+                    show_alert=show_alert,
                 )
                 logger.info("Callback query answered successfully")
                 return True
@@ -505,21 +564,24 @@ async def safe_answer_callback_query_telegram(
                 logger.warning("Invalid query ID (callback is too old)")
                 return False
             except TelegramAPIError as e:
-                logger.error(f"Failed to answer callback query", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Failed to answer callback query",
+                    exc_info=True,
+                    extra={"error_type": type(e).__name__},
+                )
                 return False
         except ImportError as e:
-            logger.error(f"Telegram dependencies not available", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Telegram dependencies not available",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return False
 
 
 @log_operation("delete_message_safe_telegram")
 async def delete_message_safe_telegram(
-        chat_id: Union[int, str],
-        message_id: int
+    chat_id: Union[int, str], message_id: int
 ) -> bool:
     """
     Telegram-specific function to safely delete a message.
@@ -534,7 +596,10 @@ async def delete_message_safe_telegram(
     with log_context(logger, chat_id=chat_id, message_id=message_id):
         try:
             from services.telegram_service.app.bot import bot
-            from aiogram.utils.exceptions import MessageToDeleteNotFound, TelegramAPIError
+            from aiogram.utils.exceptions import (
+                MessageToDeleteNotFound,
+                TelegramAPIError,
+            )
 
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -544,13 +609,16 @@ async def delete_message_safe_telegram(
                 logger.info("Message to delete not found (already deleted)")
                 return True
             except TelegramAPIError as e:
-                logger.error(f"Failed to delete message", exc_info=True, extra={
-                    'error_type': type(e).__name__
-                })
+                logger.error(
+                    "Failed to delete message",
+                    exc_info=True,
+                    extra={"error_type": type(e).__name__},
+                )
                 return False
         except ImportError as e:
-            logger.error(f"Telegram dependencies not available", exc_info=True, extra={
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Telegram dependencies not available",
+                exc_info=True,
+                extra={"error_type": type(e).__name__},
+            )
             return False
-

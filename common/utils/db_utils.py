@@ -25,13 +25,15 @@ def get_ad_id_by_external_id(external_id: str) -> Optional[int]:
             ad = db.query(Ad).filter(Ad.external_id == external_id).first()
 
             if ad:
-                logger.debug("Found ad by external ID", extra={
-                    'external_id': external_id,
-                    'ad_id': ad.id
-                })
+                logger.debug(
+                    "Found ad by external ID",
+                    extra={"external_id": external_id, "ad_id": ad.id},
+                )
                 return ad.id
             else:
-                logger.debug("No ad found for external ID", extra={'external_id': external_id})
+                logger.debug(
+                    "No ad found for external ID", extra={"external_id": external_id}
+                )
                 return None
 
 
@@ -51,15 +53,15 @@ def ensure_ad_exists(ad_id: int) -> bool:
             with db_session() as db:
                 exists = db.query(db.query(Ad).filter(Ad.id == ad_id).exists()).scalar()
 
-                logger.debug("Checked ad existence", extra={
-                    'ad_id': ad_id,
-                    'exists': exists
-                })
+                logger.debug(
+                    "Checked ad existence", extra={"ad_id": ad_id, "exists": exists}
+                )
 
                 return exists
         except Exception as e:
-            logger.error("Error checking if ad exists", exc_info=True, extra={
-                'ad_id': ad_id,
-                'error_type': type(e).__name__
-            })
+            logger.error(
+                "Error checking if ad exists",
+                exc_info=True,
+                extra={"ad_id": ad_id, "error_type": type(e).__name__},
+            )
             return False
