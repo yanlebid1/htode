@@ -23,8 +23,8 @@ COPY system /app/system
 # Копируем код конкретного сервиса
 COPY services/telegram_service/app /app/app
 
-# Устанавливаем зависимости
-COPY requirements/telegram.txt /app/requirements.txt
+# Copy requirements first for better caching
+COPY services/telegram_service/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir camoufox[geoip]
 

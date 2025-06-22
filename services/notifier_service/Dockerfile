@@ -49,8 +49,8 @@ COPY system /app/system
 # 3) Copy your specific service code
 COPY services/notifier_service/app /app/app
 
-# 4) Copy requirements and install
-COPY requirements/notifier.txt /app/requirements.txt
+# 4) Copy requirements first for better caching
+COPY services/notifier_service/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir camoufox[geoip]
 

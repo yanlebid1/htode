@@ -28,4 +28,4 @@ httpx==0.24.0
 boto3
 beautifulsoup4
 geoip2
-maxminddb
+maxminddb 

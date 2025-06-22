@@ -1,0 +1,30 @@
+{
+  "profiles": [
+    {
+      "profile_id": "PROFILE_ID_1",
+      "profile_name": "Profile 1",
+      "olx_email": null,
+      "olx_password": null,
+      "last_used": null,
+      "usage_count": 0,
+      "max_daily_usage": 50,
+      "is_active": true
+    },
+    {
+      "profile_id": "PROFILE_ID_2",
+      "profile_name": "Profile 2",
+      "olx_email": null,
+      "olx_password": null,
+      "last_used": null,
+      "usage_count": 0,
+      "max_daily_usage": 50,
+      "is_active": true
+    }
+  ],
+  "stats": {
+    "total_extractions": 0,
+    "successful_extractions": 0,
+    "failed_extractions": 0,
+    "last_extraction": null
+  }
+}

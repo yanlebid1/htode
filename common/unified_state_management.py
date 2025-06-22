@@ -29,15 +29,23 @@ class StateManager:
         Initialize the state manager.
 
         Args:
-            redis_url: Redis connection URL
+            redis_url: Redis connection URL (deprecated, uses cluster manager)
             prefix: Prefix for Redis keys
             default_ttl: Default time-to-live for state data in seconds (default: 24 hours)
         """
-        self.redis = redis.from_url(redis_url)
+        # Use Redis cluster for state management
+        try:
+            from common.utils.redis_cluster_manager import get_state_redis
+            self.redis = get_state_redis()
+            logger.info(f"Initialized StateManager with Redis cluster, prefix '{prefix}'")
+        except ImportError:
+            # Fallback to legacy Redis connection
+            self.redis = redis.from_url(redis_url)
+            logger.warning(f"Redis cluster manager not available, using legacy connection with prefix '{prefix}'")
+        
         self.prefix = prefix
         self.default_ttl = default_ttl
         self.platform_handlers = {}
-        logger.info(f"Initialized StateManager with prefix '{prefix}'")
 
     def register_platform_handler(self, platform: str, handler: Any) -> None:
         """

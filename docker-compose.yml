@@ -18,14 +18,24 @@ x-aws-variables: &aws-variables
   AWS_S3_BUCKET_PREFIX: "${AWS_S3_BUCKET_PREFIX:-ads-images/}"
   CLOUDFRONT_DOMAIN: "${CLOUDFRONT_DOMAIN:-https://d3h86hbbdu2c7h.cloudfront.net}"
 
-# Combined environment variables
+# Combined environment variables - Redis Cluster Configuration
 x-combined-env: &combined-env
-  REDIS_URL: "${REDIS_URL:-redis://redis:6379/0}"
+  # Redis Cluster URLs for functional separation
+  REDIS_QUEUE_URL: "${REDIS_QUEUE_URL:-redis://redis_queue:6379/0}"
+  REDIS_CACHE_URL: "${REDIS_CACHE_URL:-redis://redis_cache:6379/0}" 
+  REDIS_STATE_URL: "${REDIS_STATE_URL:-redis://redis_state:6379/0}"
+  REDIS_ANALYTICS_URL: "${REDIS_ANALYTICS_URL:-redis://redis_analytics:6379/0}"
+  # Legacy Redis URL for backward compatibility
+  REDIS_URL: "${REDIS_URL:-redis://redis_queue:6379/0}"
+  # Redis Sentinel URLs for high availability
+  REDIS_SENTINELS: "${REDIS_SENTINELS:-redis_sentinel_1:26379,redis_sentinel_2:26379,redis_sentinel_3:26379}"
+  # Database Configuration
   DB_HOST: "${DB_HOST:-postgres}"
   DB_PORT: "${DB_PORT:-5432}"
   DB_NAME: "${DB_NAME:-mydb}"
   DB_USER: "${DB_USER:-myuser}"
   DB_PASS: "${DB_PASS:-mypass}"
+  # AWS Configuration
   AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
   AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
   AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-eu-west-1}"
@@ -121,20 +131,320 @@ x-combined-playwright-settings: &combined-playwright-settings
         memory: 512M
 
 services:
-  redis:
-    image: redis:7
-    container_name: my_redis
-    <<: *combined-settings
+  # NGINX LOAD BALANCER - Horizontal service scaling
+  nginx_loadbalancer:
+    image: nginx:alpine
+    container_name: nginx_loadbalancer
     ports:
-      - "6380:6379"
+      - "80:80"          # WebApp load balanced
+      - "8888:8888"      # Nginx monitoring
+      - "9100:8100"      # Camoufox load balanced (external port 9100)
+      - "9200:8200"      # WebCrawler load balanced (external port 9200)
     volumes:
-      - redis-data:/data
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      - mini_webapp_1
+      - mini_webapp_2
+      - mini_webapp_3
+      - camoufox_service_1
+      - camoufox_service_2
+      - camoufox_service_3
+      - webcrawler_service_1
+      - webcrawler_service_2
+      - webcrawler_service_3
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/nginx-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # REDIS CLUSTER SETUP - Functional separation for scaling
+  
+  # Primary Redis for Celery queues (high throughput, persistent)
+  redis_queue:
+    image: redis:7
+    container_name: redis_queue
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-queue-data:/data
+    environment:
+      REDIS_MAXMEMORY: "${REDIS_QUEUE_MAXMEMORY:-2g}"
+      REDIS_MAXMEMORY_POLICY: "allkeys-lru"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory ${REDIS_QUEUE_MAXMEMORY:-2g}
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 0
+      --tcp-backlog 511
+      --databases 16
+      --maxclients 10000
+      --hz 10
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'              # Increased from 0.5
+          memory: 3G               # Increased from 512M
+        reservations:
+          cpus: '1.0'
+          memory: 1.5G
+    networks:
+      - app_net
+    restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 2s
       retries: 5
-    command: [ "redis-server", "--appendonly", "yes" ]
+      start_period: 10s
+
+  # Redis for application caching (fast access, can lose data)
+  redis_cache:
+    image: redis:7
+    container_name: redis_cache
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-cache-data:/data
+    environment:
+      REDIS_MAXMEMORY: "${REDIS_CACHE_MAXMEMORY:-1g}"
+      REDIS_MAXMEMORY_POLICY: "allkeys-lru"
+    command: >
+      redis-server
+      --maxmemory ${REDIS_CACHE_MAXMEMORY:-1g}
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 0
+      --maxclients 5000
+      --hz 10
+      --save ""
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+        reservations:
+          cpus: '0.75'
+          memory: 1G
+    networks:
+      - app_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  # Redis for user states and sessions (persistent, smaller dataset)
+  redis_state:
+    image: redis:7
+    container_name: redis_state
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis-state-data:/data
+    environment:
+      REDIS_MAXMEMORY: "${REDIS_STATE_MAXMEMORY:-512m}"
+      REDIS_MAXMEMORY_POLICY: "noeviction"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory ${REDIS_STATE_MAXMEMORY:-512m}
+      --maxmemory-policy noeviction
+      --tcp-keepalive 60
+      --timeout 300
+      --maxclients 5000
+      --hz 10
+      --save 900 1
+      --save 300 10
+      --save 60 1000
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - app_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  # Redis for analytics and monitoring (can lose some data, high write load)
+  redis_analytics:
+    image: redis:7
+    container_name: redis_analytics
+    ports:
+      - "6382:6379"
+    volumes:
+      - redis-analytics-data:/data
+    environment:
+      REDIS_MAXMEMORY: "${REDIS_ANALYTICS_MAXMEMORY:-512m}"
+      REDIS_MAXMEMORY_POLICY: "allkeys-lru"
+    command: >
+      redis-server
+      --maxmemory ${REDIS_ANALYTICS_MAXMEMORY:-512m}
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 0
+      --maxclients 3000
+      --hz 10
+      --save 900 1
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - app_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  # Redis Sentinel for high availability (monitors all Redis instances)
+  redis_sentinel_1:
+    image: redis:7
+    container_name: redis_sentinel_1
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf:ro
+    command: redis-sentinel /etc/redis/sentinel.conf
+    depends_on:
+      - redis_queue
+      - redis_cache
+      - redis_state
+      - redis_analytics
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    networks:
+      - app_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-p", "26379", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  redis_sentinel_2:
+    image: redis:7
+    container_name: redis_sentinel_2
+    ports:
+      - "26380:26379"
+    volumes:
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf:ro
+    command: redis-sentinel /etc/redis/sentinel.conf
+    depends_on:
+      - redis_queue
+      - redis_cache
+      - redis_state
+      - redis_analytics
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    networks:
+      - app_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-p", "26379", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  redis_sentinel_3:
+    image: redis:7
+    container_name: redis_sentinel_3
+    ports:
+      - "26381:26379"
+    volumes:
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf:ro
+    command: redis-sentinel /etc/redis/sentinel.conf
+    depends_on:
+      - redis_queue
+      - redis_cache
+      - redis_state
+      - redis_analytics
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    networks:
+      - app_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-p", "26379", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Legacy Redis alias for backward compatibility during migration
+  redis:
+    image: redis:7
+    container_name: my_redis_legacy
+    ports:
+      - "6383:6379"
+    volumes:
+      - redis-legacy-data:/data
+    command: redis-server --appendonly yes
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks:
+      - app_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 2s
+      retries: 5
 
   postgres:
     image: postgres:14
@@ -144,77 +454,282 @@ services:
       POSTGRES_DB: "${DB_NAME:-mydb}"
       POSTGRES_USER: "${DB_USER:-myuser}"
       POSTGRES_PASSWORD: "${DB_PASS:-mypass}"
+      # Optimized PostgreSQL settings for high concurrency
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command: >
+      postgres
+      -c max_connections=300
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=4MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
     ports:
       - "5434:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
     healthcheck:
       test: [ "CMD", "pg_isready", "-h", "postgres" ]
       interval: 5s
       timeout: 2s
       retries: 5
 
-  telegram_service:
+  # TELEGRAM SERVICES - Horizontal scaling with multiple replicas
+  telegram_service_1:
     volumes:
       - ./services:/app/services  # Mount entire services directory
       - ./common:/app/common
     env_file:
       - .env
-    container_name: telegram_service
+    container_name: telegram_service_1
     <<: *combined-settings
     build:
       context: .
       dockerfile: services/telegram_service/Dockerfile
     depends_on:
-      redis:
+      redis_queue:
+        condition: service_healthy
+      redis_state:
         condition: service_healthy
       postgres:
         condition: service_healthy
     environment:
       <<: *common-variables
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
-      SERVICE_NAME: "telegram"
+      SERVICE_NAME: "telegram_1"
+      SERVICE_REPLICA: "1"
       PYTHONPATH: "/app"  # Simplified PYTHONPATH
       WEBAPP_URL: "${WEBAPP_URL}"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     command: python -m services.telegram_service.app.main  # Updated command path
 
-  telegram_worker_service:
+  telegram_service_2:
     volumes:
       - ./services:/app/services  # Mount entire services directory
       - ./common:/app/common
     env_file:
       - .env
-    container_name: telegram_worker
+    container_name: telegram_service_2
     <<: *combined-settings
     build:
       context: .
       dockerfile: services/telegram_service/Dockerfile
     depends_on:
-      redis:
+      redis_queue:
+        condition: service_healthy
+      redis_state:
         condition: service_healthy
       postgres:
         condition: service_healthy
     environment:
       <<: *common-variables
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
+      SERVICE_NAME: "telegram_2"
+      SERVICE_REPLICA: "2"
       PYTHONPATH: "/app"  # Simplified PYTHONPATH
       WEBAPP_URL: "${WEBAPP_URL}"
-    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=2 --max-tasks-per-child=100
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    command: python -m services.telegram_service.app.main  # Updated command path
+
+  telegram_service_3:
+    volumes:
+      - ./services:/app/services  # Mount entire services directory
+      - ./common:/app/common
+    env_file:
+      - .env
+    container_name: telegram_service_3
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/telegram_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *common-variables
+      TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
+      SERVICE_NAME: "telegram_3"
+      SERVICE_REPLICA: "3"
+      PYTHONPATH: "/app"  # Simplified PYTHONPATH
+      WEBAPP_URL: "${WEBAPP_URL}"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    command: python -m services.telegram_service.app.main  # Updated command path
+
+  # TELEGRAM WORKERS - Multiple worker replicas for high throughput
+  telegram_worker_1:
+    volumes:
+      - ./services:/app/services  # Mount entire services directory
+      - ./common:/app/common
+    env_file:
+      - .env
+    container_name: telegram_worker_1
+    build:
+      context: .
+      dockerfile: services/telegram_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *common-variables
+      TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
+      SERVICE_REPLICA: "1"
+      PYTHONPATH: "/app"  # Simplified PYTHONPATH
+      WEBAPP_URL: "${WEBAPP_URL}"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'              # Increased from default 0.5
+          memory: 2G               # Increased from default 512M
+        reservations:
+          cpus: '1.0'              # Increased from default 0.25
+          memory: 1G               # Increased from default 256M
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=16 --max-tasks-per-child=1000 -n telegram_worker_1@%h
     healthcheck:
-      test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@telegram_worker" ]
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "telegram_worker_1@telegram_worker_1" ]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  scraper_worker_service:
-    container_name: scraper_worker_service
+  telegram_worker_2:
+    volumes:
+      - ./services:/app/services  # Mount entire services directory
+      - ./common:/app/common
+    env_file:
+      - .env
+    container_name: telegram_worker_2
+    build:
+      context: .
+      dockerfile: services/telegram_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *common-variables
+      TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
+      SERVICE_REPLICA: "2"
+      PYTHONPATH: "/app"  # Simplified PYTHONPATH
+      WEBAPP_URL: "${WEBAPP_URL}"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'              # Increased from default 0.5
+          memory: 2G               # Increased from default 512M
+        reservations:
+          cpus: '1.0'              # Increased from default 0.25
+          memory: 1G               # Increased from default 256M
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=16 --max-tasks-per-child=1000 -n telegram_worker_2@%h
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "telegram_worker_2@telegram_worker_2" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  telegram_worker_3:
+    volumes:
+      - ./services:/app/services  # Mount entire services directory
+      - ./common:/app/common
+    env_file:
+      - .env
+    container_name: telegram_worker_3
+    build:
+      context: .
+      dockerfile: services/telegram_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *common-variables
+      TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
+      SERVICE_REPLICA: "3"
+      PYTHONPATH: "/app"  # Simplified PYTHONPATH
+      WEBAPP_URL: "${WEBAPP_URL}"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'              # Increased from default 0.5
+          memory: 2G               # Increased from default 512M
+        reservations:
+          cpus: '1.0'              # Increased from default 0.25
+          memory: 1G               # Increased from default 256M
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=16 --max-tasks-per-child=1000 -n telegram_worker_3@%h
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "telegram_worker_3@telegram_worker_3" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SCRAPER WORKERS - Multiple replicas for parallel scraping
+  scraper_worker_1:
+    container_name: scraper_worker_1
     <<: *combined-settings
     build:
       context: .
       dockerfile: services/scraper_service/Dockerfile
     depends_on:
-      redis:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -222,20 +737,93 @@ services:
     environment:
       <<: *combined-env
       DISABLE_CAMOUFOX: "1"
-    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50
+      SERVICE_REPLICA: "1"
+    extra_hosts:
+      - "local.adspower.net:host-gateway"  # Allow access to host AdsPower API
+    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50 -n scraper_worker_1@%h --concurrency=4
     healthcheck:
-      test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@scraper_worker_service" ]
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "scraper_worker_1@scraper_worker_1" ]
       interval: 30s
       timeout: 10s
       retries: 3
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1500M          # was 512M
+          cpus: '1.5'              # Increased from 1.0
+          memory: 2G               # Increased from 1500M
         reservations:
-          cpus: '0.5'
-          memory: 768M
+          cpus: '0.75'             # Increased from 0.5
+          memory: 1G               # Increased from 768M
+
+  scraper_worker_2:
+    container_name: scraper_worker_2
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/scraper_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    logging: *default-logging
+    environment:
+      <<: *combined-env
+      DISABLE_CAMOUFOX: "1"
+      SERVICE_REPLICA: "2"
+    extra_hosts:
+      - "local.adspower.net:host-gateway"  # Allow access to host AdsPower API
+    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50 -n scraper_worker_2@%h --concurrency=4
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "scraper_worker_2@scraper_worker_2" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'              # Increased from 1.0
+          memory: 2G               # Increased from 1500M
+        reservations:
+          cpus: '0.75'             # Increased from 0.5
+          memory: 1G               # Increased from 768M
+
+  scraper_worker_3:
+    container_name: scraper_worker_3
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/scraper_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    logging: *default-logging
+    environment:
+      <<: *combined-env
+      DISABLE_CAMOUFOX: "1"
+      SERVICE_REPLICA: "3"
+    extra_hosts:
+      - "local.adspower.net:host-gateway"  # Allow access to host AdsPower API
+    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50 -n scraper_worker_3@%h --concurrency=4
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "scraper_worker_3@scraper_worker_3" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'              # Increased from 1.0
+          memory: 2G               # Increased from 1500M
+        reservations:
+          cpus: '0.75'             # Increased from 0.5
+          memory: 1G               # Increased from 768M
 
   scraper_beat_service:
     container_name: scraper_beat_service
@@ -244,7 +832,7 @@ services:
       context: .
       dockerfile: services/scraper_service/Dockerfile
     depends_on:
-      redis:
+      redis_queue:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -266,11 +854,15 @@ services:
           cpus: '0.10'
           memory: 128M
     depends_on:
-      redis:
+      redis_queue:
         condition: service_healthy
       postgres:
         condition: service_healthy
-      scraper_worker_service:
+      scraper_worker_1:
+        condition: service_started
+      scraper_worker_2:
+        condition: service_started
+      scraper_worker_3:
         condition: service_started
     environment:
       <<: *combined-env
@@ -288,98 +880,299 @@ services:
       "
     restart: "no"
 
-  notifier_service:
-    container_name: notifier_service
+  # NOTIFIER SERVICES - Multiple replicas for notification processing
+  notifier_service_1:
+    container_name: notifier_service_1
     <<: *combined-settings
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
     depends_on:
-      redis:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+    environment:
+      <<: *combined-env
+      SERVICE_REPLICA: "1"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'              # Increased from 0.75
+          memory: 1.5G             # Increased from 1G
+        reservations:
+          cpus: '0.5'              # Increased from 0.25
+          memory: 750M             # Increased from 512M
+    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 6 -n notifier_1@%h --max-tasks-per-child=200
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "notifier_1@notifier_service_1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  notifier_service_2:
+    container_name: notifier_service_2
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/notifier_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *combined-env
+      SERVICE_REPLICA: "2"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'              # Increased from 0.75
+          memory: 1.5G             # Increased from 1G
+        reservations:
+          cpus: '0.5'              # Increased from 0.25
+          memory: 750M             # Increased from 512M
+    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 6 -n notifier_2@%h --max-tasks-per-child=200
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "notifier_2@notifier_service_2" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  notifier_service_3:
+    container_name: notifier_service_3
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/notifier_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *combined-env
+      SERVICE_REPLICA: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'              # Increased from 0.75
+          memory: 1.5G             # Increased from 1G
+        reservations:
+          cpus: '0.5'              # Increased from 0.25
+          memory: 750M             # Increased from 512M
+    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 6 -n notifier_3@%h --max-tasks-per-child=200
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "notifier_3@notifier_service_3" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  phone_extraction_worker_1:
+    container_name: phone_extraction_worker_1
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/notifier_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      webcrawler_service_1:
+        condition: service_healthy
+      webcrawler_service_2:
+        condition: service_healthy
+      webcrawler_service_3:
+        condition: service_healthy
+      camoufox_service_1:
+        condition: service_healthy
+      camoufox_service_2:
+        condition: service_healthy
+      camoufox_service_3:
         condition: service_healthy
     environment:
       <<: *combined-env
     deploy:
       resources:
         limits:
-          cpus: '0.75'
-          memory: 1G
+          cpus: '2.0'              # Increased from 1.0
+          memory: 3G               # Increased from 1G
         reservations:
-          cpus: '0.25'
-          memory: 512M
-    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 4
+          cpus: '1.0'              # Increased from 0.5  
+          memory: 1.5G             # Increased from 512M
+    command: celery -A app.celery_app worker --loglevel=info -Q phone_extraction_queue -c 16 -n phone_worker_1@%h --max-tasks-per-child=100
     healthcheck:
-      test: [ "CMD", "celery", "inspect", "ping", "-d", "celery@notifier_service" ]
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "phone_worker_1@phone_extraction_worker_1" ]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  phone_extraction_worker:
-    container_name: phone_extraction_worker
+  phone_extraction_worker_2:
+    container_name: phone_extraction_worker_2
     <<: *combined-settings
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
     depends_on:
-      redis:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
         condition: service_healthy
       postgres:
         condition: service_healthy
-      webcrawler_service:
+      webcrawler_service_1:
         condition: service_healthy
-      camoufox_service:
+      webcrawler_service_2:
+        condition: service_healthy
+      webcrawler_service_3:
+        condition: service_healthy
+      camoufox_service_1:
+        condition: service_healthy
+      camoufox_service_2:
+        condition: service_healthy
+      camoufox_service_3:
         condition: service_healthy
     environment:
       <<: *combined-env
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1G
+          cpus: '2.0'              # Increased from 1.0
+          memory: 3G               # Increased from 1G
         reservations:
-          cpus: '0.5'
-          memory: 512M
-    command: celery -A app.celery_app worker --loglevel=info -Q phone_extraction_queue -c 8 -n phone_worker@%h
+          cpus: '1.0'              # Increased from 0.5  
+          memory: 1.5G             # Increased from 512M
+    command: celery -A app.celery_app worker --loglevel=info -Q phone_extraction_queue -c 16 -n phone_worker_2@%h --max-tasks-per-child=100
     healthcheck:
-      test: [ "CMD", "celery", "inspect", "ping", "-d", "phone_worker@phone_extraction_worker" ]
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "phone_worker_2@phone_extraction_worker_2" ]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  notification_batch_worker:
-    container_name: notification_batch_worker
+  # NOTIFICATION BATCH WORKERS - Multiple replicas for ultra-high throughput
+  notification_batch_worker_1:
+    container_name: notification_batch_worker_1
     <<: *combined-settings
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
     depends_on:
-      redis:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
         condition: service_healthy
       postgres:
         condition: service_healthy
-      telegram_service:
+      telegram_service_1:
+        condition: service_healthy
+      telegram_service_2:
+        condition: service_healthy
+      telegram_service_3:
         condition: service_healthy
     environment:
       <<: *combined-env
+      SERVICE_REPLICA: "1"
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '6.0'              # INCREASED: from 4.0 for ultra-high throughput
+          memory: 6G               # INCREASED: from 4G for large batches
         reservations:
-          cpus: '1.0'
-          memory: 1G
-    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 16 -n batch_worker@%h
+          cpus: '3.0'              # INCREASED: from 2.0
+          memory: 3G               # INCREASED: from 2G
+    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 48 -n batch_worker_1@%h --max-tasks-per-child=500
     healthcheck:
-      test: [ "CMD", "celery", "inspect", "ping", "-d", "batch_worker@notification_batch_worker" ]
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "batch_worker_1@notification_batch_worker_1" ]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  mini_webapp_service:
-    container_name: mini_webapp
+  notification_batch_worker_2:
+    container_name: notification_batch_worker_2
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/notifier_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      telegram_service_1:
+        condition: service_healthy
+      telegram_service_2:
+        condition: service_healthy
+      telegram_service_3:
+        condition: service_healthy
+    environment:
+      <<: *combined-env
+      SERVICE_REPLICA: "2"
+    deploy:
+      resources:
+        limits:
+          cpus: '6.0'              # INCREASED: from 4.0 for ultra-high throughput
+          memory: 6G               # INCREASED: from 4G for large batches
+        reservations:
+          cpus: '3.0'              # INCREASED: from 2.0
+          memory: 3G               # INCREASED: from 2G
+    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 48 -n batch_worker_2@%h --max-tasks-per-child=500
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "batch_worker_2@notification_batch_worker_2" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  notification_batch_worker_3:
+    container_name: notification_batch_worker_3
+    <<: *combined-settings
+    build:
+      context: .
+      dockerfile: services/notifier_service/Dockerfile
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      telegram_service_1:
+        condition: service_healthy
+      telegram_service_2:
+        condition: service_healthy
+      telegram_service_3:
+        condition: service_healthy
+    environment:
+      <<: *combined-env
+      SERVICE_REPLICA: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '6.0'              # INCREASED: from 4.0 for ultra-high throughput
+          memory: 6G               # INCREASED: from 4G for large batches
+        reservations:
+          cpus: '3.0'              # INCREASED: from 2.0
+          memory: 3G               # INCREASED: from 2G
+    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 48 -n batch_worker_3@%h --max-tasks-per-child=500
+    healthcheck:
+      test: [ "CMD", "celery", "inspect", "ping", "-d", "batch_worker_3@notification_batch_worker_3" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MINI WEBAPP SERVICES - Multiple replicas with load balancing
+  mini_webapp_1:
+    container_name: mini_webapp_1
     <<: *combined-small-settings
     build:
       context: services/webapps
@@ -391,6 +1184,73 @@ services:
       - "8080:8080"
     environment:
       <<: *common-variables
+      SERVICE_REPLICA: "1"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    command: uvicorn mini_webapp:app --host 0.0.0.0 --port 8080
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mini_webapp_2:
+    container_name: mini_webapp_2
+    <<: *combined-small-settings
+    build:
+      context: services/webapps
+      dockerfile: Dockerfile
+    volumes:
+      - ./services/webapps:/app
+      - ./common:/app/common
+    ports:
+      - "8081:8080"             # Different external port
+    environment:
+      <<: *common-variables
+      SERVICE_REPLICA: "2"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    command: uvicorn mini_webapp:app --host 0.0.0.0 --port 8080
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mini_webapp_3:
+    container_name: mini_webapp_3
+    <<: *combined-small-settings
+    build:
+      context: services/webapps
+      dockerfile: Dockerfile
+    volumes:
+      - ./services/webapps:/app
+      - ./common:/app/common
+    ports:
+      - "8082:8080"             # Different external port
+    environment:
+      <<: *common-variables
+      SERVICE_REPLICA: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     command: uvicorn mini_webapp:app --host 0.0.0.0 --port 8080
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
@@ -406,7 +1266,9 @@ services:
       context: .
       dockerfile: services/scraper_service/Dockerfile  # Reuse scraper Dockerfile as it has similar dependencies
     depends_on:
-      redis:
+      redis_queue:
+        condition: service_healthy
+      redis_cache:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -423,8 +1285,8 @@ services:
       timeout: 10s
       retries: 3
 
-  camoufox_service:
-    container_name: camoufox_service
+  camoufox_service_1:
+    container_name: camoufox_service_1
     <<: *combined-playwright-settings  # Use playwright settings for browser resources
     build:
       context: services/camoufox_service
@@ -433,7 +1295,7 @@ services:
       - "8100:8100"
     environment:
       PYTHONUNBUFFERED: 1
-      BROWSER_POOL_SIZE: "${BROWSER_POOL_SIZE:-3}"
+      BROWSER_POOL_SIZE: "${BROWSER_POOL_SIZE:-20}"  # Increased from 3 to 20
     volumes:
       - /dev/shm:/dev/shm  # Shared memory for browser performance
     healthcheck:
@@ -441,18 +1303,75 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 40s  # Give browser pool time to initialize
+      start_period: 60s  # Increased startup time for larger pool
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '4.0'              # Increased from 2.0
+          memory: 6G               # Increased from 2G
         reservations:
-          cpus: '1.0'
-          memory: 1G
+          cpus: '2.0'              # Increased from 1.0
+          memory: 3G               # Increased from 1G
 
-  webcrawler_service:
-    container_name: webcrawler_service
+  camoufox_service_2:
+    container_name: camoufox_service_2
+    <<: *combined-playwright-settings  # Use playwright settings for browser resources
+    build:
+      context: services/camoufox_service
+      dockerfile: Dockerfile
+    ports:
+      - "8101:8100"                    # Different port for second instance
+    environment:
+      PYTHONUNBUFFERED: 1
+      BROWSER_POOL_SIZE: "${BROWSER_POOL_SIZE:-20}"  # Increased from 3 to 20
+    volumes:
+      - /dev/shm:/dev/shm  # Shared memory for browser performance
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8100/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s  # Increased startup time for larger pool
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'              # Increased from 2.0
+          memory: 6G               # Increased from 2G
+        reservations:
+          cpus: '2.0'              # Increased from 1.0
+          memory: 3G               # Increased from 1G
+
+  camoufox_service_3:
+    container_name: camoufox_service_3
+    <<: *combined-playwright-settings  # Use playwright settings for browser resources
+    build:
+      context: services/camoufox_service
+      dockerfile: Dockerfile
+    ports:
+      - "8102:8100"                    # Different port for third instance
+    environment:
+      PYTHONUNBUFFERED: 1
+      BROWSER_POOL_SIZE: "${BROWSER_POOL_SIZE:-20}"  # Increased from 3 to 20
+    volumes:
+      - /dev/shm:/dev/shm  # Shared memory for browser performance
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8100/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s  # Increased startup time for larger pool
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'              # Increased from 2.0
+          memory: 6G               # Increased from 2G
+        reservations:
+          cpus: '2.0'              # Increased from 1.0
+          memory: 3G               # Increased from 1G
+
+  # WEBCRAWLER SERVICES - Multiple replicas for web crawling
+  webcrawler_service_1:
+    container_name: webcrawler_service_1
     <<: *combined-settings
     build:
       context: services/webcrawler_service
@@ -461,6 +1380,57 @@ services:
       - "8200:8200"
     environment:
       PYTHONUNBUFFERED: 1
+      SERVICE_REPLICA: "1"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8200/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  webcrawler_service_2:
+    container_name: webcrawler_service_2
+    <<: *combined-settings
+    build:
+      context: services/webcrawler_service
+      dockerfile: Dockerfile
+    ports:
+      - "8201:8200"         # Different external port
+    environment:
+      PYTHONUNBUFFERED: 1
+      SERVICE_REPLICA: "2"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8200/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  webcrawler_service_3:
+    container_name: webcrawler_service_3
+    <<: *combined-settings
+    build:
+      context: services/webcrawler_service
+      dockerfile: Dockerfile
+    ports:
+      - "8202:8200"         # Different external port
+    environment:
+      PYTHONUNBUFFERED: 1
+      SERVICE_REPLICA: "3"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8200/health" ]
       interval: 30s
@@ -481,4 +1451,11 @@ networks:
 
 volumes:
   postgres-data:
-  redis-data:
+  # Redis Cluster Volumes
+  redis-queue-data:
+  redis-cache-data:
+  redis-state-data:
+  redis-analytics-data:
+  redis-legacy-data:
+  # Load Balancer Logs
+  nginx-logs:

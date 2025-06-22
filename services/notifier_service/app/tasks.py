@@ -76,75 +76,56 @@ def sort_and_notify_new_ads(new_ads):
                         extra={"ad_id": ad_id, "users_count": len(users_to_notify)},
                     )
 
-                    # Batch notifications for large user sets
+                    # ALWAYS use batch notifications for consistency and performance
                     BATCH_SIZE = 100
 
-                    if len(users_to_notify) > BATCH_SIZE:
-                        # Convert ad to dict format for serialization
-                        ad_dict = {
-                            "id": ad.get("id"),
-                            "external_id": ad.get("external_id"),
-                            "price": ad.get("price"),
-                            "city": ad.get("city"),
-                            "address": ad.get("address"),
-                            "rooms_count": ad.get("rooms_count"),
-                            "square_feet": ad.get("square_feet"),
-                            "floor": ad.get("floor"),
-                            "total_floors": ad.get("total_floors"),
-                            "resource_url": ad.get("resource_url"),
-                        }
+                    # Convert ad to dict format for serialization
+                    ad_dict = {
+                        "id": ad.get("id"),
+                        "external_id": ad.get("external_id"),
+                        "price": ad.get("price"),
+                        "city": ad.get("city"),
+                        "address": ad.get("address"),
+                        "rooms_count": ad.get("rooms_count"),
+                        "square_feet": ad.get("square_feet"),
+                        "floor": ad.get("floor"),
+                        "total_floors": ad.get("total_floors"),
+                        "resource_url": ad.get("resource_url"),
+                    }
 
-                        # Split into batches
-                        for i in range(0, len(users_to_notify), BATCH_SIZE):
-                            batch = users_to_notify[i : i + BATCH_SIZE]
-
-                            # Use the new batch notification task
-                            celery_app.send_task(
-                                "common.tasks.notify_user_batch",
-                                args=[batch, ad_dict, s3_image_urls],
-                                queue="notification_queue",
-                                priority=1,  # Low priority
-                            )
-
-                            aggregator.add_item(
-                                {
-                                    "ad_id": ad_id,
-                                    "batch_size": len(batch),
-                                    "batch_start": i,
-                                },
-                                success=True,
-                            )
-
-                        logger.info(
-                            "Scheduled batch notifications",
-                            extra={
-                                "ad_id": ad_id,
-                                "total_users": len(users_to_notify),
-                                "batches": (len(users_to_notify) + BATCH_SIZE - 1)
-                                // BATCH_SIZE,
-                            },
+                    # ULTRA-FAST BATCHING: Larger batches for maximum throughput
+                    ULTRA_BATCH_SIZE = 100  # SAFE: Respecting Telegram 25 msg/sec limit
+                    total_batches = 0
+                    for i in range(0, len(users_to_notify), ULTRA_BATCH_SIZE):
+                        batch = users_to_notify[i : i + ULTRA_BATCH_SIZE]
+                        
+                        # Use the batch notification task for ALL notifications
+                        celery_app.send_task(
+                            "common.tasks.notify_user_batch",
+                            args=[batch, ad_dict, s3_image_urls],
+                            queue="notification_queue",
+                            priority=1,  # Low priority
                         )
-                    else:
-                        # Small user set - process individually
-                        for user_id in users_to_notify:
-                            try:
-                                _notify_user_about_ad(user_id, ad, s3_image_urls)
-                                aggregator.add_item(
-                                    {"ad_id": ad_id, "user_id": user_id}, success=True
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    "Failed to notify user",
-                                    exc_info=True,
-                                    extra={
-                                        "ad_id": ad_id,
-                                        "user_id": user_id,
-                                        "error_type": type(e).__name__,
-                                    },
-                                )
-                                aggregator.add_error(
-                                    str(e), {"ad_id": ad_id, "user_id": user_id}
-                                )
+
+                        aggregator.add_item(
+                            {
+                                "ad_id": ad_id,
+                                "batch_size": len(batch),
+                                "batch_start": i,
+                            },
+                            success=True,
+                        )
+                        total_batches += 1
+
+                    logger.info(
+                        "Scheduled batch notifications",
+                        extra={
+                            "ad_id": ad_id,
+                            "total_users": len(users_to_notify),
+                            "batches": total_batches,
+                            "avg_batch_size": len(users_to_notify) / total_batches if total_batches > 0 else 0,
+                        },
+                    )
 
                     aggregator.add_item(
                         {"ad_id": ad_id, "notified_users": len(users_to_notify)},

@@ -4,13 +4,27 @@
 ARG PYTHON_VERSION=3.11-slim
 FROM python:${PYTHON_VERSION}
 
-# Install system dependencies required by Camoufox / headless Firefox
+# Install system dependencies required by Camoufox / headless Firefox and Chrome
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgbm1 libxkbcommon0 \
     libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgtk-3-0 libasound2 \
     libx11-6 libx11-xcb1 libxcb1 libxext6 libxrender1 libxtst6 libxi6 libxshmfence1 \
     libglib2.0-0 libpangocairo-1.0-0 libpango-1.0-0 libcairo2 libatspi2.0-0 \
-    wget ca-certificates postgresql-client && rm -rf /var/lib/apt/lists/*
+    wget ca-certificates postgresql-client curl unzip && rm -rf /var/lib/apt/lists/*
+
+# Install Chrome (specific version compatible with AdsPower)
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ChromeDriver version 134 (compatible with AdsPower Chrome 134)
+RUN mkdir -p /tmp/chromedriver-linux64 \
+    && wget -O /tmp/chromedriver-linux64.zip "https://storage.googleapis.com/chrome-for-testing-public/134.0.6998.36/linux64/chromedriver-linux64.zip" \
+    && unzip /tmp/chromedriver-linux64.zip -d /tmp/ \
+    && chmod +x /tmp/chromedriver-linux64/chromedriver \
+    && rm /tmp/chromedriver-linux64.zip
 
 WORKDIR /app
 
@@ -20,8 +34,8 @@ COPY services/scraper_service /app/scraper_service
 # Include maintenance tasks and other shared utilities
 COPY system /app/system
 
-# Python deps
-COPY requirements/scraper.txt /app/requirements.txt
+# Copy requirements first for better caching
+COPY services/scraper_service/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir camoufox[geoip]
 
