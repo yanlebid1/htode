@@ -7,6 +7,7 @@ import logging
 from typing import Optional, Any, List
 from contextlib import asynccontextmanager
 import urllib.parse
+import os
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
@@ -44,12 +45,16 @@ class BrowserResponse(BaseModel):
 
 # Browser pool management
 class BrowserPool:
-    def __init__(self, size: int = 3):
-        self.size = size
+    def __init__(self, size: int = None):
+        # Scale browser pool size significantly - use env var with high default
+        self.size = size or int(os.getenv('BROWSER_POOL_SIZE', '15'))  # Increased from 3 to 15
         self.browsers: List[AsyncCamoufox] = []
-        self.available = asyncio.Queue(maxsize=size)
+        self.available = asyncio.Queue(maxsize=self.size)
         self._lock = asyncio.Lock()
         self._initialized = False
+        self._active_sessions = 0
+        self._total_requests = 0
+        self._failed_requests = 0
 
     async def initialize(self):
         """Initialize the browser pool"""
@@ -58,38 +63,68 @@ class BrowserPool:
                 return
 
             logger.info(f"Initializing browser pool with {self.size} instances")
+            successful_browsers = 0
+            
             for i in range(self.size):
                 try:
                     browser = await self._create_browser()
                     self.browsers.append(browser)
                     await self.available.put(browser)
-                    logger.info(f"Browser {i+1}/{self.size} initialized")
+                    successful_browsers += 1
+                    logger.info(f"Browser {successful_browsers}/{self.size} initialized")
                 except Exception as e:
                     logger.error(f"Failed to create browser {i+1}: {e}")
 
             self._initialized = True
-            logger.info("Browser pool initialization complete")
+            logger.info(f"Browser pool initialization complete: {successful_browsers}/{self.size} browsers ready")
+            
+            if successful_browsers == 0:
+                raise RuntimeError("Failed to initialize any browsers in pool")
 
     async def _create_browser(self) -> AsyncCamoufox:
-        """Create a new browser instance"""
+        """Create a new browser instance with optimized settings"""
         return await AsyncCamoufox(
             headless=True,
             os="windows",
-            locale="uk-UA",
+            locale="uk-UA", 
             geoip=True,
             block_webrtc=True,
             humanize=True,
+            # Performance optimizations
+            disable_blink_features="AutomationControlled",
+            disable_web_security=True,
+            no_sandbox=True,
+            disable_dev_shm_usage=True,
         ).__aenter__()
 
     async def acquire(self) -> AsyncCamoufox:
         """Acquire a browser from the pool"""
         if not self._initialized:
             await self.initialize()
-        return await self.available.get()
+        
+        self._active_sessions += 1
+        self._total_requests += 1
+        logger.debug(f"Acquiring browser ({self._active_sessions} active sessions, {self.available.qsize()} available)")
+        
+        browser = await self.available.get()
+        return browser
 
     async def release(self, browser: AsyncCamoufox):
         """Release a browser back to the pool"""
+        self._active_sessions -= 1
         await self.available.put(browser)
+        logger.debug(f"Released browser ({self._active_sessions} active sessions, {self.available.qsize()} available)")
+
+    async def get_stats(self) -> dict:
+        """Get browser pool statistics"""
+        return {
+            'pool_size': self.size,
+            'available_browsers': self.available.qsize(),
+            'active_sessions': self._active_sessions,
+            'total_requests': self._total_requests,
+            'failed_requests': self._failed_requests,
+            'success_rate': ((self._total_requests - self._failed_requests) / self._total_requests * 100) if self._total_requests > 0 else 0
+        }
 
     async def shutdown(self):
         """Shutdown all browsers in the pool"""
@@ -103,8 +138,8 @@ class BrowserPool:
         self._initialized = False
 
 
-# Create global browser pool
-browser_pool = BrowserPool(size=3)
+# Create global browser pool with environment-based sizing
+browser_pool = BrowserPool()
 
 
 @asynccontextmanager
@@ -130,6 +165,18 @@ app = FastAPI(
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "camoufox"}
+
+
+@app.get("/stats")
+async def get_browser_stats():
+    """Get browser pool statistics for monitoring"""
+    stats = await browser_pool.get_stats()
+    return {
+        "status": "success",
+        "browser_pool": stats,
+        "service": "camoufox",
+        "timestamp": f"{asyncio.get_event_loop().time()}"
+    }
 
 
 @app.post("/browse", response_model=BrowserResponse)
@@ -203,6 +250,8 @@ async def browse_page(request: BrowserRequest):
 
     except Exception as e:
         logger.error(f"Browser automation failed for {request.url}: {e}")
+        # Track failed requests
+        browser_pool._failed_requests += 1
         return BrowserResponse(status="error", error=str(e))
 
     finally:

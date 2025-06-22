@@ -19,4 +19,4 @@ pillow
 camoufox>=0.4.10
 browserforge>=1.2.0
 geoip2
-maxminddb
+maxminddb 

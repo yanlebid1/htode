@@ -110,13 +110,37 @@ async def _extract_phone_numbers_async(
 
             # Special-case domains that require full browser simulation
             if "olx.ua" in resource_url:
-                logger.info("OLX domain detected – using Camoufox direct extraction")
-                result = await olx_parser.parse_olx_camoufox(resource_url, proxy=proxy)
-                # Log method usage for Camoufox direct strategy
-                if result.phone_numbers:
-                    aggregator.add_item({"method": "camoufox_direct"}, success=True)
+                logger.info("OLX domain detected – using smart extraction method selection")
+                
+                # First check if login is required for this ad
+                login_required = await olx_parser.check_olx_login_required(resource_url, proxy=proxy)
+                
+                if login_required:
+                    logger.info("Login required detected – using AdsPower profiles directly")
+                    result = await olx_parser.parse_olx_adspower(resource_url)
+                    
+                    if result.phone_numbers:
+                        aggregator.add_item({"method": "adspower_direct"}, success=True)
+                    else:
+                        aggregator.add_item({"method": "adspower_direct"}, success=False)
                 else:
-                    aggregator.add_item({"method": "camoufox_direct"}, success=False)
+                    logger.info("No login required – trying Camoufox first")
+                    # Try Camoufox first since no login is needed
+                    result = await olx_parser.parse_olx_camoufox(resource_url, proxy=proxy)
+                    
+                    if result.phone_numbers:
+                        aggregator.add_item({"method": "camoufox_direct"}, success=True)
+                    else:
+                        # Camoufox failed, try AdsPower as final fallback
+                        logger.info("Camoufox failed despite no login requirement – trying AdsPower as fallback")
+                        result = await olx_parser.parse_olx_adspower(resource_url)
+                        
+                        if result.phone_numbers:
+                            aggregator.add_item({"method": "adspower_fallback"}, success=True)
+                        else:
+                            aggregator.add_item({"method": "adspower_fallback"}, success=False)
+                            aggregator.add_item({"method": "camoufox_direct"}, success=False)
+                
                 return result
             if "dom.ria" in resource_url or "dom.ria.com" in resource_url:
                 logger.info("DOM.RIA domain detected – using specialized parser")

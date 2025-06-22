@@ -21,3 +21,4 @@ httpx[http2]
 pillow
 geoip2
 maxminddb
+selenium==4.25.0 

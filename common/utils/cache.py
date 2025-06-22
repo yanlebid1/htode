@@ -11,8 +11,15 @@ from common.utils.logging_config import log_operation, log_context, LogAggregato
 # Import the common utils logger
 from . import logger
 
-# Create a Redis client instance
-redis_client = redis.from_url(REDIS_URL)
+# Use Redis cluster for caching - import cluster manager
+try:
+    from common.utils.redis_cluster_manager import get_cache_redis, RedisRole
+    redis_client = get_cache_redis()
+    logger.info("Using Redis cluster for caching")
+except ImportError:
+    # Fallback to legacy Redis connection
+    redis_client = redis.from_url(REDIS_URL)
+    logger.warning("Redis cluster manager not available, using legacy connection")
 
 
 # Standardized TTL values based on data access patterns

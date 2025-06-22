@@ -127,8 +127,8 @@ def _convert_api_proxies_to_urls(api_proxies: List[Dict[str, Any]]) -> List[str]
     proxy_urls = []
 
     for proxy in api_proxies:
-        # Only use active proxies
-        if proxy.get("status") != "ACTIVE":
+        # Only use active proxies - check status_type field which contains "ACTIVE"
+        if proxy.get("status_type") != "ACTIVE":
             continue
 
         ip = proxy.get("ip")

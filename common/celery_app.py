@@ -5,8 +5,12 @@ from kombu import Exchange, Queue
 from common.config import REDIS_URL
 import importlib
 import logging
+import os
 
-celery_app = Celery("shared_app", broker=REDIS_URL, backend=REDIS_URL)
+# Use Redis cluster for Celery - queue Redis for high throughput
+REDIS_QUEUE_URL = os.getenv("REDIS_QUEUE_URL", REDIS_URL)
+
+celery_app = Celery("shared_app", broker=REDIS_QUEUE_URL, backend=REDIS_QUEUE_URL)
 
 # Common configuration
 celery_app.conf.update(
@@ -33,18 +37,32 @@ celery_app.conf.update(
     broker_transport_options={
         "visibility_timeout": 43200,  # 12 hours (in seconds)
     },
-    # Rate limiting - tasks per worker per time unit
+    # Rate limiting - optimized for batch processing and high throughput
     task_annotations={
         "scraper_service.app.tasks.fetch_new_ads": {
             "rate_limit": "1/m"
-        },  # 1 per minute
+        },  # 1 per minute - scraping rate limit
+        # BATCH NOTIFICATION SYSTEM - Safe rates respecting Telegram limits
+        "common.tasks.notify_user_batch": {
+            "rate_limit": "15/m"
+        },  # SAFE: 15 batches/min = 1,500 users/min (100 users per batch, 25 msg/sec limit)
         "notifier_service.app.tasks.notify_user_with_ads": {
-            "rate_limit": "10/m"
-        },  # 10 per minute
-        # Add rate limits for resource-intensive maintenance tasks
+            "rate_limit": "30/m"
+        },  # Increased from 10/m to 30/m for individual notifications
+        "notifier_service.app.tasks.sort_and_notify_new_ads": {
+            "rate_limit": "20/m"
+        },  # 20 ad processing per minute
+        # TELEGRAM API LIMITS - Safe optimized limits (respecting Telegram's 30/s official limit)
+        "common.messaging.tasks.send_ad_with_extra_buttons": {
+            "rate_limit": "25/s"
+        },  # SAFE: 25 messages/sec = 1500 users/min (below Telegram's 30/s limit)
+        "telegram_service.app.tasks.*": {
+            "rate_limit": "20/s"
+        },  # SAFE: General Telegram tasks under official limit
+        # MAINTENANCE TASKS - Conservative limits
         "system.maintenance.optimize_database": {
             "rate_limit": "1/h"
-        },  # Max once per hour - beat schedule still weekly
+        },  # Max once per hour
         "system.maintenance.cleanup_redis_cache": {
             "rate_limit": "1/h"
         },  # Once per hour

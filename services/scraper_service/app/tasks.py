@@ -5,6 +5,7 @@ import boto3
 import uuid
 from redis import Redis
 from contextlib import contextmanager
+import os
 
 from common.db.session import db_session
 from common.utils.unified_request_utils import fetch_ads_flatfy
@@ -20,6 +21,9 @@ from sqlalchemy import func
 # Import logging utilities from common modules
 from common.utils.logging_config import log_context, log_operation, LogAggregator
 
+# Import phone extraction utilities
+from common.utils.phone_utils.adspower_manager import adspower_manager
+
 # Import the service logger
 from . import logger
 
@@ -27,7 +31,15 @@ from . import logger
 # Configuration & Initialization
 # ---------------------------
 
-redis_client = Redis.from_url(REDIS_URL)
+# Use Redis cluster for scraper operations (caching and temporary data)
+try:
+    from common.utils.redis_cluster_manager import get_cache_redis
+    redis_client = get_cache_redis()
+    logger.info("Scraper service using Redis cluster for caching")
+except ImportError:
+    # Fallback to legacy Redis connection
+    redis_client = Redis.from_url(REDIS_URL)
+    logger.warning("Redis cluster manager not available, using legacy connection")
 
 
 @log_operation("acquire_lock")
@@ -696,3 +708,64 @@ def insert_ad(ad_data: dict, property_type: str, geo_id: int) -> int:
                 extra={"ad_id": ad_unique_id, "error_type": type(e).__name__},
             )
             return None
+
+
+@celery_app.task(name="scraper_service.app.tasks.extract_phone_adspower")
+@log_operation("extract_phone_adspower")
+def extract_phone_adspower(ad_url: str) -> dict:
+    """
+    Extract phone number from OLX ad using AdsPower profile rotation.
+    This task can be called by the phone extraction worker.
+    """
+    with log_context(logger, ad_url=ad_url):
+        logger.info("Starting AdsPower phone extraction task")
+        
+        try:
+            phone = adspower_manager.extract_phone_with_rotation(ad_url)
+            
+            result = {
+                "success": bool(phone),
+                "phone": phone,
+                "method": "adspower",
+                "stats": adspower_manager.get_stats(),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            if phone:
+                logger.info(f"Successfully extracted phone: {phone}")
+            else:
+                logger.warning("Failed to extract phone using AdsPower")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(
+                "AdsPower phone extraction failed",
+                exc_info=True,
+                extra={"error_type": type(e).__name__}
+            )
+            return {
+                "success": False,
+                "error": str(e),
+                "method": "adspower", 
+                "timestamp": datetime.now().isoformat()
+            }
+
+
+@celery_app.task(name="scraper_service.app.tasks.get_adspower_stats")
+@log_operation("get_adspower_stats")
+def get_adspower_stats() -> dict:
+    """
+    Get current AdsPower extraction statistics.
+    """
+    try:
+        stats = adspower_manager.get_stats()
+        logger.info("Retrieved AdsPower stats", extra=stats)
+        return stats
+    except Exception as e:
+        logger.error(
+            "Failed to get AdsPower stats",
+            exc_info=True,
+            extra={"error_type": type(e).__name__}
+        )
+        return {"error": str(e)}
