@@ -1,0 +1,141 @@
+# Multi-Bot Architecture Configuration - FLOWER BOTS 🌸
+# Your actual bot tokens for the flower-themed multi-bot system
+
+# ===== DISPATCHER BOT =====
+# Create this as your main entry point bot
+TELEGRAM_DISPATCHER_TOKEN=YOUR_DISPATCHER_BOT_TOKEN_HERE
+TELEGRAM_DISPATCHER_USERNAME=@YourDispatcherBot
+
+# ===== FLOWER BOT POOL CONFIGURATION =====
+# Each bot can handle 5,000 users (configurable)
+# Total capacity with 20 bots = 100,000 users
+
+# Bot 1 - Orchid 🌺
+BOT_POOL_1_TOKEN=8057680649:AAEpKxz5xuJ0U_AICFnrtR_aM10bTc0k1EQ
+BOT_POOL_1_USERNAME=@hto_de_orchid_bot
+BOT_POOL_1_MAX_USERS=5000
+BOT_POOL_1_ACTIVE=true
+
+# Bot 2 - Tulip 🌷
+BOT_POOL_2_TOKEN=7956875220:AAGAH-fqABAKsm8GcYGzvXpxGySaqFebzV4
+BOT_POOL_2_USERNAME=@hto_de_tulip_bot
+BOT_POOL_2_MAX_USERS=5000
+BOT_POOL_2_ACTIVE=true
+
+# Bot 3 - Daisy 🌼
+BOT_POOL_3_TOKEN=7799139858:AAFwhAWHousNZtp6XzepiVSeFxMc4tGoYMw
+BOT_POOL_3_USERNAME=@hto_de_daisy_bot
+BOT_POOL_3_MAX_USERS=5000
+BOT_POOL_3_ACTIVE=true
+
+# Bot 4 - Lavender 💜
+BOT_POOL_4_TOKEN=7830026949:AAExHPlXq70F1_RK9LF8kb3UGsgFfpVCECY
+BOT_POOL_4_USERNAME=@hto_de_lavender_bot
+BOT_POOL_4_MAX_USERS=5000
+BOT_POOL_4_ACTIVE=true
+
+# Bot 5 - Jasmine 🤍
+BOT_POOL_5_TOKEN=7663800276:AAHSMjq8nV9ykbLbWFZLQlCOVCwjsyyLbyg
+BOT_POOL_5_USERNAME=@hto_de_jasmine_bot
+BOT_POOL_5_MAX_USERS=5000
+BOT_POOL_5_ACTIVE=true
+
+# Bot 6 - Sunflower 🌻
+BOT_POOL_6_TOKEN=7909089835:AAG6q21szQPLWozsvIJSiUNVNWd47zTUZrU
+BOT_POOL_6_USERNAME=@hto_de_sunflower_bot
+BOT_POOL_6_MAX_USERS=5000
+BOT_POOL_6_ACTIVE=true
+
+# Bot 7 - Lotus 🪷
+BOT_POOL_7_TOKEN=7829913893:AAHloGMszkZkq6HL-am3CfgubQsHVeTVVhA
+BOT_POOL_7_USERNAME=@hto_de_lotus_bot
+BOT_POOL_7_MAX_USERS=5000
+BOT_POOL_7_ACTIVE=true
+
+# Bot 8 - Peony 🌸
+BOT_POOL_8_TOKEN=8125874211:AAHATqzAmFp51E0t3V3FeD87mxDRTEQ8VOY
+BOT_POOL_8_USERNAME=@hto_de_peony_bot
+BOT_POOL_8_MAX_USERS=5000
+BOT_POOL_8_ACTIVE=true
+
+# Bot 9 - Violet 💙
+BOT_POOL_9_TOKEN=8051579615:AAGmHwwI23-p0r2pNz4rS1BnuAglnr5Jrlc
+BOT_POOL_9_USERNAME=@hto_de_violet_bot
+BOT_POOL_9_MAX_USERS=5000
+BOT_POOL_9_ACTIVE=true
+
+# Bot 10 - Azalea 🌺
+BOT_POOL_10_TOKEN=7542850791:AAG66w_9PoYWD_Gmq-4EN5pfZ_nG1AwbuQg
+BOT_POOL_10_USERNAME=@hto_de_azalea_bot
+BOT_POOL_10_MAX_USERS=5000
+BOT_POOL_10_ACTIVE=true
+
+# Bot 11 - Clover 🍀
+BOT_POOL_11_TOKEN=8196290513:AAEg9InbL2HgORcSLQwvju3P82S-s9MuuaI
+BOT_POOL_11_USERNAME=@hto_de_clover_bot
+BOT_POOL_11_MAX_USERS=5000
+BOT_POOL_11_ACTIVE=true
+
+# Bot 12 - Marigold 🧡
+BOT_POOL_12_TOKEN=7798138916:AAHSd6mr18KR4Vnq1OWo7FtdbfOii9Jsitc
+BOT_POOL_12_USERNAME=@hto_de_marigold_bot
+BOT_POOL_12_MAX_USERS=5000
+BOT_POOL_12_ACTIVE=true
+
+# Bot 13 - Bluebell 💙
+BOT_POOL_13_TOKEN=8101939667:AAHezIoNR-kpdlguMolvXznBatA-uCNdytk
+BOT_POOL_13_USERNAME=@hto_de_bluebell_bot
+BOT_POOL_13_MAX_USERS=5000
+BOT_POOL_13_ACTIVE=true
+
+# Bot 14 - Gardenia 🤍
+BOT_POOL_14_TOKEN=8189707090:AAG0VbPUJp1ND0_Z8O6OFT6x3wOLOa4-LyI
+BOT_POOL_14_USERNAME=@hto_de_gardenia_bot
+BOT_POOL_14_MAX_USERS=5000
+BOT_POOL_14_ACTIVE=true
+
+# Bot 15 - Aster 💜
+BOT_POOL_15_TOKEN=7588149681:AAG3s8J0b5xBF9aS85a0G2DWd3LtIB5_Udk
+BOT_POOL_15_USERNAME=@hto_de_aster_bot
+BOT_POOL_15_MAX_USERS=5000
+BOT_POOL_15_ACTIVE=true
+
+# Bot 16 - Hibiscus 🌺
+BOT_POOL_16_TOKEN=7061330040:AAFS2vbgGXrhQerEufLq3sCPXViKKQFQlYk
+BOT_POOL_16_USERNAME=@hto_de_hibiscus_bot
+BOT_POOL_16_MAX_USERS=5000
+BOT_POOL_16_ACTIVE=true
+
+# Bot 17 - Freesia 💛
+BOT_POOL_17_TOKEN=7412025041:AAHR9_OaBgLDs4MIcVHE064SwkcJszjRfjE
+BOT_POOL_17_USERNAME=@hto_de_freesia_bot
+BOT_POOL_17_MAX_USERS=5000
+BOT_POOL_17_ACTIVE=true
+
+# Bot 18 - Verbena 💜
+BOT_POOL_18_TOKEN=7876407052:AAHVOe1Z7_Nk0H0gtkYj2ru087kS7x7KGRg
+BOT_POOL_18_USERNAME=@hto_de_verbena_bot
+BOT_POOL_18_MAX_USERS=5000
+BOT_POOL_18_ACTIVE=true
+
+# Bot 19 - Hyacinth 💙
+BOT_POOL_19_TOKEN=8147045443:AAEhyChXln7GKXhN_zN9egUTeVEfgO9MRmU
+BOT_POOL_19_USERNAME=@hto_de_hyacinth_bot
+BOT_POOL_19_MAX_USERS=5000
+BOT_POOL_19_ACTIVE=true
+
+# Bot 20 - Fuchsia 💖
+BOT_POOL_20_TOKEN=7640402887:AAEkqi-jZdxQsa2VH14lOWadwnw_TmT729Q
+BOT_POOL_20_USERNAME=@hto_de_fuchsia_bot
+BOT_POOL_20_MAX_USERS=5000
+BOT_POOL_20_ACTIVE=true
+
+# ===== SCALING NOTES =====
+# - Each bot handles 5,000 users by default
+# - With 20 bots = 100,000 total capacity
+# - Notification throughput: 30,000 users/minute (20x improvement)
+# - Set BOT_POOL_X_ACTIVE=false to temporarily disable a bot
+# - Current setup: Daisy, Tulip, Lavender bots already verified at:
+#   https://t.me/hto_de_daisy_bot
+#   https://t.me/hto_de_tulip_bot  
+#   https://t.me/hto_de_lavender_bot 
