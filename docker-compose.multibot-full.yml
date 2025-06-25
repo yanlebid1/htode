@@ -1,0 +1,1273 @@
+version: '3.8'
+
+# Complete Multi-Bot Architecture - All 20 Flower Bots 🌸
+# This file includes the dispatcher bot and all 20 pool bots
+
+services:
+  # ===== DISPATCHER BOT =====
+  dispatcher_bot:
+    build:
+      context: .
+      dockerfile: services/dispatcher_service/Dockerfile
+    container_name: dispatcher_bot
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - TELEGRAM_DISPATCHER_TOKEN=${TELEGRAM_DISPATCHER_TOKEN}
+      - TELEGRAM_DISPATCHER_USERNAME=${TELEGRAM_DISPATCHER_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ===== FLOWER BOT POOL =====
+  # Each flower bot runs independently with its own token
+
+  pool_bot_orchid:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_orchid
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=orchid
+      - BOT_TOKEN=${BOT_POOL_1_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_1_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_tulip:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_tulip
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=tulip
+      - BOT_TOKEN=${BOT_POOL_2_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_2_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_daisy:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_daisy
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=daisy
+      - BOT_TOKEN=${BOT_POOL_3_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_3_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_lavender:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_lavender
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=lavender
+      - BOT_TOKEN=${BOT_POOL_4_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_4_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_jasmine:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_jasmine
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=jasmine
+      - BOT_TOKEN=${BOT_POOL_5_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_5_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_sunflower:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_sunflower
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=sunflower
+      - BOT_TOKEN=${BOT_POOL_6_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_6_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_lotus:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_lotus
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=lotus
+      - BOT_TOKEN=${BOT_POOL_7_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_7_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_peony:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_peony
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=peony
+      - BOT_TOKEN=${BOT_POOL_8_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_8_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_violet:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_violet
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=violet
+      - BOT_TOKEN=${BOT_POOL_9_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_9_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_azalea:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_azalea
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=azalea
+      - BOT_TOKEN=${BOT_POOL_10_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_10_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_clover:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_clover
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=clover
+      - BOT_TOKEN=${BOT_POOL_11_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_11_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_marigold:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_marigold
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=marigold
+      - BOT_TOKEN=${BOT_POOL_12_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_12_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_bluebell:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_bluebell
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=bluebell
+      - BOT_TOKEN=${BOT_POOL_13_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_13_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_gardenia:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_gardenia
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=gardenia
+      - BOT_TOKEN=${BOT_POOL_14_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_14_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_aster:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_aster
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=aster
+      - BOT_TOKEN=${BOT_POOL_15_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_15_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_hibiscus:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_hibiscus
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=hibiscus
+      - BOT_TOKEN=${BOT_POOL_16_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_16_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_freesia:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_freesia
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=freesia
+      - BOT_TOKEN=${BOT_POOL_17_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_17_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_verbena:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_verbena
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=verbena
+      - BOT_TOKEN=${BOT_POOL_18_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_18_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_hyacinth:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_hyacinth
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=hyacinth
+      - BOT_TOKEN=${BOT_POOL_19_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_19_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_fuchsia:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_fuchsia
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=fuchsia
+      - BOT_TOKEN=${BOT_POOL_20_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_20_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+
+  # ===== FLOWER BOT WORKERS =====
+  # Workers process notifications for each flower bot
+
+  pool_bot_worker_orchid:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_orchid
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=orchid
+      - BOT_TOKEN=${BOT_POOL_1_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_orchid_queue --loglevel=info --concurrency=16 -n pool_bot_worker_orchid@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_tulip:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_tulip
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=tulip
+      - BOT_TOKEN=${BOT_POOL_2_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_tulip_queue --loglevel=info --concurrency=16 -n pool_bot_worker_tulip@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_daisy:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_daisy
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=daisy
+      - BOT_TOKEN=${BOT_POOL_3_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_daisy_queue --loglevel=info --concurrency=16 -n pool_bot_worker_daisy@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_lavender:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_lavender
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=lavender
+      - BOT_TOKEN=${BOT_POOL_4_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_lavender_queue --loglevel=info --concurrency=16 -n pool_bot_worker_lavender@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_jasmine:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_jasmine
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=jasmine
+      - BOT_TOKEN=${BOT_POOL_5_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_jasmine_queue --loglevel=info --concurrency=16 -n pool_bot_worker_jasmine@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_sunflower:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_sunflower
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=sunflower
+      - BOT_TOKEN=${BOT_POOL_6_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_sunflower_queue --loglevel=info --concurrency=16 -n pool_bot_worker_sunflower@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_lotus:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_lotus
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=lotus
+      - BOT_TOKEN=${BOT_POOL_7_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_lotus_queue --loglevel=info --concurrency=16 -n pool_bot_worker_lotus@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_peony:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_peony
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=peony
+      - BOT_TOKEN=${BOT_POOL_8_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_peony_queue --loglevel=info --concurrency=16 -n pool_bot_worker_peony@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_violet:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_violet
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=violet
+      - BOT_TOKEN=${BOT_POOL_9_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_violet_queue --loglevel=info --concurrency=16 -n pool_bot_worker_violet@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_azalea:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_azalea
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=azalea
+      - BOT_TOKEN=${BOT_POOL_10_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_azalea_queue --loglevel=info --concurrency=16 -n pool_bot_worker_azalea@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_clover:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_clover
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=clover
+      - BOT_TOKEN=${BOT_POOL_11_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_clover_queue --loglevel=info --concurrency=16 -n pool_bot_worker_clover@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_marigold:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_marigold
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=marigold
+      - BOT_TOKEN=${BOT_POOL_12_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_marigold_queue --loglevel=info --concurrency=16 -n pool_bot_worker_marigold@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_bluebell:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_bluebell
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=bluebell
+      - BOT_TOKEN=${BOT_POOL_13_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_bluebell_queue --loglevel=info --concurrency=16 -n pool_bot_worker_bluebell@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_gardenia:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_gardenia
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=gardenia
+      - BOT_TOKEN=${BOT_POOL_14_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_gardenia_queue --loglevel=info --concurrency=16 -n pool_bot_worker_gardenia@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_aster:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_aster
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=aster
+      - BOT_TOKEN=${BOT_POOL_15_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_aster_queue --loglevel=info --concurrency=16 -n pool_bot_worker_aster@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_hibiscus:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_hibiscus
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=hibiscus
+      - BOT_TOKEN=${BOT_POOL_16_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_hibiscus_queue --loglevel=info --concurrency=16 -n pool_bot_worker_hibiscus@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_freesia:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_freesia
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=freesia
+      - BOT_TOKEN=${BOT_POOL_17_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_freesia_queue --loglevel=info --concurrency=16 -n pool_bot_worker_freesia@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_verbena:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_verbena
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=verbena
+      - BOT_TOKEN=${BOT_POOL_18_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_verbena_queue --loglevel=info --concurrency=16 -n pool_bot_worker_verbena@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_hyacinth:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_hyacinth
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=hyacinth
+      - BOT_TOKEN=${BOT_POOL_19_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_hyacinth_queue --loglevel=info --concurrency=16 -n pool_bot_worker_hyacinth@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_fuchsia:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_fuchsia
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=fuchsia
+      - BOT_TOKEN=${BOT_POOL_20_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_fuchsia_queue --loglevel=info --concurrency=16 -n pool_bot_worker_fuchsia@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+
+  # ===== SHARED SERVICES =====
+  # These should already be running from main docker-compose.yml
+  
+  postgres:
+    external: true
+    
+  redis_queue:
+    external: true
+    
+  redis_state:
+    external: true
+
+networks:
+  app_net:
+    external: true
+
+# ===== DEPLOYMENT NOTES =====
+# To start all flower bots:
+# docker-compose -f docker-compose.multibot-full.yml up -d
+#
+# To start specific flowers:
+# docker-compose -f docker-compose.multibot-full.yml up -d \
+#   dispatcher_bot \
+#   pool_bot_orchid pool_bot_tulip pool_bot_daisy \
+#   pool_bot_worker_orchid pool_bot_worker_tulip pool_bot_worker_daisy
+#
+# To scale gradually:
+# docker-compose -f docker-compose.multibot-full.yml up -d --scale pool_bot_orchid=2
