@@ -1,7 +1,7 @@
 # common/db/models/user.py
 from datetime import datetime, timedelta
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -21,6 +21,12 @@ class User(Base):
     subscription_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    # Multi-bot architecture fields
+    assigned_bot_name = Column(String, nullable=True, index=True)  # e.g., "bot_1", "bot_2", etc.
+    assigned_bot_username = Column(String, nullable=True)  # e.g., "@YourBot_1"
+    assignment_date = Column(DateTime, nullable=True)
+    dispatcher_chat_id = Column(String, nullable=True)  # Original chat ID with dispatcher
 
     # Relationships (updated to use new model names)
     filters = relationship(

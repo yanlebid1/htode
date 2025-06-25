@@ -112,13 +112,9 @@ def notify_user_batch_v2(
     ULTRA-FAST batch notification system v2.
     Optimized for 10x higher throughput with advanced parallelization.
     """
-    """
-    Send notifications to a batch of users.
-
-    This reduces the number of tasks in the queue from thousands to dozens.
-    """
     from common.db.session import db_session
     from common.db.models import User
+    import time
 
     with log_context(logger, user_count=len(user_ids), ad_id=ad_data.get("id")):
         success_count = 0
@@ -140,7 +136,6 @@ def notify_user_batch_v2(
             user_telegram_map = {user.id: user.telegram_id for user in users}
 
         # OPTIMIZED: Direct Celery task dispatch (no async overhead for maximum speed)
-        import time
         start_time = time.time()
         
         for user_id in user_ids:
@@ -192,6 +187,134 @@ def notify_user_batch_v2(
             "total": len(user_ids),
             "processing_time": processing_time,
             "users_per_second": users_per_second,
+        }
+
+
+@versioned_task("notify_user_batch", version="v3")
+@log_operation("notify_user_batch_v3_multibot")
+def notify_user_batch_v3(
+    user_ids: List[int], ad_data: dict, s3_image_url: Optional[str] = None
+):
+    """
+    MULTI-BOT batch notification system v3.
+    Routes notifications through assigned pool bots for 20x throughput.
+    """
+    from common.db.session import db_session
+    from common.db.models import User
+    from collections import defaultdict
+    import time
+
+    with log_context(logger, user_count=len(user_ids), ad_id=ad_data.get("id")):
+        start_time = time.time()
+        success_count = 0
+        failed_count = 0
+        no_bot_count = 0
+
+        # Format the ad text once
+        text = (
+            f"💰 Ціна: {int(ad_data.get('price', 0))} грн.\n"
+            f"🏙️ Місто: {ad_data.get('city', 'Невідомо')}\n"
+            f"📍 Адреса: {ad_data.get('address', 'Не вказано')}\n"
+            f"🛏️ Кіл-сть кімнат: {ad_data.get('rooms_count', '?')}\n"
+            f"📐 Площа: {ad_data.get('square_feet', '?')} кв.м.\n"
+            f"🏢 Поверх: {ad_data.get('floor', '?')} из {ad_data.get('total_floors', '?')}\n"
+        )
+
+        # Get users and group by assigned bot
+        users_by_bot = defaultdict(list)
+        
+        with db_session() as db:
+            users = db.query(User).filter(User.id.in_(user_ids)).all()
+            
+            for user in users:
+                if user.assigned_bot_name:
+                    users_by_bot[user.assigned_bot_name].append({
+                        'user_id': user.id,
+                        'telegram_id': user.telegram_id
+                    })
+                else:
+                    no_bot_count += 1
+                    logger.warning(
+                        "User has no assigned bot",
+                        extra={"user_id": user.id}
+                    )
+
+        # Dispatch notifications to appropriate bot queues
+        bot_stats = {}
+        
+        for bot_name, bot_users in users_by_bot.items():
+            bot_success = 0
+            bot_failed = 0
+            
+            # Create a dedicated queue for each bot
+            queue_name = f"telegram_bot_{bot_name}_queue"
+            
+            for user in bot_users:
+                try:
+                    # Send to bot-specific queue with bot context
+                    celery_app.send_task(
+                        "common.messaging.tasks.send_ad_multibot",
+                        args=[
+                            user['telegram_id'],
+                            text,
+                            s3_image_url,
+                            ad_data.get("resource_url"),
+                            ad_data.get("id"),
+                            ad_data.get("external_id"),
+                            bot_name  # Pass bot name for routing
+                        ],
+                        queue=queue_name,
+                        priority=8,
+                    )
+                    bot_success += 1
+                    success_count += 1
+                except Exception as e:
+                    bot_failed += 1
+                    failed_count += 1
+                    logger.error(
+                        f"Failed to dispatch notification",
+                        extra={
+                            "telegram_id": user['telegram_id'],
+                            "bot_name": bot_name,
+                            "error": str(e)
+                        }
+                    )
+            
+            bot_stats[bot_name] = {
+                'success': bot_success,
+                'failed': bot_failed,
+                'total': len(bot_users)
+            }
+
+        # Performance metrics
+        processing_time = time.time() - start_time
+        users_per_second = len(user_ids) / processing_time if processing_time > 0 else 0
+
+        logger.info(
+            "MULTI-BOT batch notification completed",
+            extra={
+                "total_users": len(user_ids),
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "no_bot_assigned": no_bot_count,
+                "ad_id": ad_data.get("id"),
+                "processing_time_ms": processing_time * 1000,
+                "users_per_second": users_per_second,
+                "bots_used": len(users_by_bot),
+                "bot_stats": bot_stats,
+                "version": "v3_multibot",
+            },
+        )
+
+        return {
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "no_bot_assigned": no_bot_count,
+            "total": len(user_ids),
+            "processing_time": processing_time,
+            "users_per_second": users_per_second,
+            "bots_used": len(users_by_bot),
+            "bot_stats": bot_stats
         }
 
 
@@ -271,4 +394,4 @@ def cleanup_stale_extractions():
 from common.utils.task_versioning import DeploymentConfig
 
 DeploymentConfig.promote_version("extract_phones_for_ad", "v1")
-DeploymentConfig.promote_version("notify_user_batch", "v2")
+DeploymentConfig.promote_version("notify_user_batch", "v3")

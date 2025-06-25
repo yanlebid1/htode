@@ -1,0 +1,192 @@
+version: '3.8'
+
+# This is the multi-bot architecture configuration
+# It includes the dispatcher bot and multiple pool bot instances
+
+services:
+  # ===== DISPATCHER BOT =====
+  dispatcher_bot:
+    build:
+      context: .
+      dockerfile: services/dispatcher_service/Dockerfile
+    container_name: dispatcher_bot
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - TELEGRAM_DISPATCHER_TOKEN=${TELEGRAM_DISPATCHER_TOKEN}
+      - TELEGRAM_DISPATCHER_USERNAME=${TELEGRAM_DISPATCHER_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ===== POOL BOTS =====
+  # Each pool bot runs the same code but with different tokens
+  
+  pool_bot_orchid:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_orchid
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=orchid
+      - BOT_TOKEN=${BOT_POOL_1_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_1_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  pool_bot_tulip:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_tulip
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=tulip
+      - BOT_TOKEN=${BOT_POOL_2_TOKEN}
+      - BOT_USERNAME=${BOT_POOL_2_USERNAME}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+      - REDIS_STATE_URL=redis://redis_state:6379/0
+      - WEBAPP_URL=${WEBAPP_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+      redis_state:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # Add more pool bots as needed (3-20)
+  # Copy the pattern above and increment the numbers
+
+  # ===== POOL BOT WORKERS =====
+  # Workers process notifications for each bot
+  
+  pool_bot_worker_orchid:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_orchid
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=orchid
+      - BOT_TOKEN=${BOT_POOL_1_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_orchid_queue --loglevel=info --concurrency=16 -n pool_bot_worker_orchid@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  pool_bot_worker_tulip:
+    build:
+      context: .
+      dockerfile: services/pool_bot_service/Dockerfile
+    container_name: pool_bot_worker_tulip
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - BOT_NAME=tulip
+      - BOT_TOKEN=${BOT_POOL_2_TOKEN}
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis_queue:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    command: celery -A common.celery_app worker -Q telegram_bot_tulip_queue --loglevel=info --concurrency=16 -n pool_bot_worker_tulip@%h
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  # ===== SHARED SERVICES =====
+  # These are referenced from the main docker-compose.yml
+  
+  postgres:
+    external: true
+    
+  redis_queue:
+    external: true
+    
+  redis_state:
+    external: true
+
+networks:
+  app_net:
+    external: true
+
+# ===== SCALING NOTES =====
+# To add more pool bots:
+# 1. Copy a pool_bot_N service block
+# 2. Update the container name, BOT_NAME, and token variables
+# 3. Copy a pool_bot_worker_N service block
+# 4. Update the queue name to match: telegram_bot_bot_N_queue
+# 
+# Each bot can handle ~5,000 users
+# Each bot processes ~1,500 notifications/minute
+# 20 bots = 100,000 users, 30,000 notifications/minute 

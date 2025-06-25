@@ -85,6 +85,15 @@ celery_app.conf.task_queues = (
     Queue("notification_queue", task_exchange, routing_key="notify.#", priority=1),
     # Maintenance tasks
     Queue("maintenance_queue", task_exchange, routing_key="maintenance.#", priority=2),
+    
+    # Multi-bot queues - flower-themed bot pool 🌸
+    # Each flower bot gets its own queue for parallel processing
+    *[Queue(f"telegram_bot_{bot_name}_queue", task_exchange, 
+            routing_key=f"telegram.bot.{bot_name}", priority=3)
+      for bot_name in ["orchid", "tulip", "daisy", "lavender", "jasmine",
+                       "sunflower", "lotus", "peony", "violet", "azalea",
+                       "clover", "marigold", "bluebell", "gardenia", "aster",
+                       "hibiscus", "freesia", "verbena", "hyacinth", "fuchsia"]],
 )
 
 # Enable priority support
@@ -130,6 +139,12 @@ celery_app.conf.task_routes = {
     "common.messaging.tasks.send_ad_with_extra_buttons": {
         "queue": "telegram_queue",
         "routing_key": "telegram.send",
+        "priority": 3,
+    },
+    # Multi-bot messaging task - routes to bot-specific queues
+    "common.messaging.tasks.send_ad_multibot": {
+        "queue": "telegram_queue",  # Default queue
+        "routing_key": "telegram.multibot",
         "priority": 3,
     },
     # Notifier tasks - use priority queue

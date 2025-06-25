@@ -353,3 +353,92 @@ def process_show_more_description(
                 return loop.run_until_complete(run())
             finally:
                 loop.close()
+
+
+@celery_app.task(name="common.messaging.tasks.send_ad_multibot")
+@log_operation("send_ad_multibot")
+def send_ad_multibot(
+    telegram_id: str,
+    text: str,
+    s3_image_url: str,
+    resource_url: str,
+    ad_id: int,
+    external_id: str,
+    bot_name: str,
+    platform: str = "telegram"
+):
+    """
+    Send ad notification via specific pool bot.
+    This task runs in bot-specific queues for parallel processing.
+    """
+    from common.config_multibot import multibot_config
+    from aiogram import Bot
+    from common.messaging.telegram_messaging import TelegramMessaging
+    import asyncio
+    
+    # Get bot configuration
+    bot_config = multibot_config.get_bot_by_name(bot_name)
+    if not bot_config:
+        logger.error(f"Bot configuration not found: {bot_name}")
+        return False
+    
+    try:
+        # Create bot instance for this specific bot
+        bot = Bot(token=bot_config.token)
+        messaging = TelegramMessaging(bot)
+        
+        # Build ad data for send_ad method
+        ad_data = {
+            'id': ad_id,
+            'external_id': external_id,
+            'resource_url': resource_url
+        }
+        
+        # Run async send in sync context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        result = loop.run_until_complete(
+            messaging.send_ad(
+                user_id=telegram_id,
+                ad_data=ad_data,
+                image_url=s3_image_url
+            )
+        )
+        
+        loop.close()
+        
+        logger.info(
+            "Ad sent via pool bot",
+            extra={
+                "telegram_id": telegram_id,
+                "ad_id": ad_id,
+                "bot_name": bot_name,
+                "success": bool(result)
+            }
+        )
+        
+        return bool(result)
+        
+    except Exception as e:
+        logger.error(
+            "Failed to send ad via pool bot",
+            exc_info=True,
+            extra={
+                "telegram_id": telegram_id,
+                "ad_id": ad_id,
+                "bot_name": bot_name,
+                "error": str(e)
+            }
+        )
+        return False
+    finally:
+        # Clean up bot session
+        if 'bot' in locals():
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(bot.close())
+                loop.close()
+            except:
+                pass
