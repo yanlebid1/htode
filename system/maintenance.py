@@ -404,8 +404,9 @@ def cleanup_redis_cache(
             # Using a custom ttl-based approach since Redis doesn't track key age directly
             max_ttl = CacheTTL.EXTENDED  # 7 days
 
-            # Get all keys matching the pattern
-            matching_keys = redis_client.keys(pattern)
+            # Get all keys matching the pattern using SCAN (non-blocking)
+            from common.utils.cache import _scan_keys
+            matching_keys = _scan_keys(pattern)
             logger.info(
                 "Found keys matching pattern",
                 extra={"pattern": pattern, "key_count": len(matching_keys)},
@@ -471,8 +472,8 @@ def optimize_database() -> Dict[str, Any]:
 
     with log_context(logger, task="optimize_database"):
         try:
-            # List of tables to optimize
-            tables = [
+            # Allowlisted tables — only these can be passed to VACUUM/ANALYZE
+            ALLOWED_TABLES = frozenset({
                 "ads",
                 "ad_images",
                 "ad_phones",
@@ -483,9 +484,13 @@ def optimize_database() -> Dict[str, Any]:
                 "email_verification_tokens",
                 "payment_orders",
                 "payment_history",
-            ]
+            })
+
+            tables = list(ALLOWED_TABLES)
 
             with db_session() as db:
+                from sqlalchemy import text
+
                 # For database operations like VACUUM, we need to use raw SQL
                 # and manage the connection manually since these operations
                 # can't run inside a transaction
@@ -500,8 +505,13 @@ def optimize_database() -> Dict[str, Any]:
                 try:
                     # VACUUM ANALYZE on each table
                     for table in tables:
+                        if table not in ALLOWED_TABLES:
+                            logger.warning("Skipping non-allowlisted table", extra={"table": table})
+                            continue
                         logger.info("Running VACUUM ANALYZE", extra={"table": table})
-                        db.execute(f"VACUUM ANALYZE {table}")
+                        # Use text() for proper SQLAlchemy execution; table name
+                        # is validated against the allowlist above, not user input.
+                        db.execute(text(f"VACUUM ANALYZE {table}"))
                         operations.append(f"VACUUM ANALYZE {table}")
                         aggregator.add_item(
                             {"operation": f"VACUUM ANALYZE {table}"}, success=True
@@ -509,8 +519,10 @@ def optimize_database() -> Dict[str, Any]:
 
                     # Update table statistics
                     for table in tables:
+                        if table not in ALLOWED_TABLES:
+                            continue
                         logger.info("Running ANALYZE", extra={"table": table})
-                        db.execute(f"ANALYZE {table}")
+                        db.execute(text(f"ANALYZE {table}"))
                         operations.append(f"ANALYZE {table}")
                         aggregator.add_item(
                             {"operation": f"ANALYZE {table}"}, success=True
@@ -518,7 +530,7 @@ def optimize_database() -> Dict[str, Any]:
 
                     # Optimize indexes
                     logger.info("Reindexing database")
-                    db.execute("REINDEX DATABASE current_database()")
+                    db.execute(text("REINDEX DATABASE current_database()"))
                     operations.append("REINDEX DATABASE")
                     aggregator.add_item({"operation": "REINDEX DATABASE"}, success=True)
                 finally:

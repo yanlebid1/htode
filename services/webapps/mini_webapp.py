@@ -23,7 +23,6 @@ from common.utils.logging_config import log_context, log_operation
 MERCHANT_ACCOUNT = os.getenv("WAYFORPAY_MERCHANT_LOGIN")
 MERCHANT_SECRET = os.getenv("WAYFORPAY_MERCHANT_SECRET")
 
-import os
 from common.utils.logging_config import setup_logging
 from common.utils.log_management import setup_file_logging
 
@@ -142,18 +141,30 @@ GALLERY_HTML = """
   </div>
 
   <script>
+    function isValidImageUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === "https:" || parsed.protocol === "http:";
+      } catch {
+        return false;
+      }
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const imagesParam = urlParams.get("images"); // e.g. "https://...,https://..."
     const galleryDiv = document.getElementById("gallery");
     if (imagesParam) {
       const imgArray = imagesParam.split(",");
       imgArray.forEach(url => {
+        const trimmedUrl = url.trim();
+        // Validate URL scheme to prevent javascript: and data: XSS
+        if (!isValidImageUrl(trimmedUrl)) return;
         const img = document.createElement("img");
-        img.src = url.trim();
+        img.src = trimmedUrl;
         img.className = "gallery-img";
         // On click => open modal
         img.onclick = function() {
-          openModal(url.trim());
+          openModal(trimmedUrl);
         };
         galleryDiv.appendChild(img);
       });
@@ -279,16 +290,12 @@ def verify_wayforpay_signature(data: dict) -> bool:
             MERCHANT_SECRET.encode("utf-8"), string_to_sign.encode("utf-8"), hashlib.md5
         ).hexdigest()
 
-        # Compare signatures
-        if calculated_signature != received_signature:
+        # Compare signatures using timing-safe comparison to prevent timing attacks
+        if not hmac.compare_digest(calculated_signature, received_signature):
             logger.error(
                 "Invalid signature",
                 extra={
-                    "expected": calculated_signature,
-                    "received": received_signature,
-                    "string_to_sign": string_to_sign[
-                        :100
-                    ],  # First 100 chars for security
+                    "order_id": data.get("orderReference"),
                 },
             )
             return False
