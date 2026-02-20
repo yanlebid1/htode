@@ -43,6 +43,13 @@ def optimize_database() -> Dict[str, Any]:
                 "payment_history",
             })
 
+            # Materialized views to refresh during maintenance
+            MATERIALIZED_VIEWS = (
+                "mv_subscription_stats",
+                "mv_subscription_by_city",
+                "mv_subscription_by_property",
+            )
+
             tables = list(ALLOWED_TABLES)
 
             with db_session() as db:
@@ -81,6 +88,15 @@ def optimize_database() -> Dict[str, Any]:
                         operations.append(f"ANALYZE {table}")
                         aggregator.add_item(
                             {"operation": f"ANALYZE {table}"}, success=True
+                        )
+
+                    # Refresh materialized views
+                    for mv in MATERIALIZED_VIEWS:
+                        logger.info("Refreshing materialized view", extra={"view": mv})
+                        db.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}"))
+                        operations.append(f"REFRESH MATERIALIZED VIEW {mv}")
+                        aggregator.add_item(
+                            {"operation": f"REFRESH MATERIALIZED VIEW {mv}"}, success=True
                         )
 
                     # Optimize indexes

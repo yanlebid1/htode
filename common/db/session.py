@@ -20,8 +20,8 @@ DATABASE_URL = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CO
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,              # Test connections before use
-    pool_size=50,                    # Base connection pool size (was 5)
-    max_overflow=100,                # Additional connections during peak (was 10)
+    pool_size=10,                    # Reduced — PgBouncer manages the real pool
+    max_overflow=20,                 # Reduced — PgBouncer manages the real pool
     pool_recycle=1800,               # Recycle connections every 30 minutes
     pool_timeout=30,                 # Wait 30 seconds for connection
     pool_reset_on_return='commit',   # Reset connections on return

@@ -14,7 +14,7 @@ pool = None
 
 
 @log_operation("initialize_pool")
-def initialize_pool(min_conn=10, max_conn=50):
+def initialize_pool(min_conn=5, max_conn=20):
     global pool
     try:
         with log_context(logger, min_conn=min_conn, max_conn=max_conn):

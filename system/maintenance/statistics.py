@@ -5,6 +5,7 @@ from ._common import (
     db_session,
     or_,
     func,
+    text,
     time,
     datetime,
     logger,
@@ -20,12 +21,19 @@ from ._common import (
     Any,
 )
 
+# Materialized views to refresh before reading
+_MV_NAMES = (
+    "mv_subscription_stats",
+    "mv_subscription_by_city",
+    "mv_subscription_by_property",
+)
+
 
 @celery_app.task(name="system.maintenance.check_subscription_statistics")
 @log_operation("check_subscription_statistics")
 def check_subscription_statistics() -> Dict[str, Any]:
     """
-    Generate and save subscription statistics
+    Refresh materialized views and read pre-computed subscription statistics.
 
     Returns:
         Dictionary with subscriber counts and statistics
@@ -36,102 +44,43 @@ def check_subscription_statistics() -> Dict[str, Any]:
     with log_context(logger, task="check_subscription_statistics"):
         try:
             with db_session() as db:
-                # Count active subscribers
-                active_subscribers = (
-                    db.query(func.count(User.id))
-                    .filter(
-                        or_(
-                            User.subscription_until > datetime.now(),
-                            User.free_until > datetime.now(),
-                        )
-                    )
-                    .scalar()
-                )
+                # Refresh materialized views concurrently (non-blocking reads)
+                for mv in _MV_NAMES:
+                    logger.info("Refreshing materialized view", extra={"view": mv})
+                    db.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}"))
+                    aggregator.add_item({"refresh": mv}, success=True)
 
-                # Count paid subscribers
-                paid_subscribers = (
-                    db.query(func.count(User.id))
-                    .filter(User.subscription_until > datetime.now())
-                    .scalar()
-                )
+                db.commit()
 
-                # Count free trial subscribers
-                free_trial_subscribers = (
-                    db.query(func.count(User.id))
-                    .filter(
-                        User.free_until > datetime.now(),
-                        or_(
-                            User.subscription_until.is_(None),
-                            User.subscription_until < datetime.now(),
-                        ),
-                    )
-                    .scalar()
-                )
+                # Read pre-computed stats from the materialized view
+                row = db.execute(text("SELECT * FROM mv_subscription_stats")).fetchone()
+                active_subscribers = row[0] if row else 0
+                paid_subscribers = row[1] if row else 0
+                free_trial_subscribers = row[2] if row else 0
+                telegram_subscribers = row[3] if row else 0
 
-                # Count subscribers by platform
-                telegram_subscribers = (
-                    db.query(func.count(User.id))
-                    .filter(
-                        User.telegram_id.isnot(None),
-                        or_(
-                            User.subscription_until > datetime.now(),
-                            User.free_until > datetime.now(),
-                        ),
-                    )
-                    .scalar()
-                )
-
-                # Count by subscription filter
-                subscription_counts = {}
-
-                # Count by city
-                city_counts = (
-                    db.query(
-                        UserFilter.city, func.count(UserFilter.city).label("count")
-                    )
-                    .join(User, UserFilter.user_id == User.id)
-                    .filter(
-                        or_(
-                            User.subscription_until > datetime.now(),
-                            User.free_until > datetime.now(),
-                        ),
-                        UserFilter.city.isnot(None),
-                    )
-                    .group_by(UserFilter.city)
-                    .all()
-                )
-
+                # Read city breakdown
+                city_rows = db.execute(
+                    text("SELECT city, subscriber_count FROM mv_subscription_by_city")
+                ).fetchall()
                 city_stats = {
-                    GEO_ID_MAPPING.get(city_id, f"Unknown ({city_id})"): count
-                    for city_id, count in city_counts
+                    GEO_ID_MAPPING.get(int(city_id), f"Unknown ({city_id})"): count
+                    for city_id, count in city_rows
                 }
 
-                subscription_counts["by_city"] = city_stats
-
-                # Count by property type
-                property_type_counts = (
-                    db.query(
-                        UserFilter.property_type,
-                        func.count(UserFilter.property_type).label("count"),
-                    )
-                    .join(User, UserFilter.user_id == User.id)
-                    .filter(
-                        or_(
-                            User.subscription_until > datetime.now(),
-                            User.free_until > datetime.now(),
-                        ),
-                        UserFilter.property_type.isnot(None),
-                    )
-                    .group_by(UserFilter.property_type)
-                    .all()
-                )
-
+                # Read property type breakdown
+                prop_rows = db.execute(
+                    text("SELECT property_type, subscriber_count FROM mv_subscription_by_property")
+                ).fetchall()
                 property_stats = {
                     property_type: count
-                    for property_type, count in property_type_counts
+                    for property_type, count in prop_rows
                 }
 
-                subscription_counts["by_property_type"] = property_stats
+                subscription_counts = {
+                    "by_city": city_stats,
+                    "by_property_type": property_stats,
+                }
 
                 # Store statistics in Redis for later access
                 statistics = {
