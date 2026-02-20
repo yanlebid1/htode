@@ -35,13 +35,11 @@ from common.utils.cache_managers import (
 )
 from common.utils.cache import get_entity_cache_key
 from common.utils.logging_config import log_operation, log_context, LogAggregator
+from common.constants import DEFAULT_BATCH_SIZE as BATCH_SIZE, FREE_TRIAL_DAYS
 
 # Import the common db logger
 from . import logger
 from .repositories import VerificationRepository
-
-# Batch size for operations to balance between network round trips and memory usage
-BATCH_SIZE = 100
 
 
 @log_operation("create_telegram_user")
@@ -67,7 +65,7 @@ def create_telegram_user(telegram_id: str) -> Optional[User]:
                 # Create new user
                 user = User(
                     telegram_id=telegram_id,
-                    free_until=datetime.now() + timedelta(days=7),
+                    free_until=datetime.now() + timedelta(days=FREE_TRIAL_DAYS),
                 )
                 db.add(user)
                 db.commit()

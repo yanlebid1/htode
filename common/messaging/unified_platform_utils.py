@@ -145,29 +145,10 @@ class MessageFormatter:
         Returns:
             Formatted ad text string
         """
-        from common.config import GEO_ID_MAPPING
+        from common.config import build_ad_text
 
         with log_context(logger, platform=platform, ad_id=ad_data.get("id")):
-            # Extract ad data with defaults
-            city_id = ad_data.get("city")
-            city_name = GEO_ID_MAPPING.get(city_id, "Невідомо")
-            price = ad_data.get("price", 0)
-            address = ad_data.get("address", "Невідомо")
-            rooms_count = ad_data.get("rooms_count", "Невідомо")
-            square_feet = ad_data.get("square_feet", "Невідомо")
-            floor = ad_data.get("floor", "Невідомо")
-            total_floors = ad_data.get("total_floors", "Невідомо")
-
-            # Apply platform-specific formatting
-            # Telegram markdown-formatted message (only platform now)
-            text = (
-                f"💰 Ціна: *{int(price)}* грн.\n"
-                f"🏙️ Місто: *{city_name}*\n"
-                f"📍 Адреса: *{address}*\n"
-                f"🛏️ Кіл-сть кімнат: *{rooms_count}*\n"
-                f"📐 Площа: *{square_feet}* кв.м.\n"
-                f"🏢 Поверх: *{floor}* з *{total_floors}*\n"
-            )
+            text = build_ad_text(ad_data, markdown=True)
 
             logger.info(
                 "Formatted ad text",

@@ -12,6 +12,7 @@ from common.db.database import get_db_session
 from common.db.models.user import User
 from common.config_multibot import multibot_config
 from common.utils.logging_config import log_operation, log_context, setup_logging
+from common.utils.distributed_lock import DistributedLock, LockNotAcquired
 
 logger = setup_logging(__name__)
 
@@ -74,42 +75,57 @@ class BotAssignmentService:
         user_id: int,
         dispatcher_chat_id: str
     ) -> Optional[Dict[str, Any]]:
-        """Assign a user to an available bot"""
-        # Find available bot
-        bot_name = BotAssignmentService.find_available_bot(session)
-        if not bot_name:
+        """Assign a user to an available bot.
+
+        Uses a distributed lock to prevent TOCTOU race conditions where
+        two workers could over-assign the same bot concurrently.
+        """
+        from common.utils.cache import redis_client
+
+        lock = DistributedLock(redis_client, "lock:bot_assignment", timeout=10)
+        try:
+            with lock:
+                # Find available bot (inside the lock to prevent race)
+                bot_name = BotAssignmentService.find_available_bot(session)
+                if not bot_name:
+                    return None
+
+                bot_config = multibot_config.get_bot_by_name(bot_name)
+                if not bot_config:
+                    return None
+
+                # Update user assignment
+                user = session.query(User).filter(User.id == user_id).first()
+                if not user:
+                    return None
+
+                user.assigned_bot_name = bot_name
+                user.assigned_bot_username = bot_config.username
+                user.assignment_date = datetime.utcnow()
+                user.dispatcher_chat_id = dispatcher_chat_id
+
+                session.commit()
+
+                logger.info(
+                    "User assigned to bot",
+                    extra={
+                        "user_id": user_id,
+                        "bot_name": bot_name,
+                        "bot_username": bot_config.username
+                    }
+                )
+
+                return {
+                    "bot_name": bot_name,
+                    "bot_username": bot_config.username,
+                    "bot_token": bot_config.token
+                }
+        except LockNotAcquired:
+            logger.warning(
+                "Could not acquire bot assignment lock",
+                extra={"user_id": user_id}
+            )
             return None
-        
-        bot_config = multibot_config.get_bot_by_name(bot_name)
-        if not bot_config:
-            return None
-        
-        # Update user assignment
-        user = session.query(User).filter(User.id == user_id).first()
-        if not user:
-            return None
-        
-        user.assigned_bot_name = bot_name
-        user.assigned_bot_username = bot_config.username
-        user.assignment_date = datetime.utcnow()
-        user.dispatcher_chat_id = dispatcher_chat_id
-        
-        session.commit()
-        
-        logger.info(
-            "User assigned to bot",
-            extra={
-                "user_id": user_id,
-                "bot_name": bot_name,
-                "bot_username": bot_config.username
-            }
-        )
-        
-        return {
-            "bot_name": bot_name,
-            "bot_username": bot_config.username,
-            "bot_token": bot_config.token
-        }
     
     @staticmethod
     @log_operation("get_user_bot_assignment")

@@ -3,7 +3,7 @@
 from common.celery_app import celery_app
 from common.db.operations import find_users_for_ad
 from common.utils.unified_request_utils import fetch_ads_flatfy
-from common.config import GEO_ID_MAPPING, get_key_by_value
+from common.config import GEO_ID_MAPPING, get_key_by_value, build_ad_text
 from common.utils.ad_utils import (
     process_and_insert_ad,
     get_ad_images as utils_get_ad_images,
@@ -11,6 +11,7 @@ from common.utils.ad_utils import (
 
 # Import logging utilities from common modules
 from common.utils.logging_config import log_context, log_operation, LogAggregator
+from common.constants import NOTIFICATION_BATCH_SIZE
 
 # Import the service logger
 from . import logger
@@ -77,7 +78,6 @@ def sort_and_notify_new_ads(new_ads):
                     )
 
                     # ALWAYS use batch notifications for consistency and performance
-                    BATCH_SIZE = 100
 
                     # Convert ad to dict format for serialization
                     ad_dict = {
@@ -94,10 +94,9 @@ def sort_and_notify_new_ads(new_ads):
                     }
 
                     # ULTRA-FAST BATCHING: Larger batches for maximum throughput
-                    ULTRA_BATCH_SIZE = 100  # SAFE: Respecting Telegram 25 msg/sec limit
                     total_batches = 0
-                    for i in range(0, len(users_to_notify), ULTRA_BATCH_SIZE):
-                        batch = users_to_notify[i : i + ULTRA_BATCH_SIZE]
+                    for i in range(0, len(users_to_notify), NOTIFICATION_BATCH_SIZE):
+                        batch = users_to_notify[i : i + NOTIFICATION_BATCH_SIZE]
                         
                         # Use the batch notification task for ALL notifications
                         celery_app.send_task(
@@ -147,14 +146,7 @@ def sort_and_notify_new_ads(new_ads):
 def _notify_user_about_ad(user_id, ad, s3_image_urls):
 
     with log_context(logger, user_id=user_id, ad_id=ad.get("id")):
-        text = (
-            f"💰 Ціна: {int(ad.get('price'))} грн.\n"
-            f"🏙️ Місто: {ad.get('city')}\n"
-            f"📍 Адреса: {ad.get('address')}\n"
-            f"🛏️ Кіл-сть кімнат: {ad.get('rooms_count')}\n"
-            f"📐 Площа: {ad.get('square_feet')} кв.м.\n"
-            f"🏢 Поверх: {ad.get('floor')} из {ad.get('total_floors')}\n"
-        )
+        text = build_ad_text(ad)
 
         logger.info(
             "Notifying user about ad",
@@ -247,14 +239,15 @@ def notify_user_with_ads(telegram_id, user_filters):
                         ad_external_id = str(ad.get("id"))
                         resource_url = f"https://flatfy.ua/uk/redirect/{ad_external_id}"
 
-                        text = (
-                            f"💰 Ціна: {int(ad.get('price'))} грн.\n"
-                            f"🏙️ Місто: {city}\n"
-                            f"📍 Адреса: {ad.get('header')}\n"
-                            f"🛏️ Кіл-сть кімнат: {ad.get('room_count')}\n"
-                            f"📐 Площа: {ad.get('area_total')} кв.м.\n"
-                            f"🏢 Поверх: {ad.get('floor')} из {ad.get('floor_count')}\n"
-                        )
+                        text = build_ad_text({
+                            "price": ad.get("price"),
+                            "city": city,
+                            "address": ad.get("header"),
+                            "rooms_count": ad.get("room_count"),
+                            "square_feet": ad.get("area_total"),
+                            "floor": ad.get("floor"),
+                            "total_floors": ad.get("floor_count"),
+                        })
 
                         celery_args = [
                             telegram_id,

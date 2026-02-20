@@ -20,6 +20,7 @@ from sqlalchemy import func
 
 # Import logging utilities from common modules
 from common.utils.logging_config import log_context, log_operation, LogAggregator
+from common.constants import SCRAPER_CUTOFF_MINUTES, MAX_SCRAPER_ADS_PER_RUN
 
 # Import phone extraction utilities
 from common.utils.phone_utils.adspower_manager import adspower_manager
@@ -238,7 +239,7 @@ def _scrape_ads_for_city(geo_id: int) -> int:
     """
     total_processed = 0
     property_types = {"apartment": 2}
-    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=SCRAPER_CUTOFF_MINUTES)
 
     with log_context(logger, geo_id=geo_id, operation="scrape_city"):
         for property_type, section_id in property_types.items():
@@ -566,10 +567,10 @@ def scrape_30_days_for_city(geo_id: int) -> int:
                 )
 
                 while True:
-                    if ads_qty > 10:
+                    if ads_qty > MAX_SCRAPER_ADS_PER_RUN:
                         logger.info(
                             "Reached ad limit for initial scrape",
-                            extra={"ads_qty": ads_qty, "limit": 10},
+                            extra={"ads_qty": ads_qty, "limit": MAX_SCRAPER_ADS_PER_RUN},
                         )
                         break
 
