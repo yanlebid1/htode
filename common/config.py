@@ -72,15 +72,47 @@ def get_key_by_value(value: str, geo_id_mapping: Dict[int, str]) -> Optional[int
     return next((k for k, v in geo_id_mapping.items() if v == value), None)
 
 
-def build_ad_text(ad_row: Dict[str, Any]) -> str:
-    """Build a formatted text for an ad listing"""
-    city_name = GEO_ID_MAPPING.get(ad_row.get("city"))
-    text = (
-        f"💰 Ціна: {int(ad_row.get('price'))} грн.\n"
-        f"🏙️ Місто: {city_name}\n"
-        f"📍 Адреса: {ad_row.get('address')}\n"
-        f"🛏️ Кіл-сть кімнат: {ad_row.get('rooms_count')}\n"
-        f"📐 Площа: {ad_row.get('square_feet')} кв.м.\n"
-        f"🏢 Поверх: {ad_row.get('floor')} из {ad_row.get('total_floors')}\n"
-    )
+def build_ad_text(ad_row: Dict[str, Any], markdown: bool = False) -> str:
+    """Build a formatted text for an ad listing.
+
+    Args:
+        ad_row: Dictionary with ad data. Supports both DB-style keys (city as geo_id)
+                and pre-resolved city names (city as string).
+        markdown: If True, wrap values in Telegram Markdown bold (*value*).
+
+    Returns:
+        Formatted ad text string.
+    """
+    # Resolve city: if it's an int (geo_id), look up the name; otherwise use as-is
+    city_raw = ad_row.get("city")
+    if isinstance(city_raw, int):
+        city_name = GEO_ID_MAPPING.get(city_raw, "Невідомо")
+    else:
+        city_name = city_raw or "Невідомо"
+
+    price = int(ad_row.get("price", 0))
+    address = ad_row.get("address", "Не вказано")
+    rooms_count = ad_row.get("rooms_count", "?")
+    square_feet = ad_row.get("square_feet", "?")
+    floor = ad_row.get("floor", "?")
+    total_floors = ad_row.get("total_floors", "?")
+
+    if markdown:
+        text = (
+            f"💰 Ціна: *{price}* грн.\n"
+            f"🏙️ Місто: *{city_name}*\n"
+            f"📍 Адреса: *{address}*\n"
+            f"🛏️ Кіл-сть кімнат: *{rooms_count}*\n"
+            f"📐 Площа: *{square_feet}* кв.м.\n"
+            f"🏢 Поверх: *{floor}* з *{total_floors}*\n"
+        )
+    else:
+        text = (
+            f"💰 Ціна: {price} грн.\n"
+            f"🏙️ Місто: {city_name}\n"
+            f"📍 Адреса: {address}\n"
+            f"🛏️ Кіл-сть кімнат: {rooms_count}\n"
+            f"📐 Площа: {square_feet} кв.м.\n"
+            f"🏢 Поверх: {floor} из {total_floors}\n"
+        )
     return text

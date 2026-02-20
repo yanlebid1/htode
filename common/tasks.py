@@ -5,6 +5,7 @@ Common Celery tasks used across services.
 import asyncio
 from typing import List, Optional
 from common.celery_app import celery_app
+from common.config import build_ad_text
 from common.utils.task_versioning import versioned_task
 from common.utils.logging_config import log_operation, log_context
 from common.utils import logger
@@ -121,14 +122,7 @@ def notify_user_batch_v2(
         failed_count = 0
 
         # Format the ad text once
-        text = (
-            f"💰 Ціна: {int(ad_data.get('price', 0))} грн.\n"
-            f"🏙️ Місто: {ad_data.get('city', 'Невідомо')}\n"
-            f"📍 Адреса: {ad_data.get('address', 'Не вказано')}\n"
-            f"🛏️ Кіл-сть кімнат: {ad_data.get('rooms_count', '?')}\n"
-            f"📐 Площа: {ad_data.get('square_feet', '?')} кв.м.\n"
-            f"🏢 Поверх: {ad_data.get('floor', '?')} из {ad_data.get('total_floors', '?')}\n"
-        )
+        text = build_ad_text(ad_data)
 
         # Get user telegram IDs in batch
         with db_session() as db:
@@ -211,14 +205,7 @@ def notify_user_batch_v3(
         no_bot_count = 0
 
         # Format the ad text once
-        text = (
-            f"💰 Ціна: {int(ad_data.get('price', 0))} грн.\n"
-            f"🏙️ Місто: {ad_data.get('city', 'Невідомо')}\n"
-            f"📍 Адреса: {ad_data.get('address', 'Не вказано')}\n"
-            f"🛏️ Кіл-сть кімнат: {ad_data.get('rooms_count', '?')}\n"
-            f"📐 Площа: {ad_data.get('square_feet', '?')} кв.м.\n"
-            f"🏢 Поверх: {ad_data.get('floor', '?')} из {ad_data.get('total_floors', '?')}\n"
-        )
+        text = build_ad_text(ad_data)
 
         # Get users and group by assigned bot
         users_by_bot = defaultdict(list)

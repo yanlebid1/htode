@@ -19,6 +19,22 @@ class StateManager:
     Supports both synchronous and asynchronous operations.
     """
 
+    # Lua script for atomic read-modify-write state updates.
+    # Avoids the race condition where two concurrent updates could lose writes.
+    UPDATE_SCRIPT = """
+    local current = redis.call('GET', KEYS[1])
+    local state = current and cjson.decode(current) or {}
+    local updates = cjson.decode(ARGV[1])
+    for k, v in pairs(updates) do state[k] = v end
+    local encoded = cjson.encode(state)
+    if ARGV[2] ~= '0' then
+        redis.call('SETEX', KEYS[1], ARGV[2], encoded)
+    else
+        redis.call('SET', KEYS[1], encoded)
+    end
+    return encoded
+    """
+
     def __init__(
         self,
         redis_url: str = REDIS_URL,
@@ -178,7 +194,10 @@ class StateManager:
         ttl: int = None,
     ) -> bool:
         """
-        Update the state for a user (partial update).
+        Atomically update the state for a user (partial update).
+
+        Uses a Lua script to perform read-modify-write in a single Redis
+        operation, preventing lost writes from concurrent updates.
 
         Args:
             user_id: User's platform-specific ID or database ID
@@ -200,10 +219,23 @@ class StateManager:
                 )
                 # Fall back to direct implementation
 
-        # Direct implementation
-        current_state = await self.get_state(user_id, platform) or {}
-        current_state.update(updates)
-        return await self.set_state(user_id, current_state, platform, ttl)
+        # Atomic update via Lua script
+        key = self._get_key(user_id, platform)
+        expire_time = ttl if ttl is not None else self.default_ttl
+
+        try:
+            updates_json = json.dumps(updates)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: self.redis.eval(
+                    self.UPDATE_SCRIPT, 1, key, updates_json, str(expire_time)
+                ),
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error updating state for {key}: {e}")
+            raise
 
     @retry_with_exponential_backoff(
         max_retries=3, initial_delay=0.5, retryable_exceptions=NETWORK_EXCEPTIONS
@@ -328,6 +360,9 @@ class StateManager:
         """
         Synchronous version of update_state.
 
+        Uses a Lua script to perform atomic read-modify-write in a single
+        Redis operation, preventing lost writes from concurrent updates.
+
         Args:
             user_id: User's platform-specific ID or database ID
             updates: Dictionary of state updates
@@ -337,9 +372,18 @@ class StateManager:
         Returns:
             True if successful, False otherwise
         """
-        current_state = self.get_state_sync(user_id, platform) or {}
-        current_state.update(updates)
-        return self.set_state_sync(user_id, current_state, platform, ttl)
+        key = self._get_key(user_id, platform)
+        expire_time = ttl if ttl is not None else self.default_ttl
+
+        try:
+            updates_json = json.dumps(updates)
+            self.redis.eval(
+                self.UPDATE_SCRIPT, 1, key, updates_json, str(expire_time)
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error updating state for {key}: {e}")
+            return False
 
     def clear_state_sync(self, user_id: Union[str, int], platform: str = None) -> bool:
         """

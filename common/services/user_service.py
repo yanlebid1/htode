@@ -9,6 +9,7 @@ from common.db.models.user import User
 from common.db.repositories.user_repository import UserRepository
 from common.messaging.tasks import send_notification
 from common.utils.logging_config import log_operation, log_context, LogAggregator
+from common.constants import FREE_TRIAL_DAYS, SUBSCRIPTION_REMINDER_DAYS
 
 # Import the common services logger
 from . import logger
@@ -54,7 +55,7 @@ class UserService:
             )
 
             # Create a new user with free trial period
-            free_until = datetime.now() + timedelta(days=7)
+            free_until = datetime.now() + timedelta(days=FREE_TRIAL_DAYS)
 
             # Create user with the appropriate messenger ID
             user = UserRepository.create_messenger_user(
@@ -90,7 +91,7 @@ class UserService:
             aggregator = LogAggregator(logger, "check_expiring_subscriptions")
 
             # Check for subscriptions expiring in 3, 2, and 1 days
-            for days in [3, 2, 1]:
+            for days in SUBSCRIPTION_REMINDER_DAYS:
                 today = datetime.now().date()
                 target_date = today + timedelta(days=days)
 

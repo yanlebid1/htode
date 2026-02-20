@@ -1,5 +1,6 @@
 # services/pool_bot_service/app/bot.py
 
+import hashlib
 import os
 import urllib.parse
 from aiogram import Bot, Dispatcher
@@ -34,8 +35,8 @@ parsed_redis_url = urllib.parse.urlparse(REDIS_STATE_URL)
 REDIS_HOST = parsed_redis_url.hostname or "redis_state"
 REDIS_PORT = parsed_redis_url.port or 6379
 
-# Different Redis DB for each bot
-redis_db = hash(BOT_NAME) % 16  # Use hash to get consistent DB number 0-15
+# Different Redis DB for each bot (deterministic across restarts)
+redis_db = hashlib.md5(BOT_NAME.encode()).digest()[0] % 16
 
 # Initialize bot
 logger.info(
