@@ -20,6 +20,7 @@ from sqlalchemy import func
 
 # Import logging utilities from common modules
 from common.utils.logging_config import log_context, log_operation, LogAggregator
+from common.utils.tracing import init_tracing
 from common.constants import SCRAPER_CUTOFF_MINUTES, MAX_SCRAPER_ADS_PER_RUN
 
 # Import phone extraction utilities
@@ -27,6 +28,9 @@ from common.utils.phone_utils.adspower_manager import adspower_manager
 
 # Import the service logger
 from . import logger
+
+# Initialize tracing on module load (worker startup)
+init_tracing("scraper_service")
 
 # ---------------------------
 # Configuration & Initialization

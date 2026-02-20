@@ -15,6 +15,9 @@ DB_CONFIG = {
     "dbname": os.getenv("DB_NAME", "mydb"),
 }
 
+# PgBouncer override — route DB traffic through the connection pooler
+DB_CONFIG["host"] = os.getenv("DB_PGBOUNCER_HOST", DB_CONFIG["host"])
+
 # AWS Configuration
 AWS_CONFIG = {
     "access_key": os.getenv("AWS_ACCESS_KEY_ID"),

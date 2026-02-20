@@ -13,6 +13,7 @@ from .bot import dp
 # Import service logger instead of configuring local logging
 from . import logger
 from common.utils.logging_config import log_operation
+from common.utils.tracing import init_tracing
 
 
 @log_operation("setup_handlers")
@@ -34,6 +35,7 @@ def main():
     """
     Start the Telegram bot (using long polling)
     """
+    init_tracing("telegram_service")
     logger.info("Starting Telegram bot...")
     try:
         # Make sure handlers are set up before starting

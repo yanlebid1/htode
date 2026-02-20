@@ -29,12 +29,13 @@ x-combined-env: &combined-env
   REDIS_URL: "${REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme_in_production}@redis_queue:6379/0}"
   # Redis Sentinel URLs for high availability
   REDIS_SENTINELS: "${REDIS_SENTINELS:-redis_sentinel_1:26379,redis_sentinel_2:26379,redis_sentinel_3:26379}"
-  # Database Configuration
+  # Database Configuration (routed through PgBouncer)
   DB_HOST: "${DB_HOST:-postgres}"
   DB_PORT: "${DB_PORT:-5432}"
   DB_NAME: "${DB_NAME:-mydb}"
   DB_USER: "${DB_USER:-myuser}"
   DB_PASS: "${DB_PASS:?DB_PASS must be set in .env}"
+  DB_PGBOUNCER_HOST: "pgbouncer"
   # AWS Configuration
   AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
   AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
@@ -493,6 +494,43 @@ services:
       timeout: 2s
       retries: 5
 
+  # PGBOUNCER CONNECTION POOLER - Consolidates DB connections from all containers
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.0
+    container_name: pgbouncer
+    environment:
+      DATABASE_URL: "postgres://${DB_USER:-myuser}:${DB_PASS}@postgres:5432/${DB_NAME:-mydb}"
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: 40
+      MAX_CLIENT_CONN: 1000
+      MAX_DB_CONNECTIONS: 200
+      RESERVE_POOL_SIZE: 10
+      RESERVE_POOL_TIMEOUT: 3
+      SERVER_RESET_QUERY: "DISCARD ALL"
+      LOG_CONNECTIONS: 0
+      LOG_DISCONNECTIONS: 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "6432:6432"
+    networks:
+      - app_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
   # TELEGRAM SERVICES - Horizontal scaling with multiple replicas
   telegram_service_1:
     volumes:
@@ -511,6 +549,8 @@ services:
       redis_state:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     environment:
       <<: *common-variables
@@ -547,6 +587,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     environment:
       <<: *common-variables
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
@@ -581,6 +623,8 @@ services:
       redis_state:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     environment:
       <<: *common-variables
@@ -617,6 +661,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     environment:
       <<: *common-variables
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
@@ -626,15 +672,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'              # Increased from default 0.5
-          memory: 2G               # Increased from default 512M
+          cpus: '1.0'
+          memory: 512M
         reservations:
-          cpus: '1.0'              # Increased from default 0.25
-          memory: 1G               # Increased from default 256M
+          cpus: '0.5'
+          memory: 256M
     networks:
       - app_net
     restart: unless-stopped
-    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=16 --max-tasks-per-child=1000 -n telegram_worker_1@%h
+    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=8 --max-tasks-per-child=1000 -n telegram_worker_1@%h
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "telegram_worker_1@telegram_worker_1" ]
       interval: 30s
@@ -658,6 +704,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     environment:
       <<: *common-variables
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
@@ -667,15 +715,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'              # Increased from default 0.5
-          memory: 2G               # Increased from default 512M
+          cpus: '1.0'
+          memory: 512M
         reservations:
-          cpus: '1.0'              # Increased from default 0.25
-          memory: 1G               # Increased from default 256M
+          cpus: '0.5'
+          memory: 256M
     networks:
       - app_net
     restart: unless-stopped
-    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=16 --max-tasks-per-child=1000 -n telegram_worker_2@%h
+    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=8 --max-tasks-per-child=1000 -n telegram_worker_2@%h
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "telegram_worker_2@telegram_worker_2" ]
       interval: 30s
@@ -699,6 +747,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     environment:
       <<: *common-variables
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
@@ -708,15 +758,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'              # Increased from default 0.5
-          memory: 2G               # Increased from default 512M
+          cpus: '1.0'
+          memory: 512M
         reservations:
-          cpus: '1.0'              # Increased from default 0.25
-          memory: 1G               # Increased from default 256M
+          cpus: '0.5'
+          memory: 256M
     networks:
       - app_net
     restart: unless-stopped
-    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=16 --max-tasks-per-child=1000 -n telegram_worker_3@%h
+    command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=8 --max-tasks-per-child=1000 -n telegram_worker_3@%h
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "telegram_worker_3@telegram_worker_3" ]
       interval: 30s
@@ -737,6 +787,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     logging: *default-logging
     environment:
       <<: *combined-env
@@ -744,7 +796,7 @@ services:
       SERVICE_REPLICA: "1"
     extra_hosts:
       - "local.adspower.net:host-gateway"  # Allow access to host AdsPower API
-    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50 -n scraper_worker_1@%h --concurrency=4
+    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50 -n scraper_worker_1@%h --concurrency=2
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "scraper_worker_1@scraper_worker_1" ]
       interval: 30s
@@ -753,11 +805,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.5'              # Increased from 1.0
-          memory: 2G               # Increased from 1500M
+          cpus: '1.0'
+          memory: 1G
         reservations:
-          cpus: '0.75'             # Increased from 0.5
-          memory: 1G               # Increased from 768M
+          cpus: '0.5'
+          memory: 512M
 
   scraper_worker_2:
     container_name: scraper_worker_2
@@ -772,6 +824,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     logging: *default-logging
     environment:
       <<: *combined-env
@@ -779,7 +833,7 @@ services:
       SERVICE_REPLICA: "2"
     extra_hosts:
       - "local.adspower.net:host-gateway"  # Allow access to host AdsPower API
-    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50 -n scraper_worker_2@%h --concurrency=4
+    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50 -n scraper_worker_2@%h --concurrency=2
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "scraper_worker_2@scraper_worker_2" ]
       interval: 30s
@@ -788,11 +842,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.5'              # Increased from 1.0
-          memory: 2G               # Increased from 1500M
+          cpus: '1.0'
+          memory: 1G
         reservations:
-          cpus: '0.75'             # Increased from 0.5
-          memory: 1G               # Increased from 768M
+          cpus: '0.5'
+          memory: 512M
 
   scraper_worker_3:
     container_name: scraper_worker_3
@@ -807,6 +861,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     logging: *default-logging
     environment:
       <<: *combined-env
@@ -814,7 +870,7 @@ services:
       SERVICE_REPLICA: "3"
     extra_hosts:
       - "local.adspower.net:host-gateway"  # Allow access to host AdsPower API
-    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50 -n scraper_worker_3@%h --concurrency=4
+    command: celery -A scraper_service.app.celery_app worker --loglevel=info -Q scraper_queue --max-tasks-per-child=50 -n scraper_worker_3@%h --concurrency=2
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "scraper_worker_3@scraper_worker_3" ]
       interval: 30s
@@ -823,11 +879,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.5'              # Increased from 1.0
-          memory: 2G               # Increased from 1500M
+          cpus: '1.0'
+          memory: 1G
         reservations:
-          cpus: '0.75'             # Increased from 0.5
-          memory: 1G               # Increased from 768M
+          cpus: '0.5'
+          memory: 512M
 
   scraper_beat_service:
     container_name: scraper_beat_service
@@ -839,6 +895,8 @@ services:
       redis_queue:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     environment:
       <<: *combined-env
@@ -861,6 +919,8 @@ services:
       redis_queue:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
       scraper_worker_1:
         condition: service_started
@@ -898,18 +958,20 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     environment:
       <<: *combined-env
       SERVICE_REPLICA: "1"
     deploy:
       resources:
         limits:
-          cpus: '1.0'              # Increased from 0.75
-          memory: 1.5G             # Increased from 1G
+          cpus: '0.5'
+          memory: 512M
         reservations:
-          cpus: '0.5'              # Increased from 0.25
-          memory: 750M             # Increased from 512M
-    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 6 -n notifier_1@%h --max-tasks-per-child=200
+          cpus: '0.25'
+          memory: 256M
+    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 4 -n notifier_1@%h --max-tasks-per-child=200
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "notifier_1@notifier_service_1" ]
       interval: 30s
@@ -929,18 +991,20 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     environment:
       <<: *combined-env
       SERVICE_REPLICA: "2"
     deploy:
       resources:
         limits:
-          cpus: '1.0'              # Increased from 0.75
-          memory: 1.5G             # Increased from 1G
+          cpus: '0.5'
+          memory: 512M
         reservations:
-          cpus: '0.5'              # Increased from 0.25
-          memory: 750M             # Increased from 512M
-    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 6 -n notifier_2@%h --max-tasks-per-child=200
+          cpus: '0.25'
+          memory: 256M
+    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 4 -n notifier_2@%h --max-tasks-per-child=200
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "notifier_2@notifier_service_2" ]
       interval: 30s
@@ -960,18 +1024,20 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     environment:
       <<: *combined-env
       SERVICE_REPLICA: "3"
     deploy:
       resources:
         limits:
-          cpus: '1.0'              # Increased from 0.75
-          memory: 1.5G             # Increased from 1G
+          cpus: '0.5'
+          memory: 512M
         reservations:
-          cpus: '0.5'              # Increased from 0.25
-          memory: 750M             # Increased from 512M
-    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 6 -n notifier_3@%h --max-tasks-per-child=200
+          cpus: '0.25'
+          memory: 256M
+    command: celery -A app.celery_app worker --loglevel=info -Q priority_queue -c 4 -n notifier_3@%h --max-tasks-per-child=200
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "notifier_3@notifier_service_3" ]
       interval: 30s
@@ -991,6 +1057,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
       webcrawler_service_1:
         condition: service_healthy
       webcrawler_service_2:
@@ -1008,12 +1076,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'              # Increased from 1.0
-          memory: 3G               # Increased from 1G
+          cpus: '1.0'
+          memory: 1G
         reservations:
-          cpus: '1.0'              # Increased from 0.5  
-          memory: 1.5G             # Increased from 512M
-    command: celery -A app.celery_app worker --loglevel=info -Q phone_extraction_queue -c 16 -n phone_worker_1@%h --max-tasks-per-child=100
+          cpus: '0.5'
+          memory: 512M
+    command: celery -A app.celery_app worker --loglevel=info -Q phone_extraction_queue -c 4 -n phone_worker_1@%h --max-tasks-per-child=100
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "phone_worker_1@phone_extraction_worker_1" ]
       interval: 30s
@@ -1033,6 +1101,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
       webcrawler_service_1:
         condition: service_healthy
       webcrawler_service_2:
@@ -1050,12 +1120,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'              # Increased from 1.0
-          memory: 3G               # Increased from 1G
+          cpus: '1.0'
+          memory: 1G
         reservations:
-          cpus: '1.0'              # Increased from 0.5  
-          memory: 1.5G             # Increased from 512M
-    command: celery -A app.celery_app worker --loglevel=info -Q phone_extraction_queue -c 16 -n phone_worker_2@%h --max-tasks-per-child=100
+          cpus: '0.5'
+          memory: 512M
+    command: celery -A app.celery_app worker --loglevel=info -Q phone_extraction_queue -c 4 -n phone_worker_2@%h --max-tasks-per-child=100
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "phone_worker_2@phone_extraction_worker_2" ]
       interval: 30s
@@ -1076,6 +1146,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
       telegram_service_1:
         condition: service_healthy
       telegram_service_2:
@@ -1088,12 +1160,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '6.0'              # INCREASED: from 4.0 for ultra-high throughput
-          memory: 6G               # INCREASED: from 4G for large batches
+          cpus: '0.5'
+          memory: 512M
         reservations:
-          cpus: '3.0'              # INCREASED: from 2.0
-          memory: 3G               # INCREASED: from 2G
-    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 48 -n batch_worker_1@%h --max-tasks-per-child=500
+          cpus: '0.25'
+          memory: 256M
+    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 8 -n batch_worker_1@%h --max-tasks-per-child=500
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "batch_worker_1@notification_batch_worker_1" ]
       interval: 30s
@@ -1113,6 +1185,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
       telegram_service_1:
         condition: service_healthy
       telegram_service_2:
@@ -1125,12 +1199,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '6.0'              # INCREASED: from 4.0 for ultra-high throughput
-          memory: 6G               # INCREASED: from 4G for large batches
+          cpus: '0.5'
+          memory: 512M
         reservations:
-          cpus: '3.0'              # INCREASED: from 2.0
-          memory: 3G               # INCREASED: from 2G
-    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 48 -n batch_worker_2@%h --max-tasks-per-child=500
+          cpus: '0.25'
+          memory: 256M
+    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 8 -n batch_worker_2@%h --max-tasks-per-child=500
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "batch_worker_2@notification_batch_worker_2" ]
       interval: 30s
@@ -1150,6 +1224,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
       telegram_service_1:
         condition: service_healthy
       telegram_service_2:
@@ -1162,12 +1238,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '6.0'              # INCREASED: from 4.0 for ultra-high throughput
-          memory: 6G               # INCREASED: from 4G for large batches
+          cpus: '0.5'
+          memory: 512M
         reservations:
-          cpus: '3.0'              # INCREASED: from 2.0
-          memory: 3G               # INCREASED: from 2G
-    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 48 -n batch_worker_3@%h --max-tasks-per-child=500
+          cpus: '0.25'
+          memory: 256M
+    command: celery -A app.celery_app worker --loglevel=info -Q notification_queue -c 8 -n batch_worker_3@%h --max-tasks-per-child=500
     healthcheck:
       test: [ "CMD", "celery", "inspect", "ping", "-d", "batch_worker_3@notification_batch_worker_3" ]
       interval: 30s
@@ -1275,6 +1351,8 @@ services:
       redis_cache:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
     environment:
       <<: *combined-env
@@ -1449,6 +1527,184 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  # MONITORING STACK - Prometheus, Grafana, exporters, Loki, Promtail, Jaeger
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      - prometheus
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: redis_exporter
+    environment:
+      REDIS_ADDR: "redis://redis_queue:6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-changeme_in_production}"
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis_queue:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-myuser}:${DB_PASS}@pgbouncer:6432/${DB_NAME:-mydb}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  loki:
+    image: grafana/loki:2.9.6
+    container_name: loki
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  promtail:
+    image: grafana/promtail:2.9.6
+    container_name: promtail
+    volumes:
+      - ./monitoring/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.55
+    container_name: jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    networks:
+      - app_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:16686/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 networks:
   app_net:
     driver: bridge
@@ -1463,3 +1719,7 @@ volumes:
   redis-legacy-data:
   # Load Balancer Logs
   nginx-logs:
+  # Monitoring Stack
+  prometheus-data:
+  grafana-data:
+  loki-data:

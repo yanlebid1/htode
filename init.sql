@@ -182,6 +182,36 @@ CREATE INDEX IF NOT EXISTS idx_ads_filter_query ON ads (city, property_type, pri
 CREATE INDEX IF NOT EXISTS idx_user_filters_active ON user_filters (user_id, city, property_type)
 WHERE is_paused = FALSE;
 
+-- Materialized views for pre-computed statistics
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_subscription_stats AS
+SELECT
+    COUNT(*) FILTER (WHERE subscription_until > NOW() OR free_until > NOW()) AS active_subscribers,
+    COUNT(*) FILTER (WHERE subscription_until > NOW()) AS paid_subscribers,
+    COUNT(*) FILTER (WHERE free_until > NOW()
+        AND (subscription_until IS NULL OR subscription_until < NOW())) AS free_trial_subscribers,
+    COUNT(*) FILTER (WHERE telegram_id IS NOT NULL
+        AND (subscription_until > NOW() OR free_until > NOW())) AS telegram_subscribers
+FROM users;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_subscription_by_city AS
+SELECT uf.city, COUNT(*) AS subscriber_count
+FROM user_filters uf
+JOIN users u ON uf.user_id = u.id
+WHERE (u.subscription_until > NOW() OR u.free_until > NOW()) AND uf.city IS NOT NULL
+GROUP BY uf.city;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_subscription_by_property AS
+SELECT uf.property_type, COUNT(*) AS subscriber_count
+FROM user_filters uf
+JOIN users u ON uf.user_id = u.id
+WHERE (u.subscription_until > NOW() OR u.free_until > NOW()) AND uf.property_type IS NOT NULL
+GROUP BY uf.property_type;
+
+-- Unique indexes required for REFRESH CONCURRENTLY
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_stats_active ON mv_subscription_stats (active_subscribers);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_by_city ON mv_subscription_by_city (city);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_by_property ON mv_subscription_by_property (property_type);
+
 -- Grant appropriate permissions
 GRANT SELECT, INSERT, UPDATE, DELETE ON verification_codes TO current_user;
 GRANT USAGE, SELECT ON SEQUENCE verification_codes_id_seq TO current_user;

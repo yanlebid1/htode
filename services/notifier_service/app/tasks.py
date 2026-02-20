@@ -11,10 +11,14 @@ from common.utils.ad_utils import (
 
 # Import logging utilities from common modules
 from common.utils.logging_config import log_context, log_operation, LogAggregator
+from common.utils.tracing import init_tracing
 from common.constants import NOTIFICATION_BATCH_SIZE
 
 # Import the service logger
 from . import logger
+
+# Initialize tracing on module load (worker startup)
+init_tracing("notifier_service")
 
 # TELEGRAM_SEND_TASK = "telegram_service.app.tasks.send_ad_with_extra_buttons"
 TELEGRAM_SEND_TASK = "common.messaging.tasks.send_ad_with_extra_buttons"
