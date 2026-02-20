@@ -255,14 +255,12 @@ def verify_payment_callback(callback_data: Dict[str, Any]) -> bool:
         # Calculate signature
         calculated_signature = generate_signature(verification_data)
 
-        # Compare signatures
-        if calculated_signature != received_signature:
+        # Compare signatures using timing-safe comparison to prevent timing attacks
+        if not hmac.compare_digest(calculated_signature, received_signature):
             logger.warning(
                 "Invalid payment signature",
                 extra={
                     "order_id": callback_data.get("orderReference"),
-                    "received_signature": received_signature[:10] + "...",
-                    "calculated_signature": calculated_signature[:10] + "...",
                 },
             )
             return False

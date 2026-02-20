@@ -22,6 +22,21 @@ except ImportError:
     logger.warning("Redis cluster manager not available, using legacy connection")
 
 
+def _scan_keys(pattern: str) -> list:
+    """
+    Scan Redis for keys matching a pattern using SCAN (non-blocking).
+    Unlike KEYS, SCAN iterates incrementally and does not block the server.
+    """
+    matched_keys = []
+    cursor = 0
+    while True:
+        cursor, keys = redis_client.scan(cursor=cursor, match=pattern, count=100)
+        matched_keys.extend(keys)
+        if cursor == 0:
+            break
+    return matched_keys
+
+
 # Standardized TTL values based on data access patterns
 class CacheTTL:
     """Standard TTL values for different types of cached data"""
@@ -160,7 +175,7 @@ def redis_cache(prefix, ttl=CacheTTL.STANDARD):
                 # Invalidate all keys with this prefix
                 pattern = f"{prefix}:*"
                 try:
-                    keys = redis_client.keys(pattern)
+                    keys = _scan_keys(pattern)
                     if keys:
                         redis_client.delete(*keys)
                         logger.debug(
@@ -244,7 +259,7 @@ def async_redis_cache(prefix, ttl=CacheTTL.STANDARD):
                 # Invalidate all keys with this prefix
                 pattern = f"{prefix}:*"
                 try:
-                    keys = redis_client.keys(pattern)
+                    keys = _scan_keys(pattern)
                     if keys:
                         redis_client.delete(*keys)
                         logger.debug(
@@ -446,7 +461,7 @@ def invalidate_user_caches(user_id: int) -> int:
 
         for pattern in patterns:
             try:
-                keys = redis_client.keys(pattern)
+                keys = _scan_keys(pattern)
                 if keys:
                     count = redis_client.delete(*keys)
                     deleted_count += count
@@ -501,7 +516,7 @@ def invalidate_subscription_caches(
 
         for pattern in patterns:
             try:
-                keys = redis_client.keys(pattern)
+                keys = _scan_keys(pattern)
                 if keys:
                     count = redis_client.delete(*keys)
                     deleted_count += count
@@ -550,7 +565,7 @@ def invalidate_favorite_caches(user_id: int) -> int:
 
         for pattern in patterns:
             try:
-                keys = redis_client.keys(pattern)
+                keys = _scan_keys(pattern)
                 if keys:
                     count = redis_client.delete(*keys)
                     deleted_count += count
