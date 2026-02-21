@@ -191,7 +191,7 @@ Critical env vars (must be in `.env`):
 ### Testing
 
 ```bash
-# Run all tests (677 tests)
+# Run all tests (683 tests)
 python -m pytest tests/ -v
 
 # Run specific test file
@@ -225,7 +225,7 @@ Grafana dashboards at `localhost:3000` when monitoring stack is running.
 
 ## Technical Debt & Audit Status
 
-A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02.md`). **All critical and high-priority items are resolved.** Phases 1-9 of remediation are complete, plus 4 additional security hardening phases.
+A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02.md`). **All critical and high-priority items are resolved.** Phases 1-9 of remediation are complete, plus 5 additional security hardening phases.
 
 ### Completed (Phases 1-9)
 - SSRF prevention, SQL injection fix, XSS fix, timing-attack fix
@@ -247,18 +247,18 @@ A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02
 - Removed `disable_web_security=True` from Camoufox browser instances
 - All vulnerable dependencies updated — **0 Dependabot alerts** (was 120)
 - Migrated aiogram v2 → v3 (3.17.0) with Router pattern across all services
-- 677 unit tests across all services (was near-zero on many)
+- 683 unit tests across all services (was near-zero on many)
 
 ### Completed (Security Hardening)
 - **Security scanning in CI** — bandit (static analysis) + pip-audit (dependency vulnerabilities) run as parallel GitHub Actions job
 - **Timezone consistency** — all `datetime.now()` / `datetime.utcnow()` replaced with `datetime.now(timezone.utc)` across ~35 files
 - **PII encryption at rest** — Fernet (AES) encryption + HMAC-SHA256 search tokens for user email/phone via `common/utils/encryption.py`; requires `ENCRYPTION_MASTER_KEY` and `ENCRYPTION_HMAC_KEY` env vars; migration script at `scripts/migrate_pii_encryption.py`
 - **Secrets management** — Docker Secrets with env var fallback via `common/utils/secrets.py`; `get_secret()` used for DB password, bot tokens, payment secrets, SMTP password, AWS secret key, encryption keys; 27 secrets defined in `docker-compose.yml`
+- **CSRF / Web hardening** — Content-Security-Policy header in nginx; Telegram WebApp guard on mini app HTML templates; `validate_telegram_init_data()` HMAC-SHA256 validation for server-side auth
+- **Docker network segmentation** — flat `app_net` replaced with 4 networks: `data_net` (DB/Redis), `edge_net` (nginx/webapps/camoufox/webcrawler), `worker_net` (scrapers/phone workers → camoufox/webcrawler), `monitoring_net` (Prometheus/Grafana/Loki/Jaeger); data-layer ports removed from production; `docker-compose.override.yml` re-exposes for dev
 
 ### Remaining (medium priority)
 - Row-Level Security on PostgreSQL
-- CSRF protection on web endpoints
-- Network segmentation in Docker
 - Batch notification dispatch
 - PostgreSQL backup strategy
 - Kubernetes migration (future)

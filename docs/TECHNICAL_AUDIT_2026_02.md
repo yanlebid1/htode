@@ -8,7 +8,7 @@
 
 ## Remediation Summary
 
-**Phases 1-9 of remediation are complete, plus a security hardening phase (Phase 10).** Of the 25 original technical debt items, 24 have been fully resolved. 1 medium-priority item remains.
+**Phases 1-9 of remediation are complete, plus security hardening (Phase 10) and CSRF/network segmentation (Phase 11).** Of the 25 original technical debt items, 24 have been fully resolved. 1 medium-priority item remains. 2 additional hardening items (CSRF protection, Docker network segmentation) have also been completed.
 
 | Category | Original | Fixed | Remaining |
 |----------|----------|-------|-----------|
@@ -185,7 +185,7 @@ All 4 critical bugs have been fixed:
 | ~~A05: Security Misconfiguration~~ | ~~Redis unauth, no HTTPS, disable_web_security~~ | **FIXED** (Phases 1, 9) |
 | ~~A06: Vulnerable Components~~ | ~~Outdated packages, floating Docker tags~~ | **FIXED** — 0 Dependabot alerts, pinned images |
 | A07: Auth Failures | Hardcoded admin IDs; no session management | Open |
-| A08: Data Integrity | No CSRF protection | Open |
+| ~~A08: Data Integrity~~ | ~~No CSRF protection~~ | **FIXED** — CSP header in nginx, Telegram WebApp guard on mini apps, initData validation (Phase 11) |
 | ~~A09: Logging Failures~~ | ~~Inconsistent logging, no aggregation~~ | **FIXED** — Structured logging + Loki (Phases 5-6) |
 | ~~A10: SSRF~~ | ~~Webcrawler accepts arbitrary URLs~~ | **FIXED** (Phase 1) |
 
@@ -358,13 +358,24 @@ Docker hardening, structured logging, dependency pinning, input validation, HTTP
 - PII encryption at rest — Fernet (AES) + HMAC-SHA256 search tokens for user email/phone via `common/utils/encryption.py`
 - Docker Secrets management — `common/utils/secrets.py` with `get_secret()` for all sensitive credentials; 27 secrets in `docker-compose.yml`
 
+### Phase 11 — CSRF Protection & Docker Network Segmentation
+
+- **Content-Security-Policy header** — added to nginx.conf (`default-src 'none'`, `script-src 'self' 'unsafe-inline'`, `frame-ancestors 'none'`, etc.)
+- **Telegram WebApp guard** — client-side check (`window.Telegram.WebApp`) on gallery and phone HTML templates; prevents casual browser access
+- **`validate_telegram_init_data()`** — server-side HMAC-SHA256 validation of Telegram initData per official docs; available for future API endpoint auth
+- **Docker network segmentation** — replaced flat `app_net` with 4 purpose-specific networks:
+  - `data_net` — PostgreSQL, PgBouncer, Redis instances, Sentinels (no host ports in production)
+  - `edge_net` — Nginx + services it reverse-proxies (webapps, camoufox, webcrawler)
+  - `worker_net` — Internal workers that call camoufox/webcrawler directly
+  - `monitoring_net` — Prometheus, Grafana, Loki, Jaeger, exporters
+- **Host port removal** — data-layer ports (PostgreSQL, Redis, PgBouncer, Sentinels) and service ports (webapps, camoufox, webcrawler) removed from production compose; re-exposed via `docker-compose.override.yml` for dev
+- **6 new tests** — initData validation (valid, invalid hash, missing hash, no token) + Telegram guard presence in HTML
+
 ### Remaining Work (Future Phases)
 
 | Priority | Task | Effort |
 |----------|------|--------|
 | High | Row-Level Security on PostgreSQL | 1 week |
-| Medium | CSRF protection on web endpoints | 2-3 days |
-| Medium | Network segmentation in Docker | 1 week |
 | Medium | Batch notification dispatch | 1 week |
 | Medium | PostgreSQL backup strategy | 1 week |
 | Low | Kubernetes migration | 4-8 weeks |
