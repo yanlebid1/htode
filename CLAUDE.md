@@ -225,7 +225,7 @@ Grafana dashboards at `localhost:3000` when monitoring stack is running.
 
 ## Technical Debt & Audit Status
 
-A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02.md`). **All critical and high-priority items are resolved.** Phases 1-9 of remediation are complete.
+A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02.md`). **All critical and high-priority items are resolved.** Phases 1-9 of remediation are complete, plus 4 additional security hardening phases.
 
 ### Completed (Phases 1-9)
 - SSRF prevention, SQL injection fix, XSS fix, timing-attack fix
@@ -249,12 +249,14 @@ A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02
 - Migrated aiogram v2 → v3 (3.17.0) with Router pattern across all services
 - 677 unit tests across all services (was near-zero on many)
 
+### Completed (Security Hardening)
+- **Security scanning in CI** — bandit (static analysis) + pip-audit (dependency vulnerabilities) run as parallel GitHub Actions job
+- **Timezone consistency** — all `datetime.now()` / `datetime.utcnow()` replaced with `datetime.now(timezone.utc)` across ~35 files
+- **PII encryption at rest** — Fernet (AES) encryption + HMAC-SHA256 search tokens for user email/phone via `common/utils/encryption.py`; requires `ENCRYPTION_MASTER_KEY` and `ENCRYPTION_HMAC_KEY` env vars; migration script at `scripts/migrate_pii_encryption.py`
+- **Secrets management** — Docker Secrets with env var fallback via `common/utils/secrets.py`; `get_secret()` used for DB password, bot tokens, payment secrets, SMTP password, AWS secret key, encryption keys; 27 secrets defined in `docker-compose.yml`
+
 ### Remaining (medium priority)
-- PII encryption at rest (phone, email stored unencrypted)
 - Row-Level Security on PostgreSQL
-- Secrets management (Vault/Docker Secrets)
-- Security scanning in CI (bandit/safety)
-- Timezone consistency (`now()` vs `utcnow()`)
 - CSRF protection on web endpoints
 - Network segmentation in Docker
 - Batch notification dispatch
