@@ -1,8 +1,7 @@
 # services/telegram_service/app/handlers/payment.py
 
-from aiogram import types
+from aiogram import types, Router, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from ..bot import dp
 from common.db.operations import get_user_by_telegram_id
 from ..payment.wayforpay import create_payment_form_url
 from ..utils.message_utils import delete_message_safe, safe_answer_callback_query
@@ -11,8 +10,10 @@ from ..utils.message_utils import delete_message_safe, safe_answer_callback_quer
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
+router = Router()
 
-@dp.message_handler(lambda msg: msg.text == "💳 Оплатити підписку")
+
+@router.message(F.text == "💳 Оплатити підписку")
 @log_operation("payment_handler")
 async def payment_handler(message: types.Message):
     """Handle subscription payment request"""
@@ -42,15 +43,14 @@ async def payment_handler(message: types.Message):
         )
 
         # Create payment keyboard with options
-        keyboard = InlineKeyboardMarkup(row_width=2)
-        keyboard.add(
-            InlineKeyboardButton("1 тиждень - 49 грн", callback_data="pay_49_1week"),
-            InlineKeyboardButton("2 тижні - 60 грн", callback_data="pay_60_2weeks"),
-        )
-        keyboard.add(
-            InlineKeyboardButton("1 місяць - 99 грн", callback_data="pay_99_1month")
-        )
-        keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="payment_back"))
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="1 тиждень - 49 грн", callback_data="pay_49_1week"),
+                InlineKeyboardButton(text="2 тижні - 60 грн", callback_data="pay_60_2weeks"),
+            ],
+            [InlineKeyboardButton(text="1 місяць - 99 грн", callback_data="pay_99_1month")],
+            [InlineKeyboardButton(text="↪️ Назад", callback_data="payment_back")],
+        ])
 
         bot_msg = await message.answer(
             "Оберіть тарифний план для оплати підписки:", reply_markup=keyboard
@@ -65,7 +65,7 @@ async def payment_handler(message: types.Message):
         )
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("pay_"))
+@router.callback_query(F.data.startswith("pay_"))
 @log_operation("process_payment")
 async def process_payment(callback_query: types.CallbackQuery):
     """Process payment button click"""
@@ -142,8 +142,9 @@ async def process_payment(callback_query: types.CallbackQuery):
             )
 
             # Send payment link
-            keyboard = InlineKeyboardMarkup()
-            keyboard.add(InlineKeyboardButton("Оплатити", url=payment_url))
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="Оплатити", url=payment_url)],
+            ])
 
             await callback_query.message.answer(
                 f"Для оплати підписки на {period} натисніть кнопку нижче:",
@@ -183,7 +184,7 @@ async def process_payment(callback_query: types.CallbackQuery):
 PAY_TRIGGER = {}
 
 
-@dp.callback_query_handler(lambda c: c.data == "payment_back")
+@router.callback_query(F.data == "payment_back")
 @log_operation("payment_back_handler")
 async def payment_back_handler(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id

@@ -1,9 +1,9 @@
 # services/telegram_service/app/handlers/phone_verification.py
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from ..bot import dp
+from aiogram import types, Router, F
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from ..utils.message_utils import (
     safe_send_message,
     safe_answer_callback_query,
@@ -28,6 +28,8 @@ from ..keyboards import (
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
+router = Router()
+
 
 class PhoneVerificationStates(StatesGroup):
     waiting_for_phone = State()
@@ -38,7 +40,7 @@ class PhoneVerificationStates(StatesGroup):
 BACK_INFO = {}
 
 
-@dp.message_handler(lambda msg: msg.text == "📱 Додати номер телефону")
+@router.message(F.text == "📱 Додати номер телефону")
 @log_operation("start_phone_verification")
 async def start_phone_verification(message: types.Message, state: FSMContext):
     """
@@ -62,7 +64,7 @@ async def start_phone_verification(message: types.Message, state: FSMContext):
             ),
             reply_markup=phone_request_keyboard(),
         )
-        await PhoneVerificationStates.waiting_for_phone.set()
+        await state.set_state(PhoneVerificationStates.waiting_for_phone)
         logger.info(
             "Phone verification state set",
             extra={"user_id": user_id, "new_state": "waiting_for_phone"},
@@ -74,9 +76,9 @@ async def start_phone_verification(message: types.Message, state: FSMContext):
         }
 
 
-@dp.message_handler(
-    lambda msg: msg.text in ["Назад", "↪️ Назад"],
-    state=PhoneVerificationStates.waiting_for_phone,
+@router.message(
+    F.text.in_(["Назад", "↪️ Назад"]),
+    PhoneVerificationStates.waiting_for_phone,
 )
 @log_operation("back_from_phone_verification")
 async def back_from_phone_verification(message: types.Message, state: FSMContext):
@@ -106,12 +108,12 @@ async def back_from_phone_verification(message: types.Message, state: FSMContext
         )
 
         # Clear the state and go back to the main flow
-        await state.finish()
+        await state.clear()
 
 
-@dp.message_handler(
-    content_types=types.ContentType.CONTACT,
-    state=PhoneVerificationStates.waiting_for_phone,
+@router.message(
+    F.contact,
+    PhoneVerificationStates.waiting_for_phone,
 )
 @log_operation("handle_contact")
 async def handle_contact(message: types.Message, state: FSMContext):
@@ -133,7 +135,7 @@ async def handle_contact(message: types.Message, state: FSMContext):
         await process_phone_number(message, state, phone_number)
 
 
-@dp.message_handler(state=PhoneVerificationStates.waiting_for_phone)
+@router.message(PhoneVerificationStates.waiting_for_phone)
 @log_operation("handle_phone_text")
 async def handle_phone_text(message: types.Message, state: FSMContext):
     """
@@ -195,7 +197,7 @@ async def process_phone_number(
                 text="Помилка при створенні коду підтвердження. Спробуйте ще раз.",
                 reply_markup=main_menu_keyboard(),
             )
-            await state.finish()
+            await state.clear()
             return
 
         # In a production environment, you would send this code via SMS
@@ -211,16 +213,16 @@ async def process_phone_number(
         )
 
         # Move to the next state
-        await PhoneVerificationStates.waiting_for_code.set()
+        await state.set_state(PhoneVerificationStates.waiting_for_code)
         logger.info(
             "Moved to waiting_for_code state",
             extra={"user_id": user_id, "phone_number": phone_number},
         )
 
 
-@dp.message_handler(
-    lambda msg: msg.text in ["Назад", "↪️ Назад"],
-    state=PhoneVerificationStates.waiting_for_code,
+@router.message(
+    F.text.in_(["Назад", "↪️ Назад"]),
+    PhoneVerificationStates.waiting_for_code,
 )
 @log_operation("back_from_code_verification")
 async def back_from_code_verification(message: types.Message, state: FSMContext):
@@ -252,10 +254,10 @@ async def back_from_code_verification(message: types.Message, state: FSMContext)
         )
 
         # Go back to phone entry state
-        await PhoneVerificationStates.waiting_for_phone.set()
+        await state.set_state(PhoneVerificationStates.waiting_for_phone)
 
 
-@dp.message_handler(state=PhoneVerificationStates.waiting_for_code)
+@router.message(PhoneVerificationStates.waiting_for_code)
 @log_operation("handle_verification_code")
 async def handle_verification_code(message: types.Message, state: FSMContext):
     """
@@ -274,7 +276,7 @@ async def handle_verification_code(message: types.Message, state: FSMContext):
                 chat_id=message.chat.id,
                 text="Сталася помилка. Будь ласка, спробуйте знову.",
             )
-            await state.finish()
+            await state.clear()
             return
 
         logger.info(
@@ -367,7 +369,7 @@ async def handle_verification_code(message: types.Message, state: FSMContext):
                 chat_id=message.chat.id,
                 text="Помилка при перевірці користувача. Спробуйте ще раз.",
             )
-            await state.finish()
+            await state.clear()
             return
 
         # Get the current user's ID in our database
@@ -405,17 +407,19 @@ async def handle_verification_code(message: types.Message, state: FSMContext):
                     "Цей номер телефону вже пов'язаний з іншим обліковим записом.\n\n"
                     "Бажаєте об'єднати дані з вашого поточного облікового запису з цим номером телефону?"
                 ),
-                reply_markup=types.InlineKeyboardMarkup().add(
-                    types.InlineKeyboardButton(
-                        "Так, об'єднати", callback_data="merge_accounts"
-                    ),
-                    types.InlineKeyboardButton(
-                        "Ні, скасувати", callback_data="cancel_merge"
-                    ),
-                ),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Так, об'єднати", callback_data="merge_accounts"
+                        ),
+                        InlineKeyboardButton(
+                            text="Ні, скасувати", callback_data="cancel_merge"
+                        ),
+                    ],
+                ]),
             )
 
-            await PhoneVerificationStates.waiting_for_confirmation.set()
+            await state.set_state(PhoneVerificationStates.waiting_for_confirmation)
         else:
             # No conflict, proceed with linking
             await handle_account_linking(
@@ -423,9 +427,9 @@ async def handle_verification_code(message: types.Message, state: FSMContext):
             )
 
 
-@dp.callback_query_handler(
-    lambda c: c.data == "merge_accounts",
-    state=PhoneVerificationStates.waiting_for_confirmation,
+@router.callback_query(
+    F.data == "merge_accounts",
+    PhoneVerificationStates.waiting_for_confirmation,
 )
 @log_operation("confirm_merge_accounts")
 async def confirm_merge_accounts(
@@ -478,7 +482,7 @@ async def confirm_merge_accounts(
                     text="Помилка при об'єднанні даних. Спробуйте ще раз.",
                     reply_markup=main_menu_keyboard(),
                 )
-                await state.finish()
+                await state.clear()
                 await safe_answer_callback_query(callback_query.id)
                 return
 
@@ -508,7 +512,7 @@ async def confirm_merge_accounts(
                 text="Помилка при об'єднанні облікових записів. Спробуйте ще раз.",
                 reply_markup=main_menu_keyboard(),
             )
-            await state.finish()
+            await state.clear()
             await safe_answer_callback_query(callback_query.id)
             return
 
@@ -521,13 +525,13 @@ async def confirm_merge_accounts(
             reply_markup=verification_success_keyboard(),
         )
 
-        await state.finish()
+        await state.clear()
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data == "cancel_merge",
-    state=PhoneVerificationStates.waiting_for_confirmation,
+@router.callback_query(
+    F.data == "cancel_merge",
+    PhoneVerificationStates.waiting_for_confirmation,
 )
 @log_operation("cancel_merge_accounts")
 async def cancel_merge_accounts(callback_query: types.CallbackQuery, state: FSMContext):
@@ -551,7 +555,7 @@ async def cancel_merge_accounts(callback_query: types.CallbackQuery, state: FSMC
             reply_markup=main_menu_keyboard(),
         )
 
-        await state.finish()
+        await state.clear()
         await safe_answer_callback_query(callback_query.id)
 
 
@@ -605,7 +609,7 @@ async def handle_account_linking(
                 text="Помилка при прив'язці номера телефону. Спробуйте ще раз.",
                 reply_markup=main_menu_keyboard(),
             )
-            await state.finish()
+            await state.clear()
             return
 
         await safe_send_message(
@@ -617,4 +621,4 @@ async def handle_account_linking(
             reply_markup=verification_success_keyboard(),
         )
 
-        await state.finish()
+        await state.clear()

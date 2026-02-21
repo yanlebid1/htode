@@ -1,7 +1,7 @@
 # services/telegram_service/app/bot.py
 
 from aiogram import Bot, Dispatcher
-from aiogram.contrib.fsm_storage.redis import RedisStorage2
+from aiogram.fsm.storage.redis import RedisStorage
 from common.config import TELEGRAM_TOKEN, REDIS_URL
 import os
 
@@ -25,8 +25,8 @@ logger.info(
 
 try:
     bot = Bot(token=TELEGRAM_TOKEN)
-    storage = RedisStorage2(host=REDIS_HOST, port=REDIS_PORT, db=1, prefix="fsm")
-    dp = Dispatcher(bot, storage=storage)
+    storage = RedisStorage.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}/1")
+    dp = Dispatcher(storage=storage)
     logger.info("Telegram bot initialized successfully with Redis cluster")
 except Exception as e:
     logger.error(

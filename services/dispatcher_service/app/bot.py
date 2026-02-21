@@ -1,7 +1,7 @@
 # services/dispatcher_service/app/bot.py
 
 from aiogram import Bot, Dispatcher
-from aiogram.contrib.fsm_storage.redis import RedisStorage2
+from aiogram.fsm.storage.redis import RedisStorage
 from common.config_multibot import multibot_config
 from common.config import REDIS_URL
 import os
@@ -35,18 +35,13 @@ logger.info(
 
 try:
     bot = Bot(token=dispatcher_config['token'])
-    storage = RedisStorage2(
-        host=REDIS_HOST, 
-        port=REDIS_PORT, 
-        db=2,  # Different DB for dispatcher
-        prefix="dispatcher_fsm"
-    )
-    dp = Dispatcher(bot, storage=storage)
+    storage = RedisStorage.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}/2")
+    dp = Dispatcher(storage=storage)
     logger.info("Dispatcher bot initialized successfully")
 except Exception as e:
     logger.error(
-        "Failed to initialize Dispatcher bot", 
-        exc_info=True, 
+        "Failed to initialize Dispatcher bot",
+        exc_info=True,
         extra={"error": str(e)}
     )
-    raise 
+    raise

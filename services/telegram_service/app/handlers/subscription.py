@@ -1,7 +1,7 @@
 # services/telegram_service/app/handlers/subscription.py
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
+from aiogram import types, Router, F
+from aiogram.fsm.context import FSMContext
 
 from common.db.session import db_session
 from common.db.repositories.subscription_repository import SubscriptionRepository
@@ -10,7 +10,7 @@ from common.db.models.subscription import UserFilter
 from common.utils.cache_managers import SubscriptionCacheManager, UserCacheManager
 from common.utils.cache import get_entity_cache_key
 
-from ..bot import dp, bot
+from ..bot import bot
 from common.config import GEO_ID_MAPPING
 from ..keyboards import (
     main_menu_keyboard,
@@ -31,11 +31,13 @@ from common.db.operations import create_telegram_user
 from common.messaging.keyboard_utils import AVAILABLE_CITIES
 from ..states.basis_states import FilterStates
 
+router = Router()
+
 # Map telegram_id to message_id of user trigger for subs list
 TRIGGER_MSG_MAP = {}
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("sub_open:"))
+@router.callback_query(F.data.startswith("sub_open:"))
 @log_operation("handle_sub_open")
 async def handle_sub_open(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
@@ -147,36 +149,38 @@ async def handle_sub_open(callback_query: types.CallbackQuery):
             )
 
             # Build an inline keyboard with Pause/Resume, Delete, Edit, Back
-            kb = InlineKeyboardMarkup()
+            rows = []
             if sub_dict["is_paused"]:
-                kb.add(
+                rows.append([
                     InlineKeyboardButton(
-                        "Відновити", callback_data=f"sub_resume:{sub_id}:{page}"
+                        text="Відновити", callback_data=f"sub_resume:{sub_id}:{page}"
                     )
-                )
+                ])
             else:
-                kb.add(
+                rows.append([
                     InlineKeyboardButton(
-                        "Зупинити", callback_data=f"sub_pause:{sub_id}:{page}"
+                        text="Зупинити", callback_data=f"sub_pause:{sub_id}:{page}"
                     )
-                )
+                ])
 
-            kb.add(
+            rows.append([
                 InlineKeyboardButton(
-                    "Видалити", callback_data=f"sub_delete:{sub_id}:{page}"
+                    text="Видалити", callback_data=f"sub_delete:{sub_id}:{page}"
                 ),
                 InlineKeyboardButton(
-                    "Редагувати", callback_data=f"sub_edit:{sub_id}:{page}"
+                    text="Редагувати", callback_data=f"sub_edit:{sub_id}:{page}"
                 ),
-            )
+            ])
             # "Back to list"
-            kb.add(InlineKeyboardButton("<< Назад", callback_data=f"subs_page:{page}"))
+            rows.append([InlineKeyboardButton(text="<< Назад", callback_data=f"subs_page:{page}")])
+
+            kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
             await callback_query.message.edit_text(text, reply_markup=kb)
             await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("sub_pause:"))
+@router.callback_query(F.data.startswith("sub_pause:"))
 @log_operation("handle_sub_pause")
 async def handle_sub_pause(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
@@ -247,7 +251,7 @@ async def handle_sub_pause(callback_query: types.CallbackQuery):
         await handle_sub_open(callback_query)
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("sub_resume:"))
+@router.callback_query(F.data.startswith("sub_resume:"))
 @log_operation("handle_sub_resume")
 async def handle_sub_resume(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
@@ -312,7 +316,7 @@ async def handle_sub_resume(callback_query: types.CallbackQuery):
         await handle_sub_open(callback_query)
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("sub_delete:"))
+@router.callback_query(F.data.startswith("sub_delete:"))
 @log_operation("handle_sub_delete")
 async def handle_sub_delete(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
@@ -376,7 +380,7 @@ async def handle_sub_delete(callback_query: types.CallbackQuery):
         await handle_subs_page(callback_query)
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("sub_edit:"))
+@router.callback_query(F.data.startswith("sub_edit:"))
 @log_operation("handle_sub_edit")
 async def handle_sub_edit(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id
@@ -429,7 +433,6 @@ async def handle_sub_edit(callback_query: types.CallbackQuery, state: FSMContext
         except Exception:
             pass
 
-        state: FSMContext  # type hint
         await state.update_data(
             user_db_id=db_user_id,
             telegram_id=telegram_id,
@@ -450,12 +453,12 @@ async def handle_sub_edit(callback_query: types.CallbackQuery, state: FSMContext
         )
 
         # Set state so that existing edit handlers continue the flow
-        await FilterStates.waiting_for_confirmation.set()
+        await state.set_state(FilterStates.waiting_for_confirmation)
 
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("subs_page:"))
+@router.callback_query(F.data.startswith("subs_page:"))
 @log_operation("handle_subs_page")
 async def handle_subs_page(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
@@ -537,7 +540,7 @@ async def handle_subs_page(callback_query: types.CallbackQuery):
         await callback_query.answer()
 
 
-@dp.message_handler(lambda msg: msg.text and msg.text.strip() == "📝 Мої підписки")
+@router.message(F.text.strip() == "📝 Мої підписки")
 @log_operation("show_subscriptions_menu")
 async def show_subscriptions_menu(message: types.Message):
     telegram_id = message.from_user.id
@@ -626,7 +629,7 @@ async def show_subscriptions_menu(message: types.Message):
         await message.answer("Ваші підписки:", reply_markup=kb)
 
 
-@dp.callback_query_handler(lambda c: c.data == "menu_my_subscription")
+@router.callback_query(F.data == "menu_my_subscription")
 @log_operation("my_subscription_handler")
 async def my_subscription_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -718,7 +721,7 @@ async def my_subscription_handler(callback_query: types.CallbackQuery):
             )
 
 
-@dp.callback_query_handler(lambda c: c.data == "subs_disable")
+@router.callback_query(F.data == "subs_disable")
 @log_operation("disable_subscription_handler")
 async def disable_subscription_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -763,7 +766,7 @@ async def disable_subscription_handler(callback_query: types.CallbackQuery):
                 await callback_query.answer("Підписка не знайдена.")
 
 
-@dp.callback_query_handler(lambda c: c.data == "subs_enable")
+@router.callback_query(F.data == "subs_enable")
 @log_operation("enable_subscription_handler")
 async def enable_subscription_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -808,7 +811,7 @@ async def enable_subscription_handler(callback_query: types.CallbackQuery):
                 await callback_query.answer("Підписка не знайдена.")
 
 
-@dp.message_handler(lambda msg: msg.text == "🛑 Відключити")
+@router.message(F.text == "🛑 Відключити")
 @log_operation("handle_disable_subscription")
 async def handle_disable_subscription(message: types.Message):
     user_id = message.from_user.id
@@ -853,7 +856,7 @@ async def handle_disable_subscription(message: types.Message):
                 await message.answer("Підписка не знайдена.")
 
 
-@dp.message_handler(lambda msg: msg.text == "✅ Включити")
+@router.message(F.text == "✅ Включити")
 @log_operation("handle_enable_subscription")
 async def handle_enable_subscription(message: types.Message):
     user_id = message.from_user.id
@@ -897,7 +900,7 @@ async def handle_enable_subscription(message: types.Message):
                 await message.answer("Підписка не знайдена.")
 
 
-@dp.message_handler(lambda msg: msg.text == "📝 Моя підписка")
+@router.message(F.text == "📝 Моя підписка")
 @log_operation("handle_my_subscription")
 async def handle_my_subscription(message: types.Message):
     """
@@ -1001,7 +1004,7 @@ async def handle_my_subscription(message: types.Message):
         await message.answer(text, reply_markup=subscription_menu_keyboard())
 
 
-@dp.callback_query_handler(lambda c: c.data == "subs_close")
+@router.callback_query(F.data == "subs_close")
 @log_operation("handle_subs_close")
 async def handle_subs_close(callback_query: types.CallbackQuery):
     """Close the subscriptions list by deleting the message."""
@@ -1023,7 +1026,7 @@ async def handle_subs_close(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data == "subs_new")
+@router.callback_query(F.data == "subs_new")
 @log_operation("handle_new_subscription")
 async def handle_new_subscription(
     callback_query: types.CallbackQuery, state: FSMContext
@@ -1051,5 +1054,5 @@ async def handle_new_subscription(
             )
 
         # Set state so that the existing city handler continues the flow
-        await FilterStates.waiting_for_city.set()
+        await state.set_state(FilterStates.waiting_for_city)
         await safe_answer_callback_query(callback_query.id)

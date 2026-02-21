@@ -1,13 +1,12 @@
 # services/telegram_service/app/handlers/menu_handlers.py
 import decimal
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import Text
+from aiogram import types, Router, F
+from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command, StateFilter
 
 from common.db.session import db_session
 from common.utils.cache import redis_cache
-from ..bot import dp
 from ..states.basis_states import FilterStates
 from common.db.operations import (
     start_free_subscription_of_user,
@@ -36,13 +35,15 @@ from ..keyboards import (
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
+router = Router()
+
 # Stores ids of trigger messages (how it works)
 TRIGGER_INFO = {}
 # Stores last sent main-menu message id per user so we can delete it before sending a new one
 MAIN_MENU_MESSAGES = {}
 
 
-@dp.message_handler(commands=["menu"])
+@router.message(Command("menu"))
 @log_operation("show_main_menu")
 async def show_main_menu(message: types.Message):
     """
@@ -58,7 +59,7 @@ async def show_main_menu(message: types.Message):
         await send_main_menu(user_id)
 
 
-@dp.callback_query_handler(lambda c: c.data == "edit_parameters")
+@router.callback_query(F.data == "edit_parameters")
 @log_operation("edit_parameters")
 async def edit_parameters(callback_query: types.CallbackQuery, state: FSMContext):
     """
@@ -76,7 +77,7 @@ async def edit_parameters(callback_query: types.CallbackQuery, state: FSMContext
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.message_handler(lambda msg: msg.text == "✏️ Редагувати")
+@router.message(F.text == "✏️ Редагувати")
 @log_operation("handle_edit_button")
 async def handle_edit_button(message: types.Message):
     """
@@ -93,7 +94,7 @@ async def handle_edit_button(message: types.Message):
         )
 
 
-@dp.callback_query_handler(lambda c: c.data == "subs_back")
+@router.callback_query(F.data == "subs_back")
 @log_operation("subscription_back_handler")
 async def subscription_back_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -106,7 +107,7 @@ async def subscription_back_handler(callback_query: types.CallbackQuery):
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(lambda c: c.data == "menu_how_to_use")
+@router.callback_query(F.data == "menu_how_to_use")
 @log_operation("how_to_use_handler")
 async def how_to_use_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -134,7 +135,7 @@ async def how_to_use_handler(callback_query: types.CallbackQuery):
         }
 
 
-@dp.callback_query_handler(lambda c: c.data == "contact_support")
+@router.callback_query(F.data == "contact_support")
 @log_operation("contact_support_handler")
 async def contact_support_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -150,7 +151,7 @@ async def contact_support_handler(callback_query: types.CallbackQuery):
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(lambda c: c.data == "menu_tech_support")
+@router.callback_query(F.data == "menu_tech_support")
 @log_operation("menu_tech_support_handler")
 async def menu_tech_support_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -166,7 +167,7 @@ async def menu_tech_support_handler(callback_query: types.CallbackQuery):
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(lambda c: c.data == "main_menu")
+@router.callback_query(F.data == "main_menu")
 @log_operation("back_to_main_menu_handler")
 async def back_to_main_menu_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -177,8 +178,8 @@ async def back_to_main_menu_handler(callback_query: types.CallbackQuery):
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    Text(startswith="subscribe"), state=FilterStates.waiting_for_confirmation
+@router.callback_query(
+    F.data.startswith("subscribe"), FilterStates.waiting_for_confirmation
 )
 @log_operation("subscribe")
 async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
@@ -388,7 +389,7 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
             )
 
         # 4) End the state
-        await state.finish()
+        await state.clear()
         await safe_answer_callback_query(callback_query.id)
 
         # 5) Optional: send a task to do further real-time scraping or notification
@@ -408,7 +409,7 @@ async def subscribe(callback_query: types.CallbackQuery, state: FSMContext):
         )
 
 
-@dp.callback_query_handler(lambda c: c.data == "unsubscribe", state="*")
+@router.callback_query(F.data == "unsubscribe")
 @log_operation("unsubscribe_callback")
 async def unsubscribe_callback(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
@@ -433,8 +434,7 @@ async def unsubscribe_callback(callback_query: types.CallbackQuery, state: FSMCo
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.message_handler(state="*", commands="cancel")
-@dp.message_handler(Text(equals="cancel", ignore_case=True), state="*")
+@router.message(Command("cancel"))
 @log_operation("cancel_handler")
 async def cancel_handler(message: types.Message, state: FSMContext):
     """Дозволяє користувачеві скасувати будь-яку дію"""
@@ -450,7 +450,7 @@ async def cancel_handler(message: types.Message, state: FSMContext):
             extra={"user_id": user_id, "current_state": current_state},
         )
 
-        await state.finish()
+        await state.clear()
         await safe_send_message(
             chat_id=message.from_user.id,
             text="Дія скасована.",
@@ -546,7 +546,7 @@ def fetch_ads_for_period(filters, days, limit=3):
             return []
 
 
-@dp.message_handler(lambda msg: msg.text == "🤔 Як це працює?")
+@router.message(F.text == "🤔 Як це працює?")
 @log_operation("handle_how_to_use")
 async def handle_how_to_use(message: types.Message):
     user_id = message.from_user.id
@@ -571,11 +571,11 @@ async def handle_how_to_use(message: types.Message):
         }
 
 
-@dp.message_handler(lambda msg: msg.text == "↪️ Назад", state="*")
+@router.message(F.text == "↪️ Назад")
 @log_operation("handle_back")
 async def handle_back(message: types.Message, state: FSMContext):
     """
-    Universal handler for the "↪️ Назад" button.
+    Universal handler for the "Back" button.
 
     1. Closes any active FSM state.
     2. Cleans up messages stored by different sub-flows (TRIGGER_INFO or Phone Verification BACK_INFO).
@@ -594,7 +594,7 @@ async def handle_back(message: types.Message, state: FSMContext):
         current_state = await state.get_state()
         if current_state:
             try:
-                await state.finish()
+                await state.clear()
                 logger.debug(
                     "FSM state finished",
                     extra={"user_id": user_id, "old_state": current_state},
@@ -642,7 +642,7 @@ async def handle_back(message: types.Message, state: FSMContext):
         await send_main_menu(user_id)
 
 
-@dp.message_handler(lambda msg: msg.text == "➕ Додати підписку")
+@router.message(F.text == "➕ Додати підписку")
 @log_operation("add_subscription_prompt")
 async def add_subscription_prompt(message: types.Message):
     """

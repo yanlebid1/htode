@@ -1,35 +1,35 @@
 # services/telegram_service/app/error_handler.py
 
 import asyncio
-from aiogram.utils.exceptions import (
-    MessageNotModified,
-    CantParseEntities,
-    NetworkError,
-    RetryAfter,
-    BadRequest,
-    Unauthorized,
-    InvalidQueryID,
+from aiogram import Router
+from aiogram.types import ErrorEvent
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramNetworkError,
+    TelegramRetryAfter,
+    TelegramForbiddenError,
+    TelegramNotFound,
+    TelegramUnauthorizedError,
     TelegramAPIError,
-    MessageToDeleteNotFound,
-    BotBlocked,
-    MessageToEditNotFound,
-    ChatNotFound,
-    UserDeactivated,
-    MigrateToChat,
+    TelegramMigrateToChat,
 )
-from .bot import dp, bot
+from .bot import bot
 
 # Import service logger
 from . import logger
 from common.utils.logging_config import log_context
 
+router = Router()
 
-@dp.errors_handler()
-async def errors_handler(update, exception):
+
+@router.errors()
+async def errors_handler(event: ErrorEvent):
     """
     Global error handler for all updates.
     Returns True if the error was handled, False otherwise.
     """
+    update = event.update
+    exception = event.exception
 
     # Log the update that caused the error
     update_str = str(update) if update else "No update"
@@ -54,17 +54,20 @@ async def errors_handler(update, exception):
 
     # Handle specific exceptions
     with log_context(logger, chat_id=chat_id, user_id=user_id, update=update_str):
-        if isinstance(exception, MessageNotModified):
+        # MessageNotModified -> TelegramBadRequest with "message is not modified"
+        if isinstance(exception, TelegramBadRequest) and "message is not modified" in str(exception).lower():
             # This happens when the message content has not changed
             logger.warning("Message not modified", extra={"context": context})
             return True
 
-        if isinstance(exception, MessageToEditNotFound):
+        # MessageToEditNotFound -> TelegramBadRequest with "message to edit not found"
+        if isinstance(exception, TelegramBadRequest) and "message to edit not found" in str(exception).lower():
             # Message to edit not found
             logger.warning("Message to edit not found", extra={"context": context})
             return True
 
-        if isinstance(exception, CantParseEntities):
+        # CantParseEntities -> TelegramBadRequest with "can't parse entities"
+        if isinstance(exception, TelegramBadRequest) and "can't parse entities" in str(exception).lower():
             # Markdown or HTML formatting issue
             logger.error("CantParseEntities", extra={"exception": str(exception), "context": context})
             try:
@@ -78,61 +81,57 @@ async def errors_handler(update, exception):
                 logger.error("Failed to send error message", extra={"error": str(e)})
             return True
 
-        if isinstance(exception, RetryAfter):
+        if isinstance(exception, TelegramRetryAfter):
             # Flood control - wait the specified time before retrying
-            retry_after = exception.timeout
+            retry_after = exception.retry_after
             logger.warning("RetryAfter", extra={"retry_after": retry_after, "context": context})
             await asyncio.sleep(retry_after)
             return True
 
-        if isinstance(exception, BotBlocked):
-            # User blocked the bot
-            logger.info("Bot blocked by user", extra={"context": context})
+        if isinstance(exception, TelegramForbiddenError):
+            # User blocked the bot or user deactivated
+            logger.info("Bot blocked or user deactivated", extra={"context": context})
             # You could remove the user from your active users database here
             return True
 
-        if isinstance(exception, ChatNotFound):
+        if isinstance(exception, TelegramNotFound):
             # Chat not found
             logger.info("Chat not found", extra={"context": context})
             return True
 
-        if isinstance(exception, UserDeactivated):
-            # User account deleted
-            logger.info("User deactivated", extra={"context": context})
-            # You could remove the user from your active users database here
-            return True
-
-        if isinstance(exception, MigrateToChat):
+        if isinstance(exception, TelegramMigrateToChat):
             # Group migrated to supergroup
             logger.info("Group migrated to supergroup", extra={"new_chat_id": exception.migrate_to_chat_id, "context": context})
             # You could update the chat ID in your database here
             return True
 
-        if isinstance(exception, NetworkError):
+        if isinstance(exception, TelegramNetworkError):
             # Network issues - log and let it retry
             logger.error("NetworkError", extra={"exception": str(exception), "context": context})
             # Consider implementing an exponential backoff retry here
             await asyncio.sleep(1)  # Simple delay before retry
             return True
 
-        if isinstance(exception, BadRequest):
-            # Bad request to Telegram API
-            logger.error("BadRequest", extra={"exception": str(exception), "context": context})
-            return True
-
-        if isinstance(exception, Unauthorized):
-            # User removed the bot or bot was never authorized
-            logger.warning("Unauthorized", extra={"exception": str(exception), "context": context})
-            return True
-
-        if isinstance(exception, InvalidQueryID):
+        # InvalidQueryID -> TelegramBadRequest with "query is too old"
+        if isinstance(exception, TelegramBadRequest) and "query is too old" in str(exception).lower():
             # Expired button press
             logger.warning("InvalidQueryID", extra={"exception": str(exception), "context": context})
             return True
 
-        if isinstance(exception, MessageToDeleteNotFound):
+        # MessageToDeleteNotFound -> TelegramBadRequest with "message to delete not found"
+        if isinstance(exception, TelegramBadRequest) and "message to delete not found" in str(exception).lower():
             # Message to delete not found
             logger.warning("MessageToDeleteNotFound", extra={"exception": str(exception), "context": context})
+            return True
+
+        if isinstance(exception, TelegramBadRequest):
+            # Bad request to Telegram API (catch-all for remaining TelegramBadRequest)
+            logger.error("BadRequest", extra={"exception": str(exception), "context": context})
+            return True
+
+        if isinstance(exception, TelegramUnauthorizedError):
+            # User removed the bot or bot was never authorized
+            logger.warning("Unauthorized", extra={"exception": str(exception), "context": context})
             return True
 
         # For other Telegram API errors

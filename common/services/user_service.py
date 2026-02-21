@@ -116,6 +116,11 @@ class UserService:
                     user_id = user.id
                     end_date = user.subscription_until.strftime("%d.%m.%Y")
 
+                    # Determine plural form
+                    days_word = (
+                        "день" if days == 1 else "дні" if days < 5 else "днів"
+                    )
+
                     # Determine template based on days remaining
                     if days == 1:
                         template = (
@@ -124,10 +129,6 @@ class UserService:
                             "Щоб не втратити доступ до сервісу, оновіть підписку зараз."
                         )
                     else:
-                        # Determine plural form
-                        days_word = (
-                            "день" if days == 1 else "дні" if days < 5 else "днів"
-                        )
                         template = (
                             "⚠️ Нагадування про підписку\n\n"
                             "Ваша підписка закінчується через {days} "

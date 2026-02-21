@@ -1,10 +1,11 @@
 # services/dispatcher_service/app/main.py
 
-from aiogram import executor
-from .bot import dp
+import asyncio
+from .bot import dp, bot
 
-# Import handlers to register them
-from . import handlers
+# Import and register handler router
+from .handlers import router as handlers_router
+dp.include_router(handlers_router)
 
 # Import service logger
 from . import logger
@@ -15,14 +16,14 @@ from common.utils.logging_config import log_operation
 def main():
     """Start the Dispatcher bot"""
     logger.info("Starting Dispatcher bot...")
-    
+
     try:
         # Start polling
-        executor.start_polling(dp, skip_updates=True)
+        asyncio.run(_start_polling())
     except Exception as e:
         logger.error(
-            "Dispatcher bot startup failed", 
-            exc_info=True, 
+            "Dispatcher bot startup failed",
+            exc_info=True,
             extra={"error": str(e)}
         )
         raise
@@ -30,5 +31,9 @@ def main():
         logger.info("Dispatcher bot stopped")
 
 
+async def _start_polling():
+    await dp.start_polling(bot, skip_updates=True)
+
+
 if __name__ == "__main__":
-    main() 
+    main()

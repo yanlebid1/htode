@@ -2,80 +2,103 @@
 
 import pytest
 import json
-from unittest.mock import MagicMock
-from common.unified_state_management import state_manager as RedisStateManager
+from unittest.mock import MagicMock, patch
 
 
-@pytest.mark.asyncio
-async def test_state_manager_get_state(mock_redis):
-    """Test that get_state works correctly."""
-    # Mock Redis get
-    mock_redis.get.return_value = json.dumps(
-        {"state": "test_state", "data": "test_data"}
+@pytest.fixture
+def mock_state_redis():
+    """Provide a mock Redis client for the StateManager."""
+    mock_redis = MagicMock()
+    with patch("common.unified_state_management.get_state_redis", create=True) as mock_get:
+        mock_get.return_value = mock_redis
+        yield mock_redis
+
+
+@pytest.fixture
+def state_manager(mock_state_redis):
+    """Create a StateManager instance with mocked Redis."""
+    with patch("common.utils.redis_cluster_manager.get_state_redis", return_value=mock_state_redis):
+        from common.unified_state_management import StateManager
+        sm = StateManager.__new__(StateManager)
+        sm.redis = mock_state_redis
+        sm.prefix = "test"
+        sm.default_ttl = 86400
+        sm.platform_handlers = {}
+        return sm
+
+
+async def test_get_state_returns_parsed_json(state_manager, mock_state_redis):
+    """Test that get_state returns parsed JSON from Redis."""
+    mock_state_redis.get.return_value = json.dumps(
+        {"state": "searching", "data": "some_data"}
     ).encode()
 
-    state_manager = RedisStateManager(prefix="test")
-    state = await state_manager.get_state("test_user")
+    state = await state_manager.get_state("user123")
 
-    assert state == {"state": "test_state", "data": "test_data"}
-    mock_redis.get.assert_called_once_with("test:test_user")
+    assert state == {"state": "searching", "data": "some_data"}
+    mock_state_redis.get.assert_called_once_with("test:user123")
 
 
-@pytest.mark.asyncio
-async def test_state_manager_get_state_none(mock_redis):
+async def test_get_state_returns_none_when_missing(state_manager, mock_state_redis):
     """Test that get_state returns None when no state exists."""
-    # Mock Redis get returning None
-    mock_redis.get.return_value = None
+    mock_state_redis.get.return_value = None
 
-    state_manager = RedisStateManager(prefix="test")
-    state = await state_manager.get_state("test_user")
+    state = await state_manager.get_state("user123")
 
     assert state is None
-    mock_redis.get.assert_called_once_with("test:test_user")
 
 
-@pytest.mark.asyncio
-async def test_state_manager_set_state(mock_redis):
-    """Test that set_state works correctly."""
-    state_manager = RedisStateManager(prefix="test")
-    await state_manager.set_state(
-        "test_user", {"state": "test_state", "data": "test_data"}
-    )
+async def test_set_state_writes_to_redis(state_manager, mock_state_redis):
+    """Test that set_state serializes and writes to Redis with TTL."""
+    await state_manager.set_state("user123", {"state": "new_state"})
 
-    mock_redis.setex.assert_called_once()
-    # Check the key
-    args, _ = mock_redis.setex.call_args
-    assert args[0] == "test:test_user"
-    # Check the serialized state
-    assert json.loads(args[2]) == {"state": "test_state", "data": "test_data"}
+    mock_state_redis.setex.assert_called_once()
+    args, _ = mock_state_redis.setex.call_args
+    assert args[0] == "test:user123"
+    assert args[1] == 86400  # default TTL
+    assert json.loads(args[2]) == {"state": "new_state"}
 
 
-@pytest.mark.asyncio
-async def test_state_manager_update_state(mock_redis, monkeypatch):
-    """Test that update_state works correctly."""
-    # Mock get_state and set_state
-    get_state_mock = MagicMock(return_value={"state": "old_state", "data": "old_data"})
-    set_state_mock = MagicMock(return_value=True)
+async def test_clear_state_deletes_key(state_manager, mock_state_redis):
+    """Test that clear_state deletes the Redis key."""
+    await state_manager.clear_state("user123")
 
-    state_manager = RedisStateManager(prefix="test")
-    monkeypatch.setattr(state_manager, "get_state", get_state_mock)
-    monkeypatch.setattr(state_manager, "set_state", set_state_mock)
-
-    await state_manager.update_state("test_user", {"state": "new_state"})
-
-    # Verify get_state was called
-    get_state_mock.assert_called_once_with("test_user")
-    # Verify set_state was called with merged state
-    set_state_mock.assert_called_once()
-    args, _ = set_state_mock.call_args
-    assert args[0] == "test_user"
-    assert args[1] == {"state": "new_state", "data": "old_data"}
+    mock_state_redis.delete.assert_called_once_with("test:user123")
 
 
-@pytest.mark.asyncio
-async def test_state_manager_clear_state(mock_redis):
-    """Test that clear_state works correctly."""
-    state_manager = RedisStateManager(prefix="test")
-    await state_manager.clear_state("test_user")
+def test_get_state_sync(state_manager, mock_state_redis):
+    """Test the synchronous get_state_sync method."""
+    mock_state_redis.get.return_value = json.dumps({"state": "active"}).encode()
 
-    mock_redis.delete.assert_called_once_with("test:test_user")
+    state = state_manager.get_state_sync("user123")
+
+    assert state == {"state": "active"}
+    mock_state_redis.get.assert_called_once_with("test:user123")
+
+
+def test_set_state_sync(state_manager, mock_state_redis):
+    """Test the synchronous set_state_sync method."""
+    result = state_manager.set_state_sync("user123", {"state": "idle"})
+
+    assert result is True
+    mock_state_redis.setex.assert_called_once()
+
+
+def test_clear_state_sync(state_manager, mock_state_redis):
+    """Test the synchronous clear_state_sync method."""
+    result = state_manager.clear_state_sync("user123")
+
+    assert result is True
+    mock_state_redis.delete.assert_called_once_with("test:user123")
+
+
+def test_get_key_with_platform(state_manager):
+    """Test that _get_key includes platform in the key."""
+    key = state_manager._get_key("user123", platform="telegram")
+    assert key == "test:telegram:user123"
+
+
+def test_get_key_without_platform(state_manager):
+    """Test that _get_key works without platform."""
+    key = state_manager._get_key("user123")
+    assert key == "test:user123"

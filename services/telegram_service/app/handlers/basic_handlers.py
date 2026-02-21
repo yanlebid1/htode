@@ -1,11 +1,10 @@
 # services/telegram_service/app/handlers/basic_handlers.py
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import Text
-from aiogram.types import ParseMode
+from aiogram import types, Router, F
+from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command, StateFilter
+from aiogram.enums import ParseMode
 
-from ..bot import dp
 from ..states.basis_states import FilterStates
 from ..keyboards import (
     city_keyboard,
@@ -28,7 +27,8 @@ from ..utils.message_utils import (
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
-# Список доступних міст (можна отримати з бази даних або конфігурації)
+router = Router()
+
 AVAILABLE_CITIES = [
     "Івано-Франківськ",
     "Вінниця",
@@ -54,7 +54,7 @@ AVAILABLE_CITIES = [
 ]
 
 
-@dp.message_handler(commands=["start"])
+@router.message(Command("start"))
 @log_operation("start_command")
 async def start_command(message: types.Message, state: FSMContext):
     telegram_id = message.from_user.id
@@ -90,7 +90,7 @@ async def start_command(message: types.Message, state: FSMContext):
             await state.update_data(
                 city_panel_msg_id=city_msg.message_id, city_panel_page=0
             )
-        await FilterStates.waiting_for_city.set()
+        await state.set_state(FilterStates.waiting_for_city)
         logger.info(
             "User started conversation",
             extra={
@@ -101,14 +101,16 @@ async def start_command(message: types.Message, state: FSMContext):
         )
 
 
-@dp.callback_query_handler(
-    lambda c: c.data
-    and c.data.startswith("city_")
-    and not c.data.startswith("city_page_"),
-    state=FilterStates.waiting_for_city,
+@router.callback_query(
+    F.data.startswith("city_"),
+    FilterStates.waiting_for_city,
 )
 @log_operation("process_city")
 async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
+    # Skip city_page_ callbacks — they are handled by city_page_navigation
+    if callback_query.data.startswith("city_page_"):
+        return
+
     telegram_id = callback_query.from_user.id
     city = callback_query.data.split("_", 1)[1]
     user_data = await state.get_data()
@@ -155,7 +157,7 @@ async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
             )
 
             await state.update_data(current_edit=None)
-            await FilterStates.waiting_for_confirmation.set()
+            await state.set_state(FilterStates.waiting_for_confirmation)
             await safe_answer_callback_query(callback_query.id)
             return
 
@@ -174,13 +176,13 @@ async def process_city(callback_query: types.CallbackQuery, state: FSMContext):
         )
         if rooms_msg:
             await state.update_data(rooms_panel_msg_id=rooms_msg.message_id)
-        await FilterStates.waiting_for_rooms.set()
+        await state.set_state(FilterStates.waiting_for_rooms)
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data and c.data.startswith("rooms_"),
-    state=FilterStates.waiting_for_rooms,
+@router.callback_query(
+    F.data.startswith("rooms_"),
+    FilterStates.waiting_for_rooms,
 )
 @log_operation("process_rooms")
 async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
@@ -242,7 +244,7 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
                 )
 
                 await state.update_data(current_edit=None)
-                await FilterStates.waiting_for_confirmation.set()
+                await state.set_state(FilterStates.waiting_for_confirmation)
                 await safe_answer_callback_query(callback_query.id)
             else:
                 # Delete rooms panel message
@@ -266,7 +268,7 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
                 if price_msg:
                     await state.update_data(price_panel_msg_id=price_msg.message_id)
 
-                await FilterStates.waiting_for_price.set()
+                await state.set_state(FilterStates.waiting_for_price)
                 await safe_answer_callback_query(callback_query.id)
 
         elif data == "rooms_any":
@@ -289,7 +291,7 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
             )
             if price_msg:
                 await state.update_data(price_panel_msg_id=price_msg.message_id)
-            await FilterStates.waiting_for_price.set()
+            await state.set_state(FilterStates.waiting_for_price)
             await safe_answer_callback_query(callback_query.id)
 
         elif data.startswith("rooms_"):
@@ -350,9 +352,9 @@ async def process_rooms(callback_query: types.CallbackQuery, state: FSMContext):
             await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data and c.data.startswith("price_"),
-    state=FilterStates.waiting_for_price,
+@router.callback_query(
+    F.data.startswith("price_"),
+    FilterStates.waiting_for_price,
 )
 @log_operation("process_price")
 async def process_price(callback_query: types.CallbackQuery, state: FSMContext):
@@ -406,7 +408,7 @@ async def process_price(callback_query: types.CallbackQuery, state: FSMContext):
             )
 
             await state.update_data(current_edit=None)
-            await FilterStates.waiting_for_confirmation.set()
+            await state.set_state(FilterStates.waiting_for_confirmation)
             await safe_answer_callback_query(callback_query.id)
             return
 
@@ -431,12 +433,16 @@ async def process_price(callback_query: types.CallbackQuery, state: FSMContext):
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data and c.data.startswith("edit_") and c.data != "edit_parameters",
-    state=FilterStates.waiting_for_confirmation,
+@router.callback_query(
+    F.data.startswith("edit_"),
+    FilterStates.waiting_for_confirmation,
 )
 @log_operation("handle_edit")
 async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
+    # Skip "edit_parameters" — handled by a separate handler
+    if callback_query.data == "edit_parameters":
+        return
+
     telegram_id = callback_query.from_user.id
     edit_field = callback_query.data.split("_", 1)[1]
     user_data = await state.get_data()
@@ -484,7 +490,7 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
                 await state.update_data(
                     city_panel_msg_id=city_msg.message_id, city_panel_page=0
                 )
-            await FilterStates.waiting_for_city.set()
+            await state.set_state(FilterStates.waiting_for_city)
         elif edit_field == "rooms":
             user_data = await state.get_data()
             selected_rooms = user_data.get("rooms", [])
@@ -497,7 +503,7 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
             )
             if rooms_msg:
                 await state.update_data(rooms_panel_msg_id=rooms_msg.message_id)
-            await FilterStates.waiting_for_rooms.set()
+            await state.set_state(FilterStates.waiting_for_rooms)
         elif edit_field == "price":
             price_msg = await safe_send_message(
                 chat_id=telegram_id,
@@ -506,7 +512,7 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
             )
             if price_msg:
                 await state.update_data(price_panel_msg_id=price_msg.message_id)
-            await FilterStates.waiting_for_price.set()
+            await state.set_state(FilterStates.waiting_for_price)
         elif edit_field == "floor":
             await safe_send_message(
                 chat_id=telegram_id,
@@ -519,7 +525,7 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
                 text="Редагування скасовано.",
                 reply_markup=edit_parameters_keyboard(),
             )
-            await FilterStates.waiting_for_confirmation.set()
+            await state.set_state(FilterStates.waiting_for_confirmation)
         else:
             logger.warning(
                 "Unknown edit parameter",
@@ -532,9 +538,9 @@ async def handle_edit(callback_query: types.CallbackQuery, state: FSMContext):
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data and c.data.startswith("confirmation_"),
-    state=FilterStates.waiting_for_basic_params,
+@router.callback_query(
+    F.data.startswith("confirmation_"),
+    FilterStates.waiting_for_basic_params,
 )
 @log_operation("process_basic_params")
 async def process_basic_params(callback_query: types.CallbackQuery, state: FSMContext):
@@ -607,11 +613,11 @@ async def process_basic_params(callback_query: types.CallbackQuery, state: FSMCo
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=confirmation_keyboard(),
         )
-        await FilterStates.waiting_for_confirmation.set()
+        await state.set_state(FilterStates.waiting_for_confirmation)
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.message_handler(lambda msg: msg.text == "📝 Мої підписки", state=None)
+@router.message(F.text == "📝 Мої підписки", StateFilter(None))
 @log_operation("forward_to_subscriptions")
 async def forward_to_subscriptions(message: types.Message, state: FSMContext):
     """Forward subscriptions button to the proper handler"""
@@ -624,8 +630,8 @@ async def forward_to_subscriptions(message: types.Message, state: FSMContext):
     await show_subscriptions_menu(message)
 
 
-@dp.callback_query_handler(
-    Text(startswith="edit_parameters"), state=FilterStates.waiting_for_confirmation
+@router.callback_query(
+    F.data.startswith("edit_parameters"), FilterStates.waiting_for_confirmation
 )
 @log_operation("edit_parameters")
 async def edit_parameters(callback_query: types.CallbackQuery, state: FSMContext):
@@ -655,13 +661,15 @@ async def edit_parameters(callback_query: types.CallbackQuery, state: FSMContext
         await safe_answer_callback_query(callback_query.id)
 
 
-@dp.message_handler(
-    lambda message: message.text != "❤️ Обрані", content_types=["text"], state=None
-)
+@router.message(F.text, StateFilter(None))
 @log_operation("debug_all_messages")
 async def debug_all_messages(message: types.Message, state: FSMContext):
     """Debug handler that logs all text messages when not in any state, except favorites"""
     telegram_id = message.from_user.id
+
+    # Skip favorites button — handled by a dedicated handler
+    if message.text == "❤️ Обрані":
+        return
 
     with log_context(logger, telegram_id=telegram_id, message_text=message.text):
         logger.info(
@@ -700,7 +708,7 @@ async def debug_all_messages(message: types.Message, state: FSMContext):
             await handle_support_command_telegram(message, state)
 
 
-@dp.message_handler(commands=["menu"])
+@router.message(Command("menu"))
 @log_operation("show_main_menu")
 async def show_main_menu(message: types.Message):
     """
@@ -721,7 +729,7 @@ async def show_main_menu(message: types.Message):
         )
 
 
-@dp.message_handler(lambda msg: msg.text == "❤️ Обрані", state=None)
+@router.message(F.text == "❤️ Обрані", StateFilter(None))
 @log_operation("forward_to_favorites")
 async def forward_to_favorites(message: types.Message, state: FSMContext):
     """Forward favorites button to the proper handler"""
@@ -730,9 +738,9 @@ async def forward_to_favorites(message: types.Message, state: FSMContext):
     await show_favorites_carousel(message, state)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data and c.data.startswith("city_page_"),
-    state=FilterStates.waiting_for_city,
+@router.callback_query(
+    F.data.startswith("city_page_"),
+    FilterStates.waiting_for_city,
 )
 @log_operation("city_page_navigation")
 async def city_page_navigation(callback_query: types.CallbackQuery, state: FSMContext):
@@ -759,13 +767,13 @@ async def city_page_navigation(callback_query: types.CallbackQuery, state: FSMCo
     await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data == "cancel_edit",
-    state=[
+@router.callback_query(
+    F.data == "cancel_edit",
+    StateFilter(
         FilterStates.waiting_for_city,
         FilterStates.waiting_for_rooms,
         FilterStates.waiting_for_price,
-    ],
+    ),
 )
 @log_operation("cancel_edit_any")
 async def cancel_edit_any_handler(
@@ -779,12 +787,12 @@ async def cancel_edit_any_handler(
         reply_markup=edit_parameters_keyboard(),
     )
     await state.update_data(current_edit=None)
-    await FilterStates.waiting_for_confirmation.set()
+    await state.set_state(FilterStates.waiting_for_confirmation)
     await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data == "city_save", state=FilterStates.waiting_for_city
+@router.callback_query(
+    F.data == "city_save", FilterStates.waiting_for_city
 )
 @log_operation("city_save")
 async def city_save_handler(callback_query: types.CallbackQuery, state: FSMContext):
@@ -800,12 +808,12 @@ async def city_save_handler(callback_query: types.CallbackQuery, state: FSMConte
         reply_markup=edit_parameters_keyboard(),
     )
     await state.update_data(current_edit=None)
-    await FilterStates.waiting_for_confirmation.set()
+    await state.set_state(FilterStates.waiting_for_confirmation)
     await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data == "rooms_save", state=FilterStates.waiting_for_rooms
+@router.callback_query(
+    F.data == "rooms_save", FilterStates.waiting_for_rooms
 )
 @log_operation("rooms_save")
 async def rooms_save_handler(callback_query: types.CallbackQuery, state: FSMContext):
@@ -824,12 +832,12 @@ async def rooms_save_handler(callback_query: types.CallbackQuery, state: FSMCont
         reply_markup=edit_parameters_keyboard(),
     )
     await state.update_data(current_edit=None)
-    await FilterStates.waiting_for_confirmation.set()
+    await state.set_state(FilterStates.waiting_for_confirmation)
     await safe_answer_callback_query(callback_query.id)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data == "cancel_edit", state=FilterStates.waiting_for_confirmation
+@router.callback_query(
+    F.data == "cancel_edit", FilterStates.waiting_for_confirmation
 )
 @log_operation("cancel_edit_main")
 async def cancel_edit_main_handler(
@@ -878,5 +886,5 @@ async def cancel_edit_main_handler(
         reply_markup=confirmation_keyboard(),
     )
     await state.update_data(current_edit=None)
-    await FilterStates.waiting_for_confirmation.set()
+    await state.set_state(FilterStates.waiting_for_confirmation)
     await safe_answer_callback_query(callback_query.id)

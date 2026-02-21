@@ -246,37 +246,38 @@ def send_ad_with_extra_buttons(
                 return False
 
             # Build inline keyboard
-            markup = InlineKeyboardMarkup(row_width=2)
+            rows = []
             if image_urls:
                 imgs = ",".join(image_urls)
-                markup.add(
+                rows.append([
                     InlineKeyboardButton(
-                        "🖼 Більше фото",
+                        text="🖼 Більше фото",
                         web_app=WebAppInfo(
                             url=f"{webapp_url}/gallery?images={imgs}"
                         ),
                     )
-                )
+                ])
 
             if phone_list:
                 phones = ",".join(phone_list)
-                markup.add(
+                rows.append([
                     InlineKeyboardButton(
-                        "📲 Подзвонити",
+                        text="📲 Подзвонити",
                         web_app=WebAppInfo(
                             url=f"{webapp_url}/phones?numbers={phones}"
                         ),
                     )
-                )
+                ])
 
-            markup.add(
+            rows.append([
                 InlineKeyboardButton(
-                    "❤️ Додати в обрані", callback_data=f"add_fav:{ad_id}"
+                    text="❤️ Додати в обрані", callback_data=f"add_fav:{ad_id}"
                 ),
                 InlineKeyboardButton(
-                    "ℹ️ Повний опис", callback_data=f"show_more:{resource_url}"
+                    text="ℹ️ Повний опис", callback_data=f"show_more:{resource_url}"
                 ),
-            )
+            ])
+            markup = InlineKeyboardMarkup(inline_keyboard=rows)
 
             try:
                 await messenger.send_media(

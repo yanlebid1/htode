@@ -4,7 +4,7 @@ import hashlib
 import os
 import urllib.parse
 from aiogram import Bot, Dispatcher
-from aiogram.contrib.fsm_storage.redis import RedisStorage2
+from aiogram.fsm.storage.redis import RedisStorage
 
 from common.config_multibot import multibot_config
 from common.config import REDIS_URL
@@ -19,14 +19,14 @@ if not bot_config:
     if not BOT_TOKEN:
         logger.error("No configuration found for bot", extra={"bot_name": BOT_NAME})
         raise ValueError(f"Bot token not found for {BOT_NAME}")
-    
+
     # Create minimal config from env
     class MinimalConfig:
         def __init__(self):
             self.name = BOT_NAME
             self.token = BOT_TOKEN
             self.username = os.getenv("BOT_USERNAME", f"@{BOT_NAME}")
-    
+
     bot_config = MinimalConfig()
 
 # Parse Redis URL for state storage
@@ -52,13 +52,8 @@ logger.info(
 
 try:
     bot = Bot(token=bot_config.token)
-    storage = RedisStorage2(
-        host=REDIS_HOST,
-        port=REDIS_PORT,
-        db=redis_db,
-        prefix=f"pool_{BOT_NAME}_fsm"
-    )
-    dp = Dispatcher(bot, storage=storage)
+    storage = RedisStorage.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}/{redis_db}")
+    dp = Dispatcher(storage=storage)
     logger.info("Pool bot initialized successfully", extra={"bot_name": BOT_NAME})
 except Exception as e:
     logger.error(
@@ -66,4 +61,4 @@ except Exception as e:
         exc_info=True,
         extra={"bot_name": BOT_NAME, "error": str(e)}
     )
-    raise 
+    raise
