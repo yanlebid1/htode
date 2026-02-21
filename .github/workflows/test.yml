@@ -18,6 +18,21 @@ jobs:
         ports:
           - 6379:6379
 
+      # Start PostgreSQL service for integration tests
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - uses: actions/checkout@v3
 
@@ -30,11 +45,10 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
-        pip install -r requirements-test.txt
 
     - name: Run tests
       run: |
-        pytest --cov=services --cov=common --cov-report=term --cov-report=xml:coverage.xml tests/
+        pytest --cov=services --cov=common --cov=system --cov-report=term --cov-report=xml:coverage.xml tests/
 
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
