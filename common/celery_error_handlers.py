@@ -24,14 +24,38 @@ def handle_task_failure(
 ):
     """Log task failures with detailed information."""
     logger.error(
-        f"Task {sender.name}[{task_id}] failed: {exception}\n"
-        f"Args: {args}, Kwargs: {kwargs}\n"
-        f"{einfo}"
+        "Task failed",
+        extra={
+            "task_name": sender.name,
+            "task_id": task_id,
+            "error_type": type(exception).__name__,
+            "error": str(exception),
+            "args": str(args)[:200],
+            "kwargs": str(kwargs)[:200],
+        },
     )
 
-    # Optionally implement custom notification logic for critical task failures
+    # Route to dead letter queue if max retries exhausted
+    retries = getattr(sender.request, "retries", 0) if hasattr(sender, "request") else 0
+    max_retries = getattr(sender, "max_retries", 3) or 3
+    if retries >= max_retries:
+        try:
+            from common.celery_app import celery_app
+            celery_app.send_task(
+                "system.maintenance.dead_letter_log",
+                queue="dead_letter",
+                kwargs={
+                    "original_task": sender.name,
+                    "task_id": task_id,
+                    "error": str(exception),
+                    "args": str(args)[:500],
+                    "kwargs": str(kwargs)[:500],
+                },
+            )
+        except Exception as dlq_err:
+            logger.error("Failed to send to dead letter queue", extra={"error": str(dlq_err)})
+
     if sender.name in ["notifier_service.app.tasks.sort_and_notify_new_ads"]:
-        # Example: Send an alert to admin or log to a special channel
         logger.critical(f"CRITICAL TASK FAILURE: {sender.name}[{task_id}]")
 
 
@@ -55,6 +79,12 @@ def worker_ready_handler(**_):
 def worker_shutdown_handler(**_):
     """Log when a worker is shutting down."""
     logger.warning("Celery worker is shutting down.")
+    try:
+        from common.utils.redis_cluster_manager import redis_cluster
+        redis_cluster.close_connections()
+        logger.info("Redis cluster connections closed on shutdown")
+    except Exception as e:
+        logger.error(f"Error closing Redis connections on shutdown: {e}")
 
 
 @beat_init.connect
