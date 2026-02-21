@@ -30,7 +30,7 @@ pydantic==2.5.0
 python-multipart==0.0.22
 
 # Encryption
-cryptography==44.0.2
+cryptography==46.0.5
 
 # OpenTelemetry tracing
 opentelemetry-api==1.22.0
