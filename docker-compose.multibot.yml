@@ -27,7 +27,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -62,7 +62,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -94,7 +94,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -127,7 +127,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_orchid_queue --loglevel=info --concurrency=16 -n pool_bot_worker_orchid@%h
     deploy:
@@ -155,7 +155,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_tulip_queue --loglevel=info --concurrency=16 -n pool_bot_worker_tulip@%h
     deploy:
@@ -177,7 +177,7 @@ services:
     external: true
 
 networks:
-  app_net:
+  data_net:
     external: true
 
 # ===== SCALING NOTES =====

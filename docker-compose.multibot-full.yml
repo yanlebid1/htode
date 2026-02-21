@@ -27,7 +27,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -62,7 +62,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -94,7 +94,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -126,7 +126,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -158,7 +158,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -190,7 +190,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -222,7 +222,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -254,7 +254,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -286,7 +286,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -318,7 +318,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -350,7 +350,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -382,7 +382,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -414,7 +414,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -446,7 +446,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -478,7 +478,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -510,7 +510,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -542,7 +542,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -574,7 +574,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -606,7 +606,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -638,7 +638,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -670,7 +670,7 @@ services:
       redis_state:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     deploy:
       resources:
@@ -701,7 +701,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_orchid_queue --loglevel=info --concurrency=16 -n pool_bot_worker_orchid@%h
     deploy:
@@ -729,7 +729,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_tulip_queue --loglevel=info --concurrency=16 -n pool_bot_worker_tulip@%h
     deploy:
@@ -757,7 +757,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_daisy_queue --loglevel=info --concurrency=16 -n pool_bot_worker_daisy@%h
     deploy:
@@ -785,7 +785,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_lavender_queue --loglevel=info --concurrency=16 -n pool_bot_worker_lavender@%h
     deploy:
@@ -813,7 +813,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_jasmine_queue --loglevel=info --concurrency=16 -n pool_bot_worker_jasmine@%h
     deploy:
@@ -841,7 +841,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_sunflower_queue --loglevel=info --concurrency=16 -n pool_bot_worker_sunflower@%h
     deploy:
@@ -869,7 +869,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_lotus_queue --loglevel=info --concurrency=16 -n pool_bot_worker_lotus@%h
     deploy:
@@ -897,7 +897,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_peony_queue --loglevel=info --concurrency=16 -n pool_bot_worker_peony@%h
     deploy:
@@ -925,7 +925,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_violet_queue --loglevel=info --concurrency=16 -n pool_bot_worker_violet@%h
     deploy:
@@ -953,7 +953,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_azalea_queue --loglevel=info --concurrency=16 -n pool_bot_worker_azalea@%h
     deploy:
@@ -981,7 +981,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_clover_queue --loglevel=info --concurrency=16 -n pool_bot_worker_clover@%h
     deploy:
@@ -1009,7 +1009,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_marigold_queue --loglevel=info --concurrency=16 -n pool_bot_worker_marigold@%h
     deploy:
@@ -1037,7 +1037,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_bluebell_queue --loglevel=info --concurrency=16 -n pool_bot_worker_bluebell@%h
     deploy:
@@ -1065,7 +1065,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_gardenia_queue --loglevel=info --concurrency=16 -n pool_bot_worker_gardenia@%h
     deploy:
@@ -1093,7 +1093,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_aster_queue --loglevel=info --concurrency=16 -n pool_bot_worker_aster@%h
     deploy:
@@ -1121,7 +1121,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_hibiscus_queue --loglevel=info --concurrency=16 -n pool_bot_worker_hibiscus@%h
     deploy:
@@ -1149,7 +1149,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_freesia_queue --loglevel=info --concurrency=16 -n pool_bot_worker_freesia@%h
     deploy:
@@ -1177,7 +1177,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_verbena_queue --loglevel=info --concurrency=16 -n pool_bot_worker_verbena@%h
     deploy:
@@ -1205,7 +1205,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_hyacinth_queue --loglevel=info --concurrency=16 -n pool_bot_worker_hyacinth@%h
     deploy:
@@ -1233,7 +1233,7 @@ services:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A common.celery_app worker -Q telegram_bot_fuchsia_queue --loglevel=info --concurrency=16 -n pool_bot_worker_fuchsia@%h
     deploy:
@@ -1256,7 +1256,7 @@ services:
     external: true
 
 networks:
-  app_net:
+  data_net:
     external: true
 
 # ===== DEPLOYMENT NOTES =====

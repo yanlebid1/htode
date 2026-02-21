@@ -8,6 +8,7 @@ from unittest.mock import patch, MagicMock
 from services.webapps.mini_webapp import (
     app,
     verify_wayforpay_signature,
+    validate_telegram_init_data,
 )
 
 # Create a test client
@@ -127,3 +128,89 @@ async def test_payment_callback_not_approved():
         assert response.status_code == 200
         assert response.json()["status"] == "acknowledged"
         assert mock_update.called
+
+
+def test_validate_telegram_init_data_valid():
+    """Test Telegram initData validation with a valid hash."""
+    import hashlib
+    import hmac as hmac_mod
+    from urllib.parse import urlencode
+
+    bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+
+    # Build data pairs
+    data_pairs = {
+        "query_id": "AAHdF6IQAAAAAN0XohDhrOrc",
+        "user": '{"id":123456789,"first_name":"Test","last_name":"User","username":"testuser"}',
+        "auth_date": "1234567890",
+    }
+
+    # Compute expected hash
+    data_check_string = "\n".join(
+        f"{k}={v}" for k, v in sorted(data_pairs.items())
+    )
+    secret_key = hmac_mod.new(
+        b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256
+    ).digest()
+    expected_hash = hmac_mod.new(
+        secret_key, data_check_string.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+    data_pairs["hash"] = expected_hash
+    init_data = urlencode(data_pairs)
+
+    with patch("services.webapps.mini_webapp.TELEGRAM_TOKEN", bot_token):
+        assert validate_telegram_init_data(init_data) is True
+
+
+def test_validate_telegram_init_data_invalid_hash():
+    """Test Telegram initData validation rejects tampered hash."""
+    from urllib.parse import urlencode
+
+    bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+
+    data_pairs = {
+        "query_id": "AAHdF6IQAAAAAN0XohDhrOrc",
+        "user": '{"id":123456789}',
+        "auth_date": "1234567890",
+        "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    }
+    init_data = urlencode(data_pairs)
+
+    with patch("services.webapps.mini_webapp.TELEGRAM_TOKEN", bot_token):
+        assert validate_telegram_init_data(init_data) is False
+
+
+def test_validate_telegram_init_data_missing_hash():
+    """Test Telegram initData validation rejects data without hash."""
+    bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+    init_data = "query_id=test&auth_date=1234567890"
+
+    with patch("services.webapps.mini_webapp.TELEGRAM_TOKEN", bot_token):
+        assert validate_telegram_init_data(init_data) is False
+
+
+def test_validate_telegram_init_data_no_token():
+    """Test Telegram initData validation fails when token is not configured."""
+    init_data = "query_id=test&auth_date=1234567890&hash=abc"
+
+    with patch("services.webapps.mini_webapp.TELEGRAM_TOKEN", ""):
+        assert validate_telegram_init_data(init_data) is False
+
+
+def test_gallery_contains_telegram_guard():
+    """Test that gallery HTML includes Telegram WebApp guard."""
+    response = client.get(
+        "/gallery?images=https://example.com/image1.jpg"
+    )
+    assert response.status_code == 200
+    assert "window.Telegram" in response.text
+    assert "Ця сторінка доступна лише через Telegram" in response.text
+
+
+def test_phones_contains_telegram_guard():
+    """Test that phones HTML includes Telegram WebApp guard."""
+    response = client.get("/phones?numbers=380999999999")
+    assert response.status_code == 200
+    assert "window.Telegram" in response.text
+    assert "Ця сторінка доступна лише через Telegram" in response.text

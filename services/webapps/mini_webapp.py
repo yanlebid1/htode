@@ -23,6 +23,7 @@ from common.utils.logging_config import log_context, log_operation
 # Get environment variables
 MERCHANT_ACCOUNT = os.getenv("WAYFORPAY_MERCHANT_LOGIN")
 MERCHANT_SECRET = get_secret("wayforpay_secret", fallback_env="WAYFORPAY_MERCHANT_SECRET")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 
 from common.utils.logging_config import setup_logging
 from common.utils.log_management import setup_file_logging
@@ -70,6 +71,53 @@ class GalleryQuery(BaseModel):
 
 class PhoneQuery(BaseModel):
     numbers: str = Field(..., description="Comma-separated list of phone numbers")
+
+
+def validate_telegram_init_data(init_data: str) -> bool:
+    """Validate Telegram WebApp initData using HMAC-SHA256.
+
+    Per Telegram docs: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+    1. Parse the init_data query string into key-value pairs
+    2. Sort by key, excluding 'hash'
+    3. Create data_check_string as "key=value\n..." lines
+    4. secret_key = HMAC-SHA256("WebAppData", bot_token)
+    5. Verify hash == HMAC-SHA256(secret_key, data_check_string)
+    """
+    if not TELEGRAM_TOKEN:
+        logger.warning("TELEGRAM_TOKEN not configured, cannot validate initData")
+        return False
+
+    try:
+        from urllib.parse import parse_qs
+
+        parsed = parse_qs(init_data, keep_blank_values=True)
+        received_hash = parsed.get("hash", [None])[0]
+        if not received_hash:
+            return False
+
+        # Build data_check_string: sorted key=value pairs, excluding 'hash'
+        data_pairs = []
+        for key, values in parsed.items():
+            if key == "hash":
+                continue
+            data_pairs.append((key, values[0]))
+        data_pairs.sort(key=lambda x: x[0])
+        data_check_string = "\n".join(f"{k}={v}" for k, v in data_pairs)
+
+        # secret_key = HMAC-SHA256("WebAppData", bot_token)
+        secret_key = hmac.new(
+            b"WebAppData", TELEGRAM_TOKEN.encode("utf-8"), hashlib.sha256
+        ).digest()
+
+        # calculated_hash = HMAC-SHA256(secret_key, data_check_string)
+        calculated_hash = hmac.new(
+            secret_key, data_check_string.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+
+        return hmac.compare_digest(calculated_hash, received_hash)
+    except Exception:
+        logger.error("Error validating Telegram initData", exc_info=True)
+        return False
 
 
 # HTML templates as strings (if you don't have a templates directory)
@@ -142,55 +190,59 @@ GALLERY_HTML = """
   </div>
 
   <script>
-    function isValidImageUrl(url) {
-      try {
-        const parsed = new URL(url);
-        return parsed.protocol === "https:" || parsed.protocol === "http:";
-      } catch {
-        return false;
-      }
-    }
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const imagesParam = urlParams.get("images"); // e.g. "https://...,https://..."
     const galleryDiv = document.getElementById("gallery");
-    if (imagesParam) {
-      const imgArray = imagesParam.split(",");
-      imgArray.forEach(url => {
-        const trimmedUrl = url.trim();
-        // Validate URL scheme to prevent javascript: and data: XSS
-        if (!isValidImageUrl(trimmedUrl)) return;
-        const img = document.createElement("img");
-        img.src = trimmedUrl;
-        img.className = "gallery-img";
-        // On click => open modal
-        img.onclick = function() {
-          openModal(trimmedUrl);
-        };
-        galleryDiv.appendChild(img);
-      });
+    if (!window.Telegram || !window.Telegram.WebApp) {
+      galleryDiv.textContent = "Ця сторінка доступна лише через Telegram.";
     } else {
-      galleryDiv.textContent = "Немає зображень.";
-    }
+      function isValidImageUrl(url) {
+        try {
+          const parsed = new URL(url);
+          return parsed.protocol === "https:" || parsed.protocol === "http:";
+        } catch {
+          return false;
+        }
+      }
 
-    // Modal logic
-    const modal = document.getElementById("myModal");
-    const modalImg = document.getElementById("modalImg");
-    const closeBtn = document.getElementById("closeBtn");
+      const urlParams = new URLSearchParams(window.location.search);
+      const imagesParam = urlParams.get("images"); // e.g. "https://...,https://..."
+      if (imagesParam) {
+        const imgArray = imagesParam.split(",");
+        imgArray.forEach(url => {
+          const trimmedUrl = url.trim();
+          // Validate URL scheme to prevent javascript: and data: XSS
+          if (!isValidImageUrl(trimmedUrl)) return;
+          const img = document.createElement("img");
+          img.src = trimmedUrl;
+          img.className = "gallery-img";
+          // On click => open modal
+          img.onclick = function() {
+            openModal(trimmedUrl);
+          };
+          galleryDiv.appendChild(img);
+        });
+      } else {
+        galleryDiv.textContent = "Немає зображень.";
+      }
 
-    function openModal(imageUrl) {
-      modal.style.display = "block";
-      modalImg.src = imageUrl;
-    }
+      // Modal logic
+      const modal = document.getElementById("myModal");
+      const modalImg = document.getElementById("modalImg");
+      const closeBtn = document.getElementById("closeBtn");
 
-    closeBtn.onclick = function() {
-      modal.style.display = "none";
-    };
+      function openModal(imageUrl) {
+        modal.style.display = "block";
+        modalImg.src = imageUrl;
+      }
 
-    // Close the modal if user clicks outside the image
-    window.onclick = function(event) {
-      if (event.target === modal) {
+      closeBtn.onclick = function() {
         modal.style.display = "none";
+      };
+
+      // Close the modal if user clicks outside the image
+      window.onclick = function(event) {
+        if (event.target === modal) {
+          modal.style.display = "none";
+        }
       }
     }
   </script>
@@ -242,21 +294,25 @@ PHONE_HTML = """
   <h2>Телефони</h2>
   <div class="phone-list" id="phone-list"></div>
   <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const numbersParam = urlParams.get("numbers"); // e.g. "380999999999,380971234567"
-
     const phoneDiv = document.getElementById("phone-list");
-    if (numbersParam) {
-      const phoneArray = numbersParam.split(",");
-      phoneArray.forEach(num => {
-        const link = document.createElement("a");
-        link.href = "tel:" + num.trim();   // Tapping opens dialer
-        link.className = "phone-link";
-        link.textContent = num.trim();
-        phoneDiv.appendChild(link);
-      });
+    if (!window.Telegram || !window.Telegram.WebApp) {
+      phoneDiv.textContent = "Ця сторінка доступна лише через Telegram.";
     } else {
-      phoneDiv.textContent = "Немає телефонів.";
+      const urlParams = new URLSearchParams(window.location.search);
+      const numbersParam = urlParams.get("numbers"); // e.g. "380999999999,380971234567"
+
+      if (numbersParam) {
+        const phoneArray = numbersParam.split(",");
+        phoneArray.forEach(num => {
+          const link = document.createElement("a");
+          link.href = "tel:" + num.trim();   // Tapping opens dialer
+          link.className = "phone-link";
+          link.textContent = num.trim();
+          phoneDiv.appendChild(link);
+        });
+      } else {
+        phoneDiv.textContent = "Немає телефонів.";
+      }
     }
   </script>
 </body>

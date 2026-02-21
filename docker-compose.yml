@@ -63,8 +63,6 @@ x-playwright-resource-limits: &playwright-resource-limits
 
 # Define common service settings
 x-service-settings: &service-settings
-  networks:
-    - app_net
   restart: unless-stopped
 
 # Define resource limits for services
@@ -91,8 +89,6 @@ x-small-resource-limits: &small-resource-limits
 
 # Define combined settings for reuse
 x-combined-settings: &combined-settings
-  networks:
-    - app_net
   restart: unless-stopped
   secrets:
     - db_password
@@ -110,8 +106,6 @@ x-combined-settings: &combined-settings
 
 # Define combined small settings
 x-combined-small-settings: &combined-small-settings
-  networks:
-    - app_net
   restart: unless-stopped
   deploy:
     resources:
@@ -124,8 +118,6 @@ x-combined-small-settings: &combined-small-settings
 
 # Define combined playwright settings
 x-combined-playwright-settings: &combined-playwright-settings
-  networks:
-    - app_net
   restart: unless-stopped
   deploy:
     resources:
@@ -162,7 +154,8 @@ services:
       - webcrawler_service_2
       - webcrawler_service_3
     networks:
-      - app_net
+      - edge_net
+      - monitoring_net
     restart: unless-stopped
     deploy:
       resources:
@@ -184,8 +177,6 @@ services:
   redis_queue:
     image: redis:7
     container_name: redis_queue
-    ports:
-      - "6379:6379"
     volumes:
       - redis-queue-data:/data
     environment:
@@ -215,7 +206,7 @@ services:
           cpus: '1.0'
           memory: 1.5G
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme_in_production}", "ping" ]
@@ -228,8 +219,6 @@ services:
   redis_cache:
     image: redis:7
     container_name: redis_cache
-    ports:
-      - "6380:6379"
     volumes:
       - redis-cache-data:/data
     environment:
@@ -254,7 +243,7 @@ services:
           cpus: '0.75'
           memory: 1G
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme_in_production}", "ping" ]
@@ -267,8 +256,6 @@ services:
   redis_state:
     image: redis:7
     container_name: redis_state
-    ports:
-      - "6381:6379"
     volumes:
       - redis-state-data:/data
     environment:
@@ -296,7 +283,7 @@ services:
           cpus: '0.5'
           memory: 512M
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
@@ -309,8 +296,6 @@ services:
   redis_analytics:
     image: redis:7
     container_name: redis_analytics
-    ports:
-      - "6382:6379"
     volumes:
       - redis-analytics-data:/data
     environment:
@@ -335,7 +320,7 @@ services:
           cpus: '0.5'
           memory: 512M
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme_in_production}", "ping" ]
@@ -348,8 +333,6 @@ services:
   redis_sentinel_1:
     image: redis:7
     container_name: redis_sentinel_1
-    ports:
-      - "26379:26379"
     volumes:
       - ./redis-sentinel.conf:/etc/redis/sentinel.conf:ro
     command: redis-sentinel /etc/redis/sentinel.conf
@@ -367,7 +350,7 @@ services:
           cpus: '0.25'
           memory: 128M
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "-p", "26379", "ping" ]
@@ -378,8 +361,6 @@ services:
   redis_sentinel_2:
     image: redis:7
     container_name: redis_sentinel_2
-    ports:
-      - "26380:26379"
     volumes:
       - ./redis-sentinel.conf:/etc/redis/sentinel.conf:ro
     command: redis-sentinel /etc/redis/sentinel.conf
@@ -397,7 +378,7 @@ services:
           cpus: '0.25'
           memory: 128M
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "-p", "26379", "ping" ]
@@ -408,8 +389,6 @@ services:
   redis_sentinel_3:
     image: redis:7
     container_name: redis_sentinel_3
-    ports:
-      - "26381:26379"
     volumes:
       - ./redis-sentinel.conf:/etc/redis/sentinel.conf:ro
     command: redis-sentinel /etc/redis/sentinel.conf
@@ -427,7 +406,7 @@ services:
           cpus: '0.25'
           memory: 128M
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "-p", "26379", "ping" ]
@@ -439,8 +418,6 @@ services:
   redis:
     image: redis:7
     container_name: my_redis_legacy
-    ports:
-      - "6383:6379"
     volumes:
       - redis-legacy-data:/data
     command: redis-server --appendonly yes
@@ -453,7 +430,7 @@ services:
           cpus: '0.25'
           memory: 256M
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
@@ -485,11 +462,11 @@ services:
       -c work_mem=4MB
       -c min_wal_size=1GB
       -c max_wal_size=4GB
-    ports:
-      - "5434:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - data_net
     deploy:
       resources:
         limits:
@@ -522,10 +499,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "6432:6432"
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
@@ -550,6 +525,8 @@ services:
       - .env
     container_name: telegram_service_1
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/telegram_service/Dockerfile
@@ -593,6 +570,8 @@ services:
       - .env
     container_name: telegram_service_2
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/telegram_service/Dockerfile
@@ -636,6 +615,8 @@ services:
       - .env
     container_name: telegram_service_3
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/telegram_service/Dockerfile
@@ -706,7 +687,7 @@ services:
           cpus: '0.5'
           memory: 256M
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=8 --max-tasks-per-child=1000 -n telegram_worker_1@%h
     healthcheck:
@@ -749,7 +730,7 @@ services:
           cpus: '0.5'
           memory: 256M
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=8 --max-tasks-per-child=1000 -n telegram_worker_2@%h
     healthcheck:
@@ -792,7 +773,7 @@ services:
           cpus: '0.5'
           memory: 256M
     networks:
-      - app_net
+      - data_net
     restart: unless-stopped
     command: celery -A services.telegram_service.app.celery_app worker -Q telegram_queue --loglevel=info --concurrency=8 --max-tasks-per-child=1000 -n telegram_worker_3@%h
     healthcheck:
@@ -805,6 +786,9 @@ services:
   scraper_worker_1:
     container_name: scraper_worker_1
     <<: *combined-settings
+    networks:
+      - data_net
+      - worker_net
     build:
       context: .
       dockerfile: services/scraper_service/Dockerfile
@@ -842,6 +826,9 @@ services:
   scraper_worker_2:
     container_name: scraper_worker_2
     <<: *combined-settings
+    networks:
+      - data_net
+      - worker_net
     build:
       context: .
       dockerfile: services/scraper_service/Dockerfile
@@ -879,6 +866,9 @@ services:
   scraper_worker_3:
     container_name: scraper_worker_3
     <<: *combined-settings
+    networks:
+      - data_net
+      - worker_net
     build:
       context: .
       dockerfile: services/scraper_service/Dockerfile
@@ -916,6 +906,8 @@ services:
   scraper_beat_service:
     container_name: scraper_beat_service
     <<: *combined-small-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/scraper_service/Dockerfile
@@ -965,7 +957,7 @@ services:
     environment:
       <<: *combined-env
     networks:
-      - app_net
+      - data_net
     command: >
       sh -c "
         echo 'Waiting for postgres to be ready...';
@@ -982,6 +974,8 @@ services:
   notifier_service_1:
     container_name: notifier_service_1
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
@@ -1015,6 +1009,8 @@ services:
   notifier_service_2:
     container_name: notifier_service_2
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
@@ -1048,6 +1044,8 @@ services:
   notifier_service_3:
     container_name: notifier_service_3
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
@@ -1081,6 +1079,9 @@ services:
   phone_extraction_worker_1:
     container_name: phone_extraction_worker_1
     <<: *combined-settings
+    networks:
+      - data_net
+      - worker_net
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
@@ -1125,6 +1126,9 @@ services:
   phone_extraction_worker_2:
     container_name: phone_extraction_worker_2
     <<: *combined-settings
+    networks:
+      - data_net
+      - worker_net
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
@@ -1170,6 +1174,8 @@ services:
   notification_batch_worker_1:
     container_name: notification_batch_worker_1
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
@@ -1209,6 +1215,8 @@ services:
   notification_batch_worker_2:
     container_name: notification_batch_worker_2
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
@@ -1248,6 +1256,8 @@ services:
   notification_batch_worker_3:
     container_name: notification_batch_worker_3
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/notifier_service/Dockerfile
@@ -1288,17 +1298,19 @@ services:
   mini_webapp_1:
     container_name: mini_webapp_1
     <<: *combined-small-settings
+    networks:
+      - edge_net
+      - data_net
     build:
       context: services/webapps
       dockerfile: Dockerfile
     volumes:
       - ./services/webapps:/app
       - ./common:/app/common
-    ports:
-      - "8080:8080"
     environment:
       <<: *common-variables
       SERVICE_REPLICA: "1"
+      TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
     deploy:
       resources:
         limits:
@@ -1317,17 +1329,19 @@ services:
   mini_webapp_2:
     container_name: mini_webapp_2
     <<: *combined-small-settings
+    networks:
+      - edge_net
+      - data_net
     build:
       context: services/webapps
       dockerfile: Dockerfile
     volumes:
       - ./services/webapps:/app
       - ./common:/app/common
-    ports:
-      - "8081:8080"             # Different external port
     environment:
       <<: *common-variables
       SERVICE_REPLICA: "2"
+      TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
     deploy:
       resources:
         limits:
@@ -1346,17 +1360,19 @@ services:
   mini_webapp_3:
     container_name: mini_webapp_3
     <<: *combined-small-settings
+    networks:
+      - edge_net
+      - data_net
     build:
       context: services/webapps
       dockerfile: Dockerfile
     volumes:
       - ./services/webapps:/app
       - ./common:/app/common
-    ports:
-      - "8082:8080"             # Different external port
     environment:
       <<: *common-variables
       SERVICE_REPLICA: "3"
+      TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
     deploy:
       resources:
         limits:
@@ -1376,6 +1392,8 @@ services:
   maintenance_worker_service:
     container_name: maintenance_worker
     <<: *combined-settings
+    networks:
+      - data_net
     build:
       context: .
       dockerfile: services/scraper_service/Dockerfile  # Reuse scraper Dockerfile as it has similar dependencies
@@ -1404,11 +1422,12 @@ services:
   camoufox_service_1:
     container_name: camoufox_service_1
     <<: *combined-playwright-settings  # Use playwright settings for browser resources
+    networks:
+      - edge_net
+      - worker_net
     build:
       context: services/camoufox_service
       dockerfile: Dockerfile
-    ports:
-      - "8100:8100"
     environment:
       PYTHONUNBUFFERED: 1
       BROWSER_POOL_SIZE: "${BROWSER_POOL_SIZE:-20}"  # Increased from 3 to 20
@@ -1432,11 +1451,12 @@ services:
   camoufox_service_2:
     container_name: camoufox_service_2
     <<: *combined-playwright-settings  # Use playwright settings for browser resources
+    networks:
+      - edge_net
+      - worker_net
     build:
       context: services/camoufox_service
       dockerfile: Dockerfile
-    ports:
-      - "8101:8100"                    # Different port for second instance
     environment:
       PYTHONUNBUFFERED: 1
       BROWSER_POOL_SIZE: "${BROWSER_POOL_SIZE:-20}"  # Increased from 3 to 20
@@ -1460,11 +1480,12 @@ services:
   camoufox_service_3:
     container_name: camoufox_service_3
     <<: *combined-playwright-settings  # Use playwright settings for browser resources
+    networks:
+      - edge_net
+      - worker_net
     build:
       context: services/camoufox_service
       dockerfile: Dockerfile
-    ports:
-      - "8102:8100"                    # Different port for third instance
     environment:
       PYTHONUNBUFFERED: 1
       BROWSER_POOL_SIZE: "${BROWSER_POOL_SIZE:-20}"  # Increased from 3 to 20
@@ -1489,11 +1510,12 @@ services:
   webcrawler_service_1:
     container_name: webcrawler_service_1
     <<: *combined-settings
+    networks:
+      - edge_net
+      - worker_net
     build:
       context: services/webcrawler_service
       dockerfile: Dockerfile
-    ports:
-      - "8200:8200"
     environment:
       PYTHONUNBUFFERED: 1
       SERVICE_REPLICA: "1"
@@ -1514,11 +1536,12 @@ services:
   webcrawler_service_2:
     container_name: webcrawler_service_2
     <<: *combined-settings
+    networks:
+      - edge_net
+      - worker_net
     build:
       context: services/webcrawler_service
       dockerfile: Dockerfile
-    ports:
-      - "8201:8200"         # Different external port
     environment:
       PYTHONUNBUFFERED: 1
       SERVICE_REPLICA: "2"
@@ -1539,11 +1562,12 @@ services:
   webcrawler_service_3:
     container_name: webcrawler_service_3
     <<: *combined-settings
+    networks:
+      - edge_net
+      - worker_net
     build:
       context: services/webcrawler_service
       dockerfile: Dockerfile
-    ports:
-      - "8202:8200"         # Different external port
     environment:
       PYTHONUNBUFFERED: 1
       SERVICE_REPLICA: "3"
@@ -1572,7 +1596,7 @@ services:
     ports:
       - "9090:9090"
     networks:
-      - app_net
+      - monitoring_net
     restart: unless-stopped
     deploy:
       resources:
@@ -1603,7 +1627,7 @@ services:
     depends_on:
       - prometheus
     networks:
-      - app_net
+      - monitoring_net
     restart: unless-stopped
     deploy:
       resources:
@@ -1625,13 +1649,12 @@ services:
     environment:
       REDIS_ADDR: "redis://redis_queue:6379"
       REDIS_PASSWORD: "${REDIS_PASSWORD:-changeme_in_production}"
-    ports:
-      - "9121:9121"
     depends_on:
       redis_queue:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
+      - monitoring_net
     restart: unless-stopped
     deploy:
       resources:
@@ -1647,13 +1670,12 @@ services:
     container_name: postgres_exporter
     environment:
       DATA_SOURCE_NAME: "postgresql://${DB_USER:-myuser}:${DB_PASS}@pgbouncer:6432/${DB_NAME:-mydb}?sslmode=disable"
-    ports:
-      - "9187:9187"
     depends_on:
       pgbouncer:
         condition: service_healthy
     networks:
-      - app_net
+      - data_net
+      - monitoring_net
     restart: unless-stopped
     deploy:
       resources:
@@ -1670,11 +1692,9 @@ services:
     volumes:
       - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
       - loki-data:/loki
-    ports:
-      - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
     networks:
-      - app_net
+      - monitoring_net
     restart: unless-stopped
     deploy:
       resources:
@@ -1702,7 +1722,7 @@ services:
       loki:
         condition: service_healthy
     networks:
-      - app_net
+      - monitoring_net
     restart: unless-stopped
     deploy:
       resources:
@@ -1723,7 +1743,7 @@ services:
       - "4317:4317"     # OTLP gRPC
       - "4318:4318"     # OTLP HTTP
     networks:
-      - app_net
+      - monitoring_net
     restart: unless-stopped
     deploy:
       resources:
@@ -1740,7 +1760,13 @@ services:
       retries: 3
 
 networks:
-  app_net:
+  data_net:
+    driver: bridge
+  edge_net:
+    driver: bridge
+  worker_net:
+    driver: bridge
+  monitoring_net:
     driver: bridge
 
 volumes:

@@ -1,0 +1,78 @@
+# docker-compose.override.yml — Dev port overrides
+# Automatically loaded by `docker compose up`.
+# Production: `docker compose -f docker-compose.yml up` (skips this file).
+
+services:
+  # Data layer ports (not exposed in production)
+  postgres:
+    ports:
+      - "5434:5432"
+  pgbouncer:
+    ports:
+      - "6432:6432"
+  redis_queue:
+    ports:
+      - "6379:6379"
+  redis_cache:
+    ports:
+      - "6380:6379"
+  redis_state:
+    ports:
+      - "6381:6379"
+  redis_analytics:
+    ports:
+      - "6382:6379"
+  redis:
+    ports:
+      - "6383:6379"
+
+  # Sentinel ports
+  redis_sentinel_1:
+    ports:
+      - "26379:26379"
+  redis_sentinel_2:
+    ports:
+      - "26380:26379"
+  redis_sentinel_3:
+    ports:
+      - "26381:26379"
+
+  # Service ports (behind nginx in production)
+  mini_webapp_1:
+    ports:
+      - "8080:8080"
+  mini_webapp_2:
+    ports:
+      - "8081:8080"
+  mini_webapp_3:
+    ports:
+      - "8082:8080"
+  camoufox_service_1:
+    ports:
+      - "8100:8100"
+  camoufox_service_2:
+    ports:
+      - "8101:8100"
+  camoufox_service_3:
+    ports:
+      - "8102:8100"
+  webcrawler_service_1:
+    ports:
+      - "8200:8200"
+  webcrawler_service_2:
+    ports:
+      - "8201:8200"
+  webcrawler_service_3:
+    ports:
+      - "8202:8200"
+
+  # Monitoring exporter ports
+  redis_exporter:
+    ports:
+      - "9121:9121"
+  postgres_exporter:
+    ports:
+      - "9187:9187"
+  loki:
+    ports:
+      - "3100:3100"
