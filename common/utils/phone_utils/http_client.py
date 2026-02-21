@@ -154,12 +154,12 @@ class AsyncHTTPClient:
                 return data.get("content")
             else:
                 logger.warning(
-                    f"Camoufox service failed for {url}: {result.get('error')}"
+                    "Camoufox service failed", extra={"url": url, "error": result.get("error")}
                 )
                 return None
 
         except Exception as e:
-            logger.warning(f"Camoufox service error for {url}: {e}")
+            logger.warning("Camoufox service error", extra={"url": url, "error": str(e)})
             return None
 
     async def fetch_with_aiohttp(
@@ -184,10 +184,10 @@ class AsyncHTTPClient:
                     url, headers=combined_headers, ssl=False
                 ) as response:
                     response.raise_for_status()
-                    logger.info(f"Successfully fetched {url} with aiohttp")
+                    logger.info("Successfully fetched URL", extra={"url": url, "method": "aiohttp"})
                     return await response.text()
         except Exception as e:
-            logger.warning(f"aiohttp failed for {url}: {e}")
+            logger.warning("aiohttp failed", extra={"url": url, "error": str(e)})
             return None
 
     async def fetch_with_curl_cffi(
@@ -200,20 +200,20 @@ class AsyncHTTPClient:
         combined_headers = {k: v for k, v in combined_headers.items() if v is not None}
         for imp in IMPERSONATE_OPTIONS:
             try:
-                logger.debug(f"Trying curl_cffi with impersonation: {imp}")
+                logger.debug("Trying curl_cffi", extra={"impersonation": imp})
                 async with self._get_curl_cffi_session(imp) as session:
                     response = await session.get(url, headers=combined_headers)
                     if response.status_code == 200:
                         logger.info(
-                            f"Successfully fetched {url} with curl_cffi (profile={imp})"
+                            "Successfully fetched URL", extra={"url": url, "method": "curl_cffi", "profile": imp}
                         )
                         return response.text
                     else:
                         logger.warning(
-                            f"curl_cffi got status {response.status_code} for {url} (profile={imp})"
+                            "curl_cffi got unexpected status", extra={"status_code": response.status_code, "url": url, "profile": imp}
                         )
             except Exception as e:
-                logger.debug(f"curl_cffi exception with {imp}: {e}")
+                logger.debug("curl_cffi exception", extra={"impersonation": imp, "error": str(e)})
                 continue
         return None
 
@@ -238,10 +238,10 @@ class AsyncHTTPClient:
             ) as client:
                 response = await client.get(url)
                 response.raise_for_status()
-                logger.info(f"Successfully fetched {url} with httpx")
+                logger.info("Successfully fetched URL", extra={"url": url, "method": "httpx"})
                 return response.text
         except Exception as e:
-            logger.warning(f"httpx failed for {url}: {e}")
+            logger.warning("httpx failed", extra={"url": url, "error": str(e)})
             return None
 
     async def fetch(self, url: str, headers: Optional[Dict] = None) -> str:
@@ -257,13 +257,13 @@ class AsyncHTTPClient:
             ("camoufox", lambda u, h=None: self._fetch_with_camoufox(u)),
         ]
         for name, method in methods:
-            logger.info(f"Trying {name} for {url}")
+            logger.info("Trying fetch method", extra={"method": name, "url": url})
             try:
                 content = await method(url, headers)
                 if content:
                     return content
             except Exception as e:
-                logger.warning(f"{name} fetch raised exception for {url}: {e}")
+                logger.warning("Fetch method raised exception", extra={"method": name, "url": url, "error": str(e)})
                 continue
         # If loop completes with no return, all methods failed
         raise Exception(f"Failed to fetch {url} with all methods")

@@ -154,7 +154,7 @@ async def async_process_image_url(url: str) -> Union[str, InputFile, None]:
             return None
 
         except Exception as e:
-            logger.error(f"Error parsing image URL: {str(e)}", exc_info=True)
+            logger.error("Error parsing image URL", exc_info=True, extra={"error": str(e)})
             return None
 
 

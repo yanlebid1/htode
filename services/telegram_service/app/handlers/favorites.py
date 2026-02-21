@@ -594,7 +594,7 @@ async def show_favorite_at_index(chat_id, favorites, index):
                 phones = AdRepository.get_ad_phones(db, ad_id)
                 phone_list = [phone["phone"] for phone in phones if phone["phone"]]
         except Exception as e:
-            logger.error(f"Error getting ad phones: {str(e)}", exc_info=True)
+            logger.error("Error getting ad phones", exc_info=True, extra={"error": str(e)})
             phone_list = []
 
         if phone_list:
@@ -645,9 +645,9 @@ async def show_favorite_at_index(chat_id, favorites, index):
                 )
         except Exception as e:
             logger.error(
-                f"Error sending favorite message: {str(e)}",
+                "Error sending favorite message",
                 exc_info=True,
-                extra={"chat_id": telegram_id, "ad_id": ad_id},
+                extra={"chat_id": telegram_id, "ad_id": ad_id, "error": str(e)},
             )
             # Try sending just text without formatting if photo fails
             try:
@@ -656,7 +656,7 @@ async def show_favorite_at_index(chat_id, favorites, index):
                     text=f"Оголошення {ad_id}. Помилка при відображенні повної інформації.",
                 )
             except Exception as e:
-                logger.error(f"Final fallback message failed: {e}", exc_info=True)
+                logger.error("Final fallback message failed", exc_info=True, extra={"error": str(e)})
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith("fav_next:"))

@@ -53,11 +53,11 @@ class StateManager:
         try:
             from common.utils.redis_cluster_manager import get_state_redis
             self.redis = get_state_redis()
-            logger.info(f"Initialized StateManager with Redis cluster, prefix '{prefix}'")
+            logger.info("Initialized StateManager with Redis cluster", extra={"prefix": prefix})
         except ImportError:
             # Fallback to legacy Redis connection
             self.redis = redis.from_url(redis_url)
-            logger.warning(f"Redis cluster manager not available, using legacy connection with prefix '{prefix}'")
+            logger.warning("Redis cluster manager not available, using legacy connection", extra={"prefix": prefix})
         
         self.prefix = prefix
         self.default_ttl = default_ttl
@@ -72,7 +72,7 @@ class StateManager:
             handler: Platform-specific state handler
         """
         self.platform_handlers[platform] = handler
-        logger.info(f"Registered platform handler for {platform}")
+        logger.info("Registered platform handler", extra={"platform": platform})
 
     def _get_key(self, user_id: Union[str, int], platform: str = None) -> str:
         """
@@ -113,7 +113,7 @@ class StateManager:
                 return await handler.get_state(user_id)
             except Exception as e:
                 logger.warning(
-                    f"Error getting state with platform handler {platform}: {e}"
+                    "Error getting state with platform handler", extra={"platform": platform, "error": str(e)}
                 )
                 # Fall back to direct implementation
 
@@ -122,18 +122,18 @@ class StateManager:
 
         try:
             # Use asyncio to run the Redis get in a thread pool
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             data = await loop.run_in_executor(None, lambda: self.redis.get(key))
 
             if data:
                 try:
                     return json.loads(data)
                 except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON in Redis for key {key}")
+                    logger.warning("Invalid JSON in Redis for key", extra={"key": key})
                     return None
             return None
         except Exception as e:
-            logger.error(f"Error getting state for {key}: {e}")
+            logger.error("Error getting state", extra={"key": key, "error": str(e)})
             raise
 
     @retry_with_exponential_backoff(
@@ -165,7 +165,7 @@ class StateManager:
                 return await handler.set_state(user_id, data)
             except Exception as e:
                 logger.warning(
-                    f"Error setting state with platform handler {platform}: {e}"
+                    "Error setting state with platform handler", extra={"platform": platform, "error": str(e)}
                 )
                 # Fall back to direct implementation
 
@@ -177,13 +177,13 @@ class StateManager:
             serialized = json.dumps(data)
 
             # Use asyncio to run the Redis set in a thread pool
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None, lambda: self.redis.setex(key, expire_time, serialized)
             )
             return True
         except Exception as e:
-            logger.error(f"Error setting state for {key}: {e}")
+            logger.error("Error setting state", extra={"key": key, "error": str(e)})
             raise
 
     async def update_state(
@@ -215,7 +215,7 @@ class StateManager:
                 return await handler.update_state(user_id, updates)
             except Exception as e:
                 logger.warning(
-                    f"Error updating state with platform handler {platform}: {e}"
+                    "Error updating state with platform handler", extra={"platform": platform, "error": str(e)}
                 )
                 # Fall back to direct implementation
 
@@ -225,7 +225,7 @@ class StateManager:
 
         try:
             updates_json = json.dumps(updates)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 lambda: self.redis.eval(
@@ -234,7 +234,7 @@ class StateManager:
             )
             return True
         except Exception as e:
-            logger.error(f"Error updating state for {key}: {e}")
+            logger.error("Error updating state", extra={"key": key, "error": str(e)})
             raise
 
     @retry_with_exponential_backoff(
@@ -258,7 +258,7 @@ class StateManager:
                 return await handler.clear_state(user_id)
             except Exception as e:
                 logger.warning(
-                    f"Error clearing state with platform handler {platform}: {e}"
+                    "Error clearing state with platform handler", extra={"platform": platform, "error": str(e)}
                 )
                 # Fall back to direct implementation
 
@@ -267,11 +267,11 @@ class StateManager:
 
         try:
             # Use asyncio to run the Redis delete in a thread pool
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, lambda: self.redis.delete(key))
             return True
         except Exception as e:
-            logger.error(f"Error clearing state for {key}: {e}")
+            logger.error("Error clearing state", extra={"key": key, "error": str(e)})
             raise
 
     async def get_current_state_name(
@@ -313,11 +313,11 @@ class StateManager:
                 try:
                     return json.loads(data)
                 except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON in Redis for key {key}")
+                    logger.warning("Invalid JSON in Redis for key", extra={"key": key})
                     return None
             return None
         except Exception as e:
-            logger.error(f"Error getting state for {key}: {e}")
+            logger.error("Error getting state", extra={"key": key, "error": str(e)})
             return None
 
     def set_state_sync(
@@ -347,7 +347,7 @@ class StateManager:
             self.redis.setex(key, expire_time, serialized)
             return True
         except Exception as e:
-            logger.error(f"Error setting state for {key}: {e}")
+            logger.error("Error setting state", extra={"key": key, "error": str(e)})
             return False
 
     def update_state_sync(
@@ -382,7 +382,7 @@ class StateManager:
             )
             return True
         except Exception as e:
-            logger.error(f"Error updating state for {key}: {e}")
+            logger.error("Error updating state", extra={"key": key, "error": str(e)})
             return False
 
     def clear_state_sync(self, user_id: Union[str, int], platform: str = None) -> bool:
@@ -402,7 +402,7 @@ class StateManager:
             self.redis.delete(key)
             return True
         except Exception as e:
-            logger.error(f"Error clearing state for {key}: {e}")
+            logger.error("Error clearing state", extra={"key": key, "error": str(e)})
             return False
 
     def get_current_state_name_sync(
@@ -477,14 +477,14 @@ class StateMachine:
         # Find handler for current state
         handler = self.handlers.get(current_state_name)
         if not handler:
-            logger.warning(f"No handler found for state {current_state_name}")
+            logger.warning("No handler found for state", extra={"state": current_state_name})
             return False
 
         # Execute the handler
         try:
             return await handler(user_id, platform, message, state_data)
         except Exception as e:
-            logger.error(f"Error processing state {current_state_name}: {e}")
+            logger.error("Error processing state", extra={"state": current_state_name, "error": str(e)})
             return False
 
 

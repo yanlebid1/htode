@@ -159,18 +159,18 @@ async def _extract_phone_numbers_async(
             try:
                 html_content = await client.fetch(resource_url)
             except Exception as e:
-                logger.error(f"Failed to fetch {resource_url}: {e}")
+                logger.error("Failed to fetch resource", extra={"resource_url": resource_url, "error": str(e)})
                 aggregator.add_error("fetch_failed", {"error": str(e)})
                 # If initial fetch failed, attempt a retry with a different proxy (only if proxy was not user-specified)
                 if not user_specified_proxy and proxy_manager.proxies_available():
                     new_proxy = proxy_manager.get_random_proxy()
                     if new_proxy and (proxy is None or new_proxy != proxy):
-                        logger.info(f"Retrying fetch with a new proxy: {new_proxy}")
+                        logger.info("Retrying fetch with a new proxy")
                         client = AsyncHTTPClient(proxy=new_proxy)
                         try:
                             html_content = await client.fetch(resource_url)
                         except Exception as e2:
-                            logger.error(f"Retry fetch failed: {e2}")
+                            logger.error("Retry fetch failed", extra={"error": str(e2)})
                             aggregator.add_error(
                                 "fetch_failed_retry", {"error": str(e2)}
                             )
@@ -193,13 +193,13 @@ async def _extract_phone_numbers_async(
                         import urllib.parse
 
                         redirect_url = urllib.parse.urljoin(resource_url, redirect_url)
-                        logger.info(f"Following redirect to {redirect_url}")
+                        logger.info("Following redirect", extra={"redirect_url": redirect_url})
                         redirected_html = await client.fetch(redirect_url)
                         if redirected_html:
                             html_content = redirected_html
                             resource_url = redirect_url
             except Exception as e:
-                logger.warning(f"Redirect handling failed: {e}")
+                logger.warning("Redirect handling failed", extra={"error": str(e)})
             # Determine the content's effective domain and route to the appropriate parser
             result: ExtractionResult
             if "real-estate.lviv.ua" in resource_url:
@@ -217,7 +217,7 @@ async def _extract_phone_numbers_async(
                     result = ExtractionResult([], None)
                 else:
                     logger.warning(
-                        f"Unknown domain for {resource_url} – using fallback parser"
+                        "Unknown domain, using fallback parser", extra={"resource_url": resource_url}
                     )
                     result = fallback_parser.fallback_parse(html_content)
             # Log the final method used (proxy or no-proxy) as a successful operation

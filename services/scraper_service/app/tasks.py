@@ -152,12 +152,12 @@ def redis_lock(lock_name, expire_time=3600):
     with log_context(logger, lock_name=lock_name, lock_id=lock_id, acquired=acquired):
         if acquired:
             logger.info(
-                f"Acquired lock {lock_name}",
-                extra={"lock_id": lock_id, "expire_time": expire_time},
+                "Acquired lock",
+                extra={"lock_name": lock_name, "lock_id": lock_id, "expire_time": expire_time},
             )
         else:
             logger.info(
-                f"Failed to acquire lock {lock_name}", extra={"lock_key": lock_key}
+                "Failed to acquire lock", extra={"lock_name": lock_name, "lock_key": lock_key}
             )
 
         try:
@@ -172,12 +172,12 @@ def redis_lock(lock_name, expire_time=3600):
 
                 if key_val and key_val.decode() != lock_id:
                     logger.error(
-                        f"Lock {lock_key} was stolen",
-                        extra={"expected_id": lock_id, "found_id": key_val.decode()},
+                        "Lock was stolen",
+                        extra={"lock_key": lock_key, "expected_id": lock_id, "found_id": key_val.decode()},
                     )
                 else:
                     logger.info(
-                        f"Released lock {lock_name}", extra={"lock_id": lock_id}
+                        "Released lock", extra={"lock_name": lock_name, "lock_id": lock_id}
                     )
 
 
@@ -220,7 +220,7 @@ def fetch_new_ads() -> None:
                         except Exception as e:
                             aggregator.add_error(str(e), {"city_id": city})
                             logger.error(
-                                f"Failed to scrape city {city}",
+                                "Failed to scrape city",
                                 exc_info=True,
                                 extra={"city_id": city},
                             )
@@ -261,7 +261,7 @@ def _scrape_ads_for_city(geo_id: int) -> int:
                         ads = _scrape_ads_from_page(geo_id, section_id, page)
                         if not ads:
                             logger.debug(
-                                f"No more ads on page {page}",
+                                "No more ads on page",
                                 extra={"page": page, "geo_id": geo_id},
                             )
                             break
@@ -280,7 +280,7 @@ def _scrape_ads_for_city(geo_id: int) -> int:
 
                         if not found_new:
                             logger.info(
-                                f"No new ads found on page {page}",
+                                "No new ads found on page",
                                 extra={"page": page, "geo_id": geo_id},
                             )
                             break
@@ -288,7 +288,7 @@ def _scrape_ads_for_city(geo_id: int) -> int:
 
                     except Exception as e:
                         logger.error(
-                            f"Error scraping page {page}",
+                            "Error scraping page",
                             exc_info=True,
                             extra={
                                 "page": page,
@@ -737,7 +737,7 @@ def extract_phone_adspower(ad_url: str) -> dict:
             }
             
             if phone:
-                logger.info(f"Successfully extracted phone: {phone}")
+                logger.info("Successfully extracted phone")
             else:
                 logger.warning("Failed to extract phone using AdsPower")
             

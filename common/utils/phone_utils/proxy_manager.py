@@ -7,6 +7,7 @@ import os
 import json
 import random
 import time
+import threading
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 import aiohttp
@@ -17,6 +18,8 @@ from common.utils import logger
 PROXIES: List[str] = []
 # Internal flag to indicate if proxies have been loaded
 _proxies_loaded: bool = False
+# Thread lock for proxy state
+_proxy_lock = threading.Lock()
 # Cache file path for storing fetched proxies
 _CACHE_FILE = Path("proxy_cache.json")
 # Cache validity period (30 days in seconds, since proxies update monthly)
@@ -62,7 +65,7 @@ async def _fetch_proxies_from_api() -> List[Dict[str, Any]]:
                     raise ProxyAPIError(f"API returned error: {errors}")
 
                 items = data.get("data", {}).get("items", [])
-                logger.info(f"Successfully fetched {len(items)} proxies from API")
+                logger.info("Successfully fetched proxies from API", extra={"count": len(items)})
                 return items
 
     except aiohttp.ClientError as e:
@@ -78,9 +81,9 @@ def _save_proxies_to_cache(proxies: List[Dict[str, Any]]) -> None:
     try:
         with open(_CACHE_FILE, "w") as f:
             json.dump(cache_data, f, indent=2)
-        logger.info(f"Saved {len(proxies)} proxies to cache file")
+        logger.info("Saved proxies to cache file", extra={"count": len(proxies)})
     except Exception as e:
-        logger.warning(f"Failed to save proxies to cache: {e}")
+        logger.warning("Failed to save proxies to cache", extra={"error": str(e)})
 
 
 def _load_proxies_from_cache() -> Optional[List[Dict[str, Any]]]:
@@ -106,11 +109,11 @@ def _load_proxies_from_cache() -> Optional[List[Dict[str, Any]]]:
             return None
 
         proxies = cache_data.get("proxies", [])
-        logger.info(f"Loaded {len(proxies)} proxies from valid cache")
+        logger.info("Loaded proxies from valid cache", extra={"count": len(proxies)})
         return proxies
 
     except (json.JSONDecodeError, KeyError, Exception) as e:
-        logger.warning(f"Failed to load proxy cache: {e}")
+        logger.warning("Failed to load proxy cache", extra={"error": str(e)})
         return None
 
 
@@ -138,13 +141,13 @@ def _convert_api_proxies_to_urls(api_proxies: List[Dict[str, Any]]) -> List[str]
 
         # Validate required fields
         if not all([ip, port_http, login, password]):
-            logger.warning(f"Skipping proxy with missing data: {proxy}")
+            logger.warning("Skipping proxy with missing data")
             continue
 
         proxy_url = f"http://{login}:{password}@{ip}:{port_http}"
         proxy_urls.append(proxy_url)
 
-    logger.info(f"Converted {len(proxy_urls)} API proxies to URLs")
+    logger.info("Converted API proxies to URLs", extra={"count": len(proxy_urls)})
     return proxy_urls
 
 
@@ -155,37 +158,44 @@ async def _load_proxies_async() -> None:
     """
     global PROXIES, _proxies_loaded
 
-    if _proxies_loaded:
-        return
-
-    try:
-        # Try to load from cache first
-        cached_proxies = _load_proxies_from_cache()
-
-        if cached_proxies:
-            PROXIES = _convert_api_proxies_to_urls(cached_proxies)
-            _proxies_loaded = True
+    with _proxy_lock:
+        if _proxies_loaded:
             return
 
-        # Cache is invalid/missing, fetch from API
-        logger.info("Cache invalid or missing, fetching fresh proxies from API")
+        try:
+            # Try to load from cache first
+            cached_proxies = _load_proxies_from_cache()
+
+            if cached_proxies:
+                PROXIES = _convert_api_proxies_to_urls(cached_proxies)
+                _proxies_loaded = True
+                return
+        except Exception:
+            pass
+
+    # Cache is invalid/missing, fetch from API (outside lock for async I/O)
+    logger.info("Cache invalid or missing, fetching fresh proxies from API")
+    try:
         api_proxies = await _fetch_proxies_from_api()
 
         # Save to cache for future use
         _save_proxies_to_cache(api_proxies)
 
         # Convert to URLs and store
-        PROXIES = _convert_api_proxies_to_urls(api_proxies)
-        _proxies_loaded = True
+        with _proxy_lock:
+            PROXIES = _convert_api_proxies_to_urls(api_proxies)
+            _proxies_loaded = True
 
     except ProxyAPIError as e:
-        logger.error(f"Failed to load proxies: {e}")
-        PROXIES = []
-        _proxies_loaded = True
+        logger.error("Failed to load proxies", extra={"error": str(e)})
+        with _proxy_lock:
+            PROXIES = []
+            _proxies_loaded = True
     except Exception as e:
-        logger.exception(f"Unexpected error loading proxies: {e}")
-        PROXIES = []
-        _proxies_loaded = True
+        logger.exception("Unexpected error loading proxies", extra={"error_type": type(e).__name__})
+        with _proxy_lock:
+            PROXIES = []
+            _proxies_loaded = True
 
 
 def load_proxies() -> None:
@@ -248,7 +258,7 @@ def refresh_proxies() -> None:
             _CACHE_FILE.unlink()
             logger.info("Removed proxy cache file")
         except Exception as e:
-            logger.warning(f"Failed to remove cache file: {e}")
+            logger.warning("Failed to remove cache file", extra={"error": str(e)})
 
     # Reset state and reload
     _proxies_loaded = False

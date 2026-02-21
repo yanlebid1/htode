@@ -97,7 +97,7 @@ class RedisClusterManager:
                 host, port = host_port.strip().split(":")
                 hosts.append((host, int(port)))
             except ValueError:
-                logger.warning(f"Invalid sentinel host format: {host_port}")
+                logger.warning("Invalid sentinel host format", extra={"host_port": host_port})
         
         return hosts
     
@@ -119,18 +119,18 @@ class RedisClusterManager:
                         socket_keepalive=True,
                         socket_keepalive_options={},
                     )
-                    logger.info(f"Redis Sentinel initialized with hosts: {self.sentinel_hosts}")
+                    logger.info("Redis Sentinel initialized", extra={"hosts": str(self.sentinel_hosts)})
                 except Exception as e:
-                    logger.error(f"Failed to initialize Redis Sentinel: {e}")
+                    logger.error("Failed to initialize Redis Sentinel", extra={"error": str(e)})
                     self.sentinels = None
             
             # Initialize connections for each role
             for role in RedisRole:
                 try:
                     self._initialize_role_connection(role)
-                    logger.info(f"Initialized Redis connection for role: {role.value}")
+                    logger.info("Initialized Redis connection", extra={"role": role.value})
                 except Exception as e:
-                    logger.error(f"Failed to initialize Redis connection for {role.value}: {e}")
+                    logger.error("Failed to initialize Redis connection", extra={"role": role.value, "error": str(e)})
             
             self._initialized = True
             logger.info("Redis cluster initialization complete")
@@ -206,7 +206,7 @@ class RedisClusterManager:
                 connection.ping()
                 health_status[role.value] = True
             except Exception as e:
-                logger.error(f"Health check failed for {role.value}: {e}")
+                logger.error("Health check failed", extra={"role": role.value, "error": str(e)})
                 health_status[role.value] = False
         
         return health_status
@@ -240,7 +240,7 @@ class RedisClusterManager:
                 cluster_info[role.value]["hit_rate"] = round(hit_rate, 2)
                 
             except Exception as e:
-                logger.error(f"Failed to get info for {role.value}: {e}")
+                logger.error("Failed to get info", extra={"role": role.value, "error": str(e)})
                 cluster_info[role.value] = {"error": str(e)}
         
         return cluster_info
@@ -255,7 +255,7 @@ class RedisClusterManager:
                 info = connection.info("memory")
                 memory_usage[role.value] = info.get("used_memory_human", "0B")
             except Exception as e:
-                logger.error(f"Failed to get memory usage for {role.value}: {e}")
+                logger.error("Failed to get memory usage", extra={"role": role.value, "error": str(e)})
                 memory_usage[role.value] = "Error"
         
         return memory_usage
@@ -265,9 +265,9 @@ class RedisClusterManager:
         try:
             connection = self.get_connection(role)
             connection.flushdb()
-            logger.info(f"Flushed cache for {role.value}")
+            logger.info("Flushed cache", extra={"role": role.value})
         except Exception as e:
-            logger.error(f"Failed to flush cache for {role.value}: {e}")
+            logger.error("Failed to flush cache", extra={"role": role.value, "error": str(e)})
             raise
     
     def close_connections(self):
@@ -276,16 +276,16 @@ class RedisClusterManager:
             for role, connection in self.connections.items():
                 try:
                     connection.close()
-                    logger.info(f"Closed connection for {role.value}")
+                    logger.info("Closed connection", extra={"role": role.value})
                 except Exception as e:
-                    logger.error(f"Error closing connection for {role.value}: {e}")
+                    logger.error("Error closing connection", extra={"role": role.value, "error": str(e)})
             
             for role, pool in self.connection_pools.items():
                 try:
                     pool.disconnect()
-                    logger.info(f"Disconnected pool for {role.value}")
+                    logger.info("Disconnected pool", extra={"role": role.value})
                 except Exception as e:
-                    logger.error(f"Error disconnecting pool for {role.value}: {e}")
+                    logger.error("Error disconnecting pool", extra={"role": role.value, "error": str(e)})
             
             self.connections.clear()
             self.connection_pools.clear()

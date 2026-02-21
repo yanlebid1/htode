@@ -34,9 +34,9 @@ class OLXSessionManager:
                 with open(self.session_file, 'r') as f:
                     data = json.load(f)
                     self._sessions = data.get('sessions', [])
-                    logger.info(f"Loaded {len(self._sessions)} OLX sessions")
+                    logger.info("Loaded OLX sessions", extra={"count": len(self._sessions)})
             except Exception as e:
-                logger.error(f"Failed to load sessions: {e}")
+                logger.error("Failed to load sessions", extra={"error": str(e)})
                 self._sessions = []
     
     def save_session(self, cookies: List[Dict], email: Optional[str] = None):
@@ -50,7 +50,7 @@ class OLXSessionManager:
         }
         self._sessions.append(session)
         self._save_to_file()
-        logger.info(f"Saved new OLX session for {email or 'manual login'}")
+        logger.info("Saved new OLX session", extra={"email": email or "manual login"})
     
     def _save_to_file(self):
         """Save sessions to file."""
@@ -132,7 +132,7 @@ async def parse_olx_content(
                             phones = [re.sub(r"[^\d+]", "", phone) for phone in matches]
                             return ExtractionResult(phones, None)
                 except Exception as e:
-                    logger.warning(f"Browser extraction failed: {e}")
+                    logger.warning("Browser extraction failed", extra={"error": str(e)})
                 # If Camoufox approach didn't yield results
                 return ExtractionResult([], None)
     else:
@@ -157,7 +157,7 @@ async def parse_olx_content(
                         phones.append(phone_obj.replace(" ", ""))
             return ExtractionResult(phones, None)
     except Exception as e:
-        logger.warning(f"Failed to fetch OLX phone via API: {e}")
+        logger.warning("Failed to fetch OLX phone via API", extra={"error": str(e)})
     # Fallback: search for phone patterns in the HTML content
     phone_pattern = re.compile(r"\+?38\s*\(?\d{3}\)?\s*\d{3}[\s-]?\d{2}[\s-]?\d{2}")
     matches = phone_pattern.findall(html)
@@ -195,7 +195,7 @@ async def check_olx_login_required(ad_url: str, proxy: Optional[str] = None) -> 
     try:
         from common.utils.extraction_client import extraction_client
         
-        logger.info(f"Checking if login required for OLX ad: {ad_url}")
+        logger.info("Checking if login required for OLX ad", extra={"ad_url": ad_url})
         
         result = await extraction_client.extract_content_async(
             url=ad_url,
@@ -231,12 +231,12 @@ async def check_olx_login_required(ad_url: str, proxy: Optional[str] = None) -> 
                 logger.info("No login button found - phone should be accessible without login")
                 return False
         else:
-            logger.warning(f"Failed to check login requirement: {result.get('error')}")
+            logger.warning("Failed to check login requirement", extra={"error": result.get("error")})
             # If we can't determine, assume login required for safety
             return True
             
     except Exception as e:
-        logger.error(f"Error checking login requirement: {e}")
+        logger.error("Error checking login requirement", extra={"error": str(e)})
         # If we can't determine, assume login required for safety
         return True
 
@@ -255,7 +255,7 @@ async def parse_olx_adspower(ad_url: str) -> ExtractionResult:
         else:
             return ExtractionResult([], None)
     except Exception as e:
-        logger.error(f"AdsPower extraction failed: {e}")
+        logger.error("AdsPower extraction failed", extra={"error": str(e)})
         return ExtractionResult([], None)
 
 
@@ -268,7 +268,7 @@ async def _parse_olx_with_session(
         logger.warning("No valid session available, falling back to standard extraction")
         return await _parse_olx_standard(ad_url, proxy)
     
-    logger.info(f"Using session from {session.get('email', 'unknown')}")
+    logger.info("Using session", extra={"email": session.get("email", "unknown")})
     
     try:
         from camoufox.async_api import AsyncCamoufox
@@ -300,7 +300,7 @@ async def _parse_olx_with_session(
             cookies = session.get('cookies', [])
             if cookies:
                 await context.add_cookies(cookies)
-                logger.info(f"Added {len(cookies)} session cookies")
+                logger.info("Added session cookies", extra={"count": len(cookies)})
             
             page = await context.new_page()
             
@@ -333,17 +333,17 @@ async def _parse_olx_with_session(
                     href = await phone_element.get_attribute('href')
                     if href and href.startswith('tel:'):
                         phone = re.sub(r"[^\d+]", "", href.replace('tel:', ''))
-                        logger.info(f"Successfully extracted phone with session: {phone}")
+                        logger.info("Successfully extracted phone with session")
                         return ExtractionResult([phone], None)
             
             except Exception as e:
-                logger.error(f"Failed to extract phone with session: {e}")
+                logger.error("Failed to extract phone with session", extra={"error": str(e)})
             
             # Fallback to searching in page content
             return await _extract_from_page_content(page)
             
     except Exception as e:
-        logger.error(f"Session extraction error: {e}")
+        logger.error("Session extraction error", extra={"error": str(e)})
         return await _parse_olx_standard(ad_url, proxy)
 
 
@@ -407,17 +407,17 @@ async def _parse_olx_standard(
                 viber_link = viber_links[0].get("href")
 
             if phones:
-                logger.info(f"Successfully extracted phones from OLX: {phones}")
+                logger.info("Successfully extracted phones from OLX", extra={"phone_count": len(phones)})
                 return ExtractionResult(phones, viber_link)
             else:
                 logger.warning("No phones found in OLX page after button click")
                 return ExtractionResult([], None)
         else:
-            logger.error(f"Browser extraction failed for OLX: {result.get('error')}")
+            logger.error("Browser extraction failed for OLX", extra={"error": result.get("error")})
             return ExtractionResult([], None)
 
     except Exception as e:
-        logger.error(f"Error during browser extraction for OLX: {e}")
+        logger.error("Error during browser extraction for OLX", extra={"error": str(e)})
         return ExtractionResult([], None)
 
 
@@ -443,7 +443,7 @@ async def _close_olx_popups(page) -> None:
             logger.debug("No survey popup found")
             
     except Exception as e:
-        logger.debug(f"Error closing popups: {e}")
+        logger.debug("Error closing popups", extra={"error": str(e)})
 
 
 async def _extract_from_page_content(page) -> ExtractionResult:
@@ -455,10 +455,10 @@ async def _extract_from_page_content(page) -> ExtractionResult:
         
         if matches:
             phones = list(set([re.sub(r"[^\d+]", "", phone) for phone in matches]))
-            logger.info(f"Found phones in page content: {phones}")
+            logger.info("Found phones in page content", extra={"phone_count": len(phones)})
             return ExtractionResult(phones, None)
     except Exception as e:
-        logger.error(f"Failed to extract from page content: {e}")
+        logger.error("Failed to extract from page content", extra={"error": str(e)})
     
     return ExtractionResult([], None)
 
@@ -469,7 +469,7 @@ async def add_olx_session(email: str, password: str) -> bool:
     try:
         from camoufox.async_api import AsyncCamoufox
         
-        logger.info(f"Logging in to OLX as {email}")
+        logger.info("Logging in to OLX", extra={"email": email})
         
         async with AsyncCamoufox(headless=True) as browser:
             page = await browser.new_page()
@@ -494,12 +494,12 @@ async def add_olx_session(email: str, password: str) -> bool:
                 
                 # Save session
                 _session_manager.save_session(cookies, email)
-                logger.info(f"Successfully saved OLX session for {email}")
+                logger.info("Successfully saved OLX session", extra={"email": email})
                 return True
             else:
                 logger.error("Login failed - still on login page")
                 return False
                 
     except Exception as e:
-        logger.error(f"Failed to add OLX session: {e}")
+        logger.error("Failed to add OLX session", extra={"error": str(e)})
         return False

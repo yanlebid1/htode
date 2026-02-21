@@ -77,7 +77,7 @@ def versioned_task(name: str, version: str = "v1"):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # Log version usage
-            logger.info(f"Executing task {name} version {version}")
+            logger.info("Executing task", extra={"task_name": name, "version": version})
             return func(*args, **kwargs)
 
         return task
@@ -114,7 +114,7 @@ def forward_compatible_task(name: str):
 @versioned_task("notifier.process_ad", version="v1")
 def process_ad_v1(ad_data: Dict[str, Any]):
     """Original ad processing logic"""
-    logger.info(f"Processing ad (v1): {ad_data.get('id')}")
+    logger.info("Processing ad (v1)", extra={"ad_id": ad_data.get("id")})
     # Original implementation
     return {"status": "processed", "version": "v1"}
 
@@ -122,7 +122,7 @@ def process_ad_v1(ad_data: Dict[str, Any]):
 @versioned_task("notifier.process_ad", version="v2")
 def process_ad_v2(ad_data: Dict[str, Any]):
     """Enhanced ad processing with phone extraction"""
-    logger.info(f"Processing ad (v2): {ad_data.get('id')}")
+    logger.info("Processing ad (v2)", extra={"ad_id": ad_data.get("id")})
 
     # New implementation with phone extraction
     phone_numbers = []
@@ -161,7 +161,7 @@ class DeploymentConfig:
                 "default_version": "v1",
             },
         )
-        logger.info(f"Enabled canary for {task_name}: {percentage}% -> {new_version}")
+        logger.info("Enabled canary", extra={"task_name": task_name, "percentage": percentage, "new_version": new_version})
 
     @staticmethod
     def increase_canary(task_name: str, percentage: int):
@@ -169,7 +169,7 @@ class DeploymentConfig:
         config = version_manager.rollout_config.get(task_name, {})
         config["canary_percentage"] = percentage
         version_manager.set_rollout(task_name, config)
-        logger.info(f"Increased canary for {task_name} to {percentage}%")
+        logger.info("Increased canary", extra={"task_name": task_name, "percentage": percentage})
 
     @staticmethod
     def promote_version(task_name: str, new_version: str):
@@ -177,7 +177,7 @@ class DeploymentConfig:
         version_manager.set_rollout(
             task_name, {"default_version": new_version, "canary_enabled": False}
         )
-        logger.info(f"Promoted {task_name} to version {new_version}")
+        logger.info("Promoted task version", extra={"task_name": task_name, "version": new_version})
 
     @staticmethod
     def rollback(task_name: str, version: str = "v1"):
@@ -185,7 +185,7 @@ class DeploymentConfig:
         version_manager.set_rollout(
             task_name, {"default_version": version, "canary_enabled": False}
         )
-        logger.info(f"Rolled back {task_name} to version {version}")
+        logger.info("Rolled back task version", extra={"task_name": task_name, "version": version})
 
 
 # Migration helpers
@@ -247,13 +247,13 @@ def safe_task_transition(
     if canary_steps is None:
         canary_steps = [10, 25, 50, 100]
 
-    logger.info(f"Starting safe transition for {task_name} to {new_version}")
+    logger.info("Starting safe transition", extra={"task_name": task_name, "new_version": new_version})
 
     # Enable canary with first step
     DeploymentConfig.enable_canary(task_name, new_version, canary_steps[0])
 
     # Log the deployment plan
-    logger.info(f"Deployment plan: {canary_steps} with {canary_duration} per step")
+    logger.info("Deployment plan", extra={"steps": canary_steps, "duration": str(canary_duration)})
 
     return {
         "task_name": task_name,
