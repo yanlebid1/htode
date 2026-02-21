@@ -374,7 +374,8 @@ async def safe_send_media(
                                             **kwargs,
                                         )
                                     except Exception:
-                                        pass
+                                        logger.debug("Fallback text send also failed",
+                                                     extra={"user_id": str(user_id)[:20]})
                                 return None
 
             logger.error(

@@ -56,16 +56,24 @@ def handle_task_failure(
             logger.error("Failed to send to dead letter queue", extra={"error": str(dlq_err)})
 
     if sender.name in ["notifier_service.app.tasks.sort_and_notify_new_ads"]:
-        logger.critical(f"CRITICAL TASK FAILURE: {sender.name}[{task_id}]")
+        logger.critical(
+            "CRITICAL TASK FAILURE",
+            extra={"task_name": sender.name, "task_id": task_id},
+        )
 
 
 @task_retry.connect
 def handle_task_retry(sender=None, request=None, reason=None, einfo=None, **_):
     """Log task retries."""
     logger.warning(
-        f"Task {sender.name}[{request.id}] being retried: {reason}\n"
-        f"Args: {request.args}, Kwargs: {request.kwargs}\n"
-        f"{einfo}"
+        "Task being retried",
+        extra={
+            "task_name": sender.name,
+            "task_id": request.id,
+            "reason": str(reason),
+            "args": str(request.args)[:200],
+            "kwargs": str(request.kwargs)[:200],
+        },
     )
 
 
@@ -84,7 +92,7 @@ def worker_shutdown_handler(**_):
         redis_cluster.close_connections()
         logger.info("Redis cluster connections closed on shutdown")
     except Exception as e:
-        logger.error(f"Error closing Redis connections on shutdown: {e}")
+        logger.error("Error closing Redis connections on shutdown", extra={"error": str(e)})
 
 
 @beat_init.connect
