@@ -9,6 +9,7 @@ from typing import Optional
 from common.db.session import db_session
 from common.db.repositories.verification_repository import VerificationRepository
 from common.db.repositories.user_repository import UserRepository
+from common.utils.secrets import get_secret
 from common.utils.logging_config import log_operation, log_context
 
 # Import the common verification logger
@@ -18,7 +19,7 @@ from . import logger
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_PASSWORD = get_secret("smtp_password", fallback_env="SMTP_PASSWORD")
 FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USERNAME)
 EMAIL_VERIFICATION_EXPIRY_MINUTES = 60
 

@@ -9,6 +9,8 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
+from common.utils.secrets import get_secret
+
 load_dotenv()
 
 @dataclass
@@ -24,7 +26,7 @@ class MultiBotConfig:
     """Manages the pool of bots"""
     
     def __init__(self):
-        self.dispatcher_token = os.getenv("TELEGRAM_DISPATCHER_TOKEN")
+        self.dispatcher_token = get_secret("telegram_dispatcher_token", fallback_env="TELEGRAM_DISPATCHER_TOKEN")
         self.dispatcher_username = os.getenv("TELEGRAM_DISPATCHER_USERNAME", "@YourDispatcherBot")
         self.pool_bots: List[BotConfig] = []
         self._load_bot_pool()
@@ -34,7 +36,7 @@ class MultiBotConfig:
         # Expected format: BOT_POOL_1_TOKEN, BOT_POOL_1_USERNAME, etc.
         bot_index = 1
         while True:
-            token = os.getenv(f"BOT_POOL_{bot_index}_TOKEN")
+            token = get_secret(f"bot_pool_{bot_index}_token", fallback_env=f"BOT_POOL_{bot_index}_TOKEN")
             if not token:
                 break
                 

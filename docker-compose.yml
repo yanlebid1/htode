@@ -94,6 +94,11 @@ x-combined-settings: &combined-settings
   networks:
     - app_net
   restart: unless-stopped
+  secrets:
+    - db_password
+    - redis_password
+    - encryption_master_key
+    - encryption_hmac_key
   deploy:
     resources:
       limits:
@@ -1752,3 +1757,63 @@ volumes:
   prometheus-data:
   grafana-data:
   loki-data:
+
+# Docker Secrets — reads from env vars (Compose v2.23+)
+# In production, replace `environment:` with `file:` for file-based secrets
+secrets:
+  db_password:
+    environment: DB_PASS
+  redis_password:
+    environment: REDIS_PASSWORD
+  telegram_dispatcher_token:
+    environment: TELEGRAM_DISPATCHER_TOKEN
+  bot_pool_1_token:
+    environment: BOT_POOL_1_TOKEN
+  bot_pool_2_token:
+    environment: BOT_POOL_2_TOKEN
+  bot_pool_3_token:
+    environment: BOT_POOL_3_TOKEN
+  bot_pool_4_token:
+    environment: BOT_POOL_4_TOKEN
+  bot_pool_5_token:
+    environment: BOT_POOL_5_TOKEN
+  bot_pool_6_token:
+    environment: BOT_POOL_6_TOKEN
+  bot_pool_7_token:
+    environment: BOT_POOL_7_TOKEN
+  bot_pool_8_token:
+    environment: BOT_POOL_8_TOKEN
+  bot_pool_9_token:
+    environment: BOT_POOL_9_TOKEN
+  bot_pool_10_token:
+    environment: BOT_POOL_10_TOKEN
+  bot_pool_11_token:
+    environment: BOT_POOL_11_TOKEN
+  bot_pool_12_token:
+    environment: BOT_POOL_12_TOKEN
+  bot_pool_13_token:
+    environment: BOT_POOL_13_TOKEN
+  bot_pool_14_token:
+    environment: BOT_POOL_14_TOKEN
+  bot_pool_15_token:
+    environment: BOT_POOL_15_TOKEN
+  bot_pool_16_token:
+    environment: BOT_POOL_16_TOKEN
+  bot_pool_17_token:
+    environment: BOT_POOL_17_TOKEN
+  bot_pool_18_token:
+    environment: BOT_POOL_18_TOKEN
+  bot_pool_19_token:
+    environment: BOT_POOL_19_TOKEN
+  bot_pool_20_token:
+    environment: BOT_POOL_20_TOKEN
+  wayforpay_secret:
+    environment: WAYFORPAY_MERCHANT_SECRET
+  aws_secret_key:
+    environment: AWS_SECRET_ACCESS_KEY
+  smtp_password:
+    environment: SMTP_PASSWORD
+  encryption_master_key:
+    environment: ENCRYPTION_MASTER_KEY
+  encryption_hmac_key:
+    environment: ENCRYPTION_HMAC_KEY

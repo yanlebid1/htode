@@ -3,6 +3,8 @@ import os
 from dotenv import load_dotenv
 from typing import Dict, Any, Optional
 
+from common.utils.secrets import get_secret
+
 # Load .env file if it exists
 load_dotenv()
 
@@ -11,7 +13,7 @@ DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "port": os.getenv("DB_PORT", "5432"),
     "user": os.getenv("DB_USER", "myuser"),
-    "password": os.getenv("DB_PASS", "mypass"),
+    "password": get_secret("db_password", fallback_env="DB_PASS", default="mypass"),
     "dbname": os.getenv("DB_NAME", "mydb"),
 }
 
@@ -21,7 +23,7 @@ DB_CONFIG["host"] = os.getenv("DB_PGBOUNCER_HOST", DB_CONFIG["host"])
 # AWS Configuration
 AWS_CONFIG = {
     "access_key": os.getenv("AWS_ACCESS_KEY_ID"),
-    "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
+    "secret_key": get_secret("aws_secret_key", fallback_env="AWS_SECRET_ACCESS_KEY"),
     "region": os.getenv("AWS_DEFAULT_REGION", "eu-west-1"),
     "s3_bucket": os.getenv("AWS_S3_BUCKET", "htodebucket"),
     "s3_prefix": os.getenv("AWS_S3_BUCKET_PREFIX", "ads-images/"),
@@ -32,7 +34,7 @@ AWS_CONFIG = {
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # Telegram Configuration
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = get_secret("telegram_dispatcher_token", fallback_env="TELEGRAM_TOKEN")
 # TODO: I receive an error while passing token for bot creating. Nonetype is received for some reason. Check logs.
 
 # WebApp Configuration - Use internal Docker network if not provided
