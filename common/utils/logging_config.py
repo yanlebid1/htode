@@ -183,8 +183,9 @@ def log_operation(operation_name: str):
 
             with log_context(logger, operation=operation_name):
                 logger.debug(
-                    f"Starting {operation_name}",
+                    "Starting operation",
                     extra={
+                        "operation": operation_name,
                         "args": str(args[1:])[:100],  # Limit args length
                         "kwargs": str(kwargs)[:100],
                     },
@@ -192,10 +193,10 @@ def log_operation(operation_name: str):
 
                 try:
                     result = func(*args, **kwargs)
-                    logger.debug(f"Completed {operation_name}")
+                    logger.debug("Completed operation", extra={"operation": operation_name})
                     return result
                 except Exception as e:
-                    logger.exception(f"Error in {operation_name}: {e}")
+                    logger.exception("Error in operation", extra={"operation": operation_name, "error": str(e)})
                     raise
 
         @wraps(func)
@@ -210,8 +211,9 @@ def log_operation(operation_name: str):
 
             with log_context(logger, operation=operation_name):
                 logger.debug(
-                    f"Starting {operation_name}",
+                    "Starting operation",
                     extra={
+                        "operation": operation_name,
                         "args": str(args[1:])[:100],  # Limit args length
                         "kwargs": str(kwargs)[:100],
                     },
@@ -219,10 +221,10 @@ def log_operation(operation_name: str):
 
                 try:
                     result = await func(*args, **kwargs)
-                    logger.debug(f"Completed {operation_name}")
+                    logger.debug("Completed operation", extra={"operation": operation_name})
                     return result
                 except Exception as e:
-                    logger.exception(f"Error in {operation_name}: {e}")
+                    logger.exception("Error in operation", extra={"operation": operation_name, "error": str(e)})
                     raise
 
         # Return appropriate wrapper based on function type
@@ -271,11 +273,11 @@ class LogAggregator:
             "errors": len(self.errors),
         }
 
-        self.logger.log(level, f"{self.operation} completed", extra=summary)
+        self.logger.log(level, "Operation completed", extra=summary)
 
         # Log errors if any
         if self.errors:
             self.logger.error(
-                f"{self.operation} encountered errors",
-                extra={"errors": self.errors[:10]},  # Limit to first 10 errors
+                "Operation encountered errors",
+                extra={"operation": self.operation, "errors": self.errors[:10]},
             )

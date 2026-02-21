@@ -137,7 +137,7 @@ async def fetch_with_aiohttp(
                 return content, response.status, final_url
 
     except Exception as e:
-        logger.warning(f"aiohttp failed for {url}: {e}")
+        logger.warning("aiohttp failed", extra={"url": url, "error": str(e)})
         raise
 
 
@@ -164,7 +164,7 @@ async def fetch_with_curl_cffi(
             return response.text, response.status_code, str(response.url)
 
     except Exception as e:
-        logger.warning(f"curl_cffi failed for {url}: {e}")
+        logger.warning("curl_cffi failed", extra={"url": url, "error": str(e)})
         raise
 
 
@@ -189,7 +189,7 @@ async def fetch_with_httpx(
             return response.text, response.status_code, str(response.url)
 
     except Exception as e:
-        logger.warning(f"httpx failed for {url}: {e}")
+        logger.warning("httpx failed", extra={"url": url, "error": str(e)})
         raise
 
 
@@ -209,7 +209,7 @@ async def crawl_page(request: CrawlRequest):
     # Try each method
     for method in methods:
         try:
-            logger.info(f"Trying {method} for {request.url}")
+            logger.info("Trying fetch method", extra={"method": str(method), "url": request.url})
 
             if method == RequestMethod.AIOHTTP:
                 content, status_code, final_url = await fetch_with_aiohttp(
@@ -240,7 +240,7 @@ async def crawl_page(request: CrawlRequest):
                 raise ValueError(f"Unknown method: {method}")
 
             # Success!
-            logger.info(f"Successfully fetched {request.url} with {method}")
+            logger.info("Successfully fetched URL", extra={"url": request.url, "method": str(method)})
             return CrawlResponse(
                 status="success",
                 content=content,
@@ -250,12 +250,12 @@ async def crawl_page(request: CrawlRequest):
             )
 
         except Exception as e:
-            logger.warning(f"{method} failed: {e}")
+            logger.warning("Fetch method failed", extra={"method": str(method), "error": str(e)})
             last_error = str(e)
             continue
 
     # All methods failed
-    logger.error(f"All methods failed for {request.url}")
+    logger.error("All methods failed", extra={"url": request.url})
     return CrawlResponse(
         status="error", error=f"All methods failed. Last error: {last_error}"
     )

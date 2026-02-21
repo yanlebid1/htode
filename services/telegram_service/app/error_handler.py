@@ -56,17 +56,17 @@ async def errors_handler(update, exception):
     with log_context(logger, chat_id=chat_id, user_id=user_id, update=update_str):
         if isinstance(exception, MessageNotModified):
             # This happens when the message content has not changed
-            logger.warning(f"Message not modified: {context}")
+            logger.warning("Message not modified", extra={"context": context})
             return True
 
         if isinstance(exception, MessageToEditNotFound):
             # Message to edit not found
-            logger.warning(f"Message to edit not found: {context}")
+            logger.warning("Message to edit not found", extra={"context": context})
             return True
 
         if isinstance(exception, CantParseEntities):
             # Markdown or HTML formatting issue
-            logger.error(f"CantParseEntities: {exception} | {context}")
+            logger.error("CantParseEntities", extra={"exception": str(exception), "context": context})
             try:
                 # Try to send without formatting
                 if chat_id:
@@ -75,71 +75,69 @@ async def errors_handler(update, exception):
                         text="Sorry, there was a formatting error in the message. Please try again.",
                     )
             except Exception as e:
-                logger.error(f"Failed to send error message: {e}")
+                logger.error("Failed to send error message", extra={"error": str(e)})
             return True
 
         if isinstance(exception, RetryAfter):
             # Flood control - wait the specified time before retrying
             retry_after = exception.timeout
-            logger.warning(f"RetryAfter: {retry_after} seconds | {context}")
+            logger.warning("RetryAfter", extra={"retry_after": retry_after, "context": context})
             await asyncio.sleep(retry_after)
             return True
 
         if isinstance(exception, BotBlocked):
             # User blocked the bot
-            logger.info(f"Bot blocked by user: {context}")
+            logger.info("Bot blocked by user", extra={"context": context})
             # You could remove the user from your active users database here
             return True
 
         if isinstance(exception, ChatNotFound):
             # Chat not found
-            logger.info(f"Chat not found: {context}")
+            logger.info("Chat not found", extra={"context": context})
             return True
 
         if isinstance(exception, UserDeactivated):
             # User account deleted
-            logger.info(f"User deactivated: {context}")
+            logger.info("User deactivated", extra={"context": context})
             # You could remove the user from your active users database here
             return True
 
         if isinstance(exception, MigrateToChat):
             # Group migrated to supergroup
-            logger.info(
-                f"Group migrated to supergroup. New chat id: {exception.migrate_to_chat_id} | {context}"
-            )
+            logger.info("Group migrated to supergroup", extra={"new_chat_id": exception.migrate_to_chat_id, "context": context})
             # You could update the chat ID in your database here
             return True
 
         if isinstance(exception, NetworkError):
             # Network issues - log and let it retry
-            logger.error(f"NetworkError: {exception} | {context}")
+            logger.error("NetworkError", extra={"exception": str(exception), "context": context})
             # Consider implementing an exponential backoff retry here
             await asyncio.sleep(1)  # Simple delay before retry
             return True
 
         if isinstance(exception, BadRequest):
             # Bad request to Telegram API
-            logger.error(f"BadRequest: {exception} | {context}")
+            logger.error("BadRequest", extra={"exception": str(exception), "context": context})
             return True
 
         if isinstance(exception, Unauthorized):
             # User removed the bot or bot was never authorized
-            logger.warning(f"Unauthorized: {exception} | {context}")
+            logger.warning("Unauthorized", extra={"exception": str(exception), "context": context})
             return True
 
         if isinstance(exception, InvalidQueryID):
             # Expired button press
-            logger.warning(f"InvalidQueryID: {exception} | {context}")
+            logger.warning("InvalidQueryID", extra={"exception": str(exception), "context": context})
             return True
 
         if isinstance(exception, MessageToDeleteNotFound):
             # Message to delete not found
-            logger.warning(f"MessageToDeleteNotFound: {exception} | {context}")
+            logger.warning("MessageToDeleteNotFound", extra={"exception": str(exception), "context": context})
             return True
 
         # For other Telegram API errors
         if isinstance(exception, TelegramAPIError):
-            logger.error(f"TelegramAPIError: {exception} | {context}")
+            logger.error("TelegramAPIError", extra={"exception": str(exception), "context": context})
             return True
 
         # For any other unexpected errors
@@ -154,7 +152,7 @@ async def errors_handler(update, exception):
 
         # Log the full update for debugging severe issues
         if update:
-            logger.debug(f"Update: {update}")
+            logger.debug("Update details", extra={"update": str(update)})
 
     # Consider notifying administrators for critical errors here
 

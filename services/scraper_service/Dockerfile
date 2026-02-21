@@ -26,6 +26,9 @@ RUN mkdir -p /tmp/chromedriver-linux64 \
     && chmod +x /tmp/chromedriver-linux64/chromedriver \
     && rm /tmp/chromedriver-linux64.zip
 
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Copy shared and service code

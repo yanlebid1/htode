@@ -28,17 +28,17 @@ def get_bot_instance(bot_name: str) -> Optional[Bot]:
     if bot_name not in _bot_instances:
         bot_config = multibot_config.get_bot_by_name(bot_name)
         if not bot_config:
-            logger.error(f"No configuration found for bot: {bot_name}")
+            logger.error("No configuration found for bot", extra={"bot_name": bot_name})
             return None
         
         try:
             _bot_instances[bot_name] = Bot(token=bot_config.token)
-            logger.info(f"Created bot instance for {bot_name}")
+            logger.info("Created bot instance", extra={"bot_name": bot_name})
         except Exception as e:
             logger.error(
-                f"Failed to create bot instance for {bot_name}",
+                "Failed to create bot instance",
                 exc_info=True,
-                extra={"error": str(e)}
+                extra={"bot_name": bot_name, "error": str(e)}
             )
             return None
     
@@ -102,8 +102,9 @@ class MultiBotMessaging:
             for bot_name, result in zip(users_by_bot.keys(), batch_results):
                 if isinstance(result, Exception):
                     logger.error(
-                        f"Error sending via bot {bot_name}",
-                        exc_info=result
+                        "Error sending via bot",
+                        exc_info=result,
+                        extra={"bot_name": bot_name}
                     )
                     results['failed'] += len(users_by_bot[bot_name])
                     results['by_bot'][bot_name] = {'error': str(result)}
@@ -162,8 +163,9 @@ class MultiBotMessaging:
             if isinstance(result, Exception) or result is None:
                 failed += 1
                 logger.warning(
-                    f"Failed to send to user via {bot_name}",
+                    "Failed to send to user via bot",
                     extra={
+                        'bot_name': bot_name,
                         'user_id': user['user_id'],
                         'telegram_id': user['telegram_id'],
                         'error': str(result) if isinstance(result, Exception) else 'No result'
@@ -225,8 +227,9 @@ class MultiBotMessaging:
             for bot_name, result in zip(users_by_bot.keys(), batch_results):
                 if isinstance(result, Exception):
                     logger.error(
-                        f"Error sending ads via bot {bot_name}",
-                        exc_info=result
+                        "Error sending ads via bot",
+                        exc_info=result,
+                        extra={"bot_name": bot_name}
                     )
                     results['failed'] += len(users_by_bot[bot_name])
                     results['by_bot'][bot_name] = {'error': str(result)}

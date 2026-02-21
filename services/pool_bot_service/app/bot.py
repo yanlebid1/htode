@@ -17,7 +17,7 @@ if not bot_config:
     # Fallback to environment variable if not in multibot config
     BOT_TOKEN = os.getenv("BOT_TOKEN")
     if not BOT_TOKEN:
-        logger.error(f"No configuration found for bot: {BOT_NAME}")
+        logger.error("No configuration found for bot", extra={"bot_name": BOT_NAME})
         raise ValueError(f"Bot token not found for {BOT_NAME}")
     
     # Create minimal config from env
@@ -59,11 +59,11 @@ try:
         prefix=f"pool_{BOT_NAME}_fsm"
     )
     dp = Dispatcher(bot, storage=storage)
-    logger.info(f"Pool bot {BOT_NAME} initialized successfully")
+    logger.info("Pool bot initialized successfully", extra={"bot_name": BOT_NAME})
 except Exception as e:
     logger.error(
-        f"Failed to initialize Pool bot {BOT_NAME}",
+        "Failed to initialize Pool bot",
         exc_info=True,
-        extra={"error": str(e)}
+        extra={"bot_name": BOT_NAME, "error": str(e)}
     )
     raise 

@@ -93,7 +93,7 @@ def update_user_filter(user_id, filters):
     Update filters for a user with cache invalidation
     """
     with log_context(logger, user_id=user_id):
-        logger.info(f"Updating filters for user_id: {user_id}")
+        logger.info("Updating filters for user", extra={"user_id": user_id})
 
         try:
             with db_session() as db:
@@ -101,7 +101,8 @@ def update_user_filter(user_id, filters):
                 user = UserRepository.get_by_id(db, user_id)
                 if not user:
                     logger.error(
-                        f"Cannot update filters - user_id {user_id} does not exist in database"
+                        "Cannot update filters - user does not exist in database",
+                        extra={"user_id": user_id},
                     )
                     raise ValueError(f"User ID {user_id} does not exist")
 
@@ -127,7 +128,7 @@ def update_user_filter(user_id, filters):
                 )
 
                 logger.info(
-                    f"Updated filters: [{user_id}, {property_type}, {city}, {rooms_count}, {price_min}, {price_max}]",
+                    "Updated filters",
                     extra={"user_id": user_id, "filter_data": filter_data},
                 )
 
@@ -325,10 +326,10 @@ def find_users_for_ad(ad):
             cache_key = get_entity_cache_key("matching_users", ad_id)
             cached_users = BaseCacheManager.get(cache_key)
             if cached_users:
-                logger.info(f"Cache hit for ad {ad_id} matching users")
+                logger.info("Cache hit for ad matching users", extra={"ad_id": ad_id})
                 return cached_users
 
-            logger.info(f"Looking for users for ad: {ad_id}")
+            logger.info("Looking for users for ad", extra={"ad_id": ad_id})
 
             with db_session() as db:
                 # Use repository to find matching users
@@ -354,7 +355,7 @@ def find_users_for_ad(ad):
             # Cache the results
             BaseCacheManager.set(cache_key, user_ids, CacheTTL.STANDARD)
 
-            logger.info(f"Found {len(user_ids)} users for ad: {ad_id}")
+            logger.info("Found users for ad", extra={"user_count": len(user_ids), "ad_id": ad_id})
             return user_ids
 
     except Exception as e:
@@ -818,8 +819,8 @@ def add_favorite_ad(user_id: int, ad_id: int) -> Optional[int]:
         except ValueError as e:
             # This handles the case where user already has 50 favorites
             logger.warning(
-                f"Couldn't add favorite: {str(e)}",
-                extra={"user_id": user_id, "ad_id": ad_id},
+                "Couldn't add favorite",
+                extra={"user_id": user_id, "ad_id": ad_id, "error": str(e)},
             )
             raise
         except Exception as e:
@@ -961,7 +962,7 @@ def get_full_ad_description(resource_url):
             )
             return cached_description
 
-        logger.info(f"Getting full ad description for resource_url: {resource_url}...")
+        logger.info("Getting full ad description", extra={"resource_url": resource_url[:50]})
 
         try:
             with db_session() as db:
@@ -1010,7 +1011,8 @@ def store_ad_phones(resource_url: str, ad_id: int) -> int:
 
                 if not ad:
                     logger.warning(
-                        f"Cannot store phones for ad_id={ad_id} - ad doesn't exist in the database"
+                        "Cannot store phones - ad doesn't exist in the database",
+                        extra={"ad_id": ad_id},
                     )
                     return 0
 
@@ -1021,7 +1023,7 @@ def store_ad_phones(resource_url: str, ad_id: int) -> int:
 
                 # Delete existing phones for this ad to avoid duplicates
                 phones_count = db.query(AdPhone).filter(AdPhone.ad_id == ad_id).delete()
-                logger.info(f"Deleted {phones_count} existing phones for ad_id={ad_id}")
+                logger.info("Deleted existing phones", extra={"phones_count": phones_count, "ad_id": ad_id})
 
                 phones_added = 0
 
@@ -1496,7 +1498,7 @@ def get_users_for_reminders() -> List[Dict[str, Any]]:
                 BaseCacheManager.set(cache_key, result, CacheTTL.SHORT)
 
                 aggregator.log_summary()
-                logger.info(f"Found {len(result)} users for reminders")
+                logger.info("Found users for reminders", extra={"count": len(result)})
                 return result
 
         except Exception as e:
@@ -1564,7 +1566,7 @@ def get_expiring_subscriptions() -> List[Dict[str, Any]]:
                 BaseCacheManager.set(cache_key, result, CacheTTL.SHORT)
 
                 aggregator.log_summary()
-                logger.info(f"Found {len(result)} expiring subscriptions")
+                logger.info("Found expiring subscriptions", extra={"count": len(result)})
                 return result
 
         except Exception as e:

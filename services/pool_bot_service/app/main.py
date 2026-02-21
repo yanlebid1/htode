@@ -27,26 +27,26 @@ from common.messaging.telegram_messaging import TelegramMessaging
 
 # Register this bot instance
 global_messaging_service.register_messenger("telegram", TelegramMessaging(bot))
-logger.info(f"Pool bot {BOT_NAME} registered with messaging service")
+logger.info("Pool bot registered with messaging service", extra={"bot_name": BOT_NAME})
 
 
-@log_operation(f"pool_bot_main_{BOT_NAME}")
+@log_operation("pool_bot_main")
 def main():
     """Start the Pool bot instance"""
-    logger.info(f"Starting Pool bot {BOT_NAME}...")
+    logger.info("Starting Pool bot", extra={"bot_name": BOT_NAME})
     
     try:
         # Start polling
         executor.start_polling(dp, skip_updates=True)
     except Exception as e:
         logger.error(
-            f"Pool bot {BOT_NAME} startup failed",
+            "Pool bot startup failed",
             exc_info=True,
-            extra={"error": str(e)}
+            extra={"bot_name": BOT_NAME, "error": str(e)}
         )
         raise
     finally:
-        logger.info(f"Pool bot {BOT_NAME} stopped")
+        logger.info("Pool bot stopped", extra={"bot_name": BOT_NAME})
 
 
 if __name__ == "__main__":

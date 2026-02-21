@@ -16,11 +16,11 @@ async def parse_domria_page(url: str, client: AsyncHTTPClient) -> ExtractionResu
     First tries to fetch the page content directly for phone numbers.
     If none found (likely hidden behind a "Show phone" button), uses Camoufox to simulate a user clicking the button.
     """
-    logger.info(f"Attempting direct fetch for DOM.RIA page: {url}")
+    logger.info("Attempting direct fetch for DOM.RIA page", extra={"url": url})
     try:
         html = await client.fetch(url)
     except Exception as e:
-        logger.warning(f"Direct fetch failed for DOM.RIA: {e}")
+        logger.warning("Direct fetch failed for DOM.RIA", extra={"error": str(e)})
         html = None
     phones: list = []
     if html:
@@ -50,7 +50,7 @@ async def parse_domria_page(url: str, client: AsyncHTTPClient) -> ExtractionResu
                     if num:
                         phones.append(num)
         if phones:
-            logger.info(f"Found phone(s) in DOM.RIA page without interaction: {phones}")
+            logger.info("Found phones in DOM.RIA page without interaction", extra={"phone_count": len(phones)})
             return ExtractionResult(phones, None)
     # If no phone found in static content, use browser to click "Show phone" button
     logger.info(
@@ -119,17 +119,17 @@ async def parse_domria_page(url: str, client: AsyncHTTPClient) -> ExtractionResu
                 viber_link = viber_links[0].get("href")
 
             if phones:
-                logger.info(f"Successfully extracted phones from DOM.RIA: {phones}")
+                logger.info("Successfully extracted phones from DOM.RIA", extra={"phone_count": len(phones)})
                 return ExtractionResult(phones, viber_link)
             else:
                 logger.warning("No phones found in DOM.RIA page even after interaction")
                 return ExtractionResult([], None)
         else:
             logger.error(
-                f"Browser extraction failed for DOM.RIA: {result.get('error')}"
+                "Browser extraction failed for DOM.RIA", extra={"error": result.get("error")}
             )
             return ExtractionResult([], None)
 
     except Exception as e:
-        logger.error(f"Error during browser extraction for DOM.RIA: {e}")
+        logger.error("Error during browser extraction for DOM.RIA", extra={"error": str(e)})
         return ExtractionResult([], None)

@@ -30,7 +30,7 @@ async def parse_real_estate_lviv(
             headers = {"X-Requested-With": "XMLHttpRequest", "Referer": ad_link}
             # Fetch phone data via AJAX endpoint
             content = await client.fetch(phone_api_url, headers=headers)
-            logger.info(f"Fetched phone data from {phone_api_url}")
+            logger.info("Fetched phone data", extra={"phone_api_url": phone_api_url})
             if not content:
                 return ExtractionResult([], None)
             # Extract phone number(s) from the response content

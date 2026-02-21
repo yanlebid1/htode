@@ -156,7 +156,7 @@ def notify_user_batch_v2(
                 success_count += 1
             except Exception as e:
                 failed_count += 1
-                logger.error(f"Failed to dispatch notification to {telegram_id}: {e}")
+                logger.error("Failed to dispatch notification", extra={"telegram_id": telegram_id, "error": str(e)})
 
         # Performance metrics
         processing_time = time.time() - start_time
@@ -335,7 +335,7 @@ async def send_single_notification(
         return True
 
     except Exception as e:
-        logger.error(f"Failed to send notification to {telegram_id}: {e}")
+        logger.error("Failed to send notification", extra={"telegram_id": telegram_id, "error": str(e)})
         raise
 
 
@@ -374,7 +374,7 @@ def cleanup_stale_extractions():
                 )
                 retry_count += 1
 
-        logger.info(f"Scheduled {retry_count} phone extraction retries")
+        logger.info("Scheduled phone extraction retries", extra={"retry_count": retry_count})
 
 
 # Register the current versions as defaults

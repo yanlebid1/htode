@@ -88,7 +88,7 @@ class ExtractionClient:
 
         try:
             async with httpx.AsyncClient(timeout=timeout + 5) as client:
-                logger.info(f"Using Camoufox service for {url}")
+                logger.info("Using Camoufox service", extra={"url": url})
                 response = await client.post(self.camoufox_url, json=request_data)
                 response.raise_for_status()
 
@@ -156,7 +156,7 @@ class ExtractionClient:
 
         try:
             async with httpx.AsyncClient(timeout=timeout + 5) as client:
-                logger.info(f"Using WebCrawler service for {url}")
+                logger.info("Using WebCrawler service", extra={"url": url})
                 response = await client.post(self.webcrawler_url, json=request_data)
                 response.raise_for_status()
 

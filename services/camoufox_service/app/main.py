@@ -62,7 +62,7 @@ class BrowserPool:
             if self._initialized:
                 return
 
-            logger.info(f"Initializing browser pool with {self.size} instances")
+            logger.info("Initializing browser pool", extra={"size": self.size})
             successful_browsers = 0
             
             for i in range(self.size):
@@ -71,12 +71,12 @@ class BrowserPool:
                     self.browsers.append(browser)
                     await self.available.put(browser)
                     successful_browsers += 1
-                    logger.info(f"Browser {successful_browsers}/{self.size} initialized")
+                    logger.info("Browser initialized", extra={"completed": successful_browsers, "total": self.size})
                 except Exception as e:
-                    logger.error(f"Failed to create browser {i+1}: {e}")
+                    logger.error("Failed to create browser", extra={"browser_number": i+1, "error": str(e)})
 
             self._initialized = True
-            logger.info(f"Browser pool initialization complete: {successful_browsers}/{self.size} browsers ready")
+            logger.info("Browser pool initialization complete", extra={"ready": successful_browsers, "total": self.size})
             
             if successful_browsers == 0:
                 raise RuntimeError("Failed to initialize any browsers in pool")
@@ -104,7 +104,7 @@ class BrowserPool:
         
         self._active_sessions += 1
         self._total_requests += 1
-        logger.debug(f"Acquiring browser ({self._active_sessions} active sessions, {self.available.qsize()} available)")
+        logger.debug("Acquiring browser", extra={"active_sessions": self._active_sessions, "available": self.available.qsize()})
         
         browser = await self.available.get()
         return browser
@@ -113,7 +113,7 @@ class BrowserPool:
         """Release a browser back to the pool"""
         self._active_sessions -= 1
         await self.available.put(browser)
-        logger.debug(f"Released browser ({self._active_sessions} active sessions, {self.available.qsize()} available)")
+        logger.debug("Released browser", extra={"active_sessions": self._active_sessions, "available": self.available.qsize()})
 
     async def get_stats(self) -> dict:
         """Get browser pool statistics"""
@@ -133,7 +133,7 @@ class BrowserPool:
             try:
                 await browser.__aexit__(None, None, None)
             except Exception as e:
-                logger.error(f"Error closing browser: {e}")
+                logger.error("Error closing browser", extra={"error": str(e)})
         self.browsers.clear()
         self._initialized = False
 
@@ -175,7 +175,7 @@ async def get_browser_stats():
         "status": "success",
         "browser_pool": stats,
         "service": "camoufox",
-        "timestamp": f"{asyncio.get_event_loop().time()}"
+        "timestamp": f"{asyncio.get_running_loop().time()}"
     }
 
 
@@ -208,7 +208,7 @@ async def browse_page(request: BrowserRequest):
             page = await browser.new_page()
 
         # Navigate to URL
-        logger.info(f"Navigating to {request.url}")
+        logger.info("Navigating to URL", extra={"url": request.url})
         response = await page.goto(
             request.url, wait_until="domcontentloaded", timeout=request.timeout * 1000
         )
@@ -217,9 +217,9 @@ async def browse_page(request: BrowserRequest):
         if request.wait_for_selector:
             try:
                 await page.wait_for_selector(request.wait_for_selector, timeout=10000)
-                logger.info(f"Found selector: {request.wait_for_selector}")
+                logger.info("Found selector", extra={"selector": request.wait_for_selector})
             except Exception as e:
-                logger.warning(f"Selector not found: {request.wait_for_selector}, error: {e}")
+                logger.warning("Selector not found", extra={"selector": request.wait_for_selector, "error": str(e)})
 
         # Wait for any dynamic content
         await page.wait_for_timeout(request.wait_after_load)
@@ -231,14 +231,14 @@ async def browse_page(request: BrowserRequest):
                 script_result = await page.evaluate(request.execute_script)
                 logger.info("Script executed successfully")
             except Exception as e:
-                logger.error(f"Script execution failed: {e}")
+                logger.error("Script execution failed", extra={"error": str(e)})
 
         # Get final content and info
         content = await page.content()
         final_url = page.url
         status_code = response.status if response else None
 
-        logger.info(f"Successfully loaded {request.url}")
+        logger.info("Successfully loaded page", extra={"url": request.url})
 
         return BrowserResponse(
             status="success",
@@ -249,7 +249,7 @@ async def browse_page(request: BrowserRequest):
         )
 
     except Exception as e:
-        logger.error(f"Browser automation failed for {request.url}: {e}")
+        logger.error("Browser automation failed", extra={"url": request.url, "error": str(e)})
         # Track failed requests
         browser_pool._failed_requests += 1
         return BrowserResponse(status="error", error=str(e))
