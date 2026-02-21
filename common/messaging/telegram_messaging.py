@@ -6,16 +6,15 @@ from aiogram import Bot
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    ParseMode,
     WebAppInfo,
 )
-from aiogram.utils.exceptions import (
-    BotBlocked,
-    ChatNotFound,
-    UserDeactivated,
-    RetryAfter,
+from aiogram.enums import ParseMode
+from aiogram.exceptions import (
+    TelegramForbiddenError,
+    TelegramNotFound,
+    TelegramRetryAfter,
     TelegramAPIError,
-    BadRequest,
+    TelegramBadRequest,
 )
 
 from .unified_interface import MessagingInterface
@@ -62,7 +61,7 @@ class TelegramMessaging(MessagingInterface):
     @retry_with_exponential_backoff(
         max_retries=3,
         initial_delay=1,
-        retryable_exceptions=[RetryAfter, TelegramAPIError] + NETWORK_EXCEPTIONS,
+        retryable_exceptions=[TelegramRetryAfter, TelegramAPIError] + NETWORK_EXCEPTIONS,
     )
     @log_operation("send_text")
     async def send_text(
@@ -99,7 +98,7 @@ class TelegramMessaging(MessagingInterface):
                     },
                 )
                 return result
-            except (BotBlocked, ChatNotFound, UserDeactivated) as e:
+            except (TelegramForbiddenError, TelegramNotFound) as e:
                 # These are permanent errors, no need to retry
                 logger.warning(
                     "Permanent error sending Telegram message",
@@ -121,7 +120,7 @@ class TelegramMessaging(MessagingInterface):
     @retry_with_exponential_backoff(
         max_retries=3,
         initial_delay=1,
-        retryable_exceptions=[RetryAfter, TelegramAPIError] + NETWORK_EXCEPTIONS,
+        retryable_exceptions=[TelegramRetryAfter, TelegramAPIError] + NETWORK_EXCEPTIONS,
     )
     @log_operation("send_media")
     async def send_media(
@@ -180,7 +179,7 @@ class TelegramMessaging(MessagingInterface):
                         },
                     )
                     return result
-                except BadRequest as e:
+                except TelegramBadRequest as e:
                     # If we get "Wrong type of web page content", it means the URL isn't a valid image
                     if "Wrong type" in str(e) or "web page content" in str(e):
                         logger.warning(
@@ -230,7 +229,7 @@ class TelegramMessaging(MessagingInterface):
                     else:
                         # If it's a different BadRequest error, re-raise it
                         raise
-            except (BotBlocked, ChatNotFound, UserDeactivated) as e:
+            except (TelegramForbiddenError, TelegramNotFound) as e:
                 # These are permanent errors, no need to retry
                 logger.warning(
                     "Permanent error sending Telegram media",
@@ -306,31 +305,33 @@ class TelegramMessaging(MessagingInterface):
                     phone_str = ",".join(phones)
                     phone_webapp_url = f"{WEBAPP_URL}/phones?numbers={phone_str}"
 
-            # Create buttons
-            markup = InlineKeyboardMarkup(row_width=2)
+            # Create buttons - build rows manually for v3
+            rows = []
 
             if gallery_url:
-                markup.add(
+                rows.append([
                     InlineKeyboardButton(
                         text="🖼 Більше фото", web_app=WebAppInfo(url=gallery_url)
                     )
-                )
+                ])
 
             if phone_webapp_url:
-                markup.add(
+                rows.append([
                     InlineKeyboardButton(
                         text="📲 Подзвонити", web_app=WebAppInfo(url=phone_webapp_url)
                     )
-                )
+                ])
 
-            markup.add(
+            rows.append([
                 InlineKeyboardButton(
-                    "❤️ Додати в обрані", callback_data=f"add_fav:{ad_id}"
+                    text="❤️ Додати в обрані", callback_data=f"add_fav:{ad_id}"
                 ),
                 InlineKeyboardButton(
-                    "ℹ️ Повний опис", callback_data=f"show_more:{resource_url}"
+                    text="ℹ️ Повний опис", callback_data=f"show_more:{resource_url}"
                 ),
-            )
+            ])
+
+            markup = InlineKeyboardMarkup(inline_keyboard=rows)
 
             # Send the ad
             if image_url:
@@ -363,7 +364,8 @@ class TelegramMessaging(MessagingInterface):
     ) -> InlineKeyboardMarkup:
         """Create a Telegram inline keyboard from standardized options."""
         with log_context(logger, options_count=len(options), row_width=row_width):
-            keyboard = InlineKeyboardMarkup(row_width=row_width)
+            rows = []
+            current_row = []
 
             for option in options:
                 button_params = {
@@ -381,7 +383,17 @@ class TelegramMessaging(MessagingInterface):
                     }
 
                 button = InlineKeyboardButton(**button_params)
-                keyboard.insert(button)
+                current_row.append(button)
+
+                if len(current_row) >= row_width:
+                    rows.append(current_row)
+                    current_row = []
+
+            # Add any remaining buttons in the last row
+            if current_row:
+                rows.append(current_row)
+
+            keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
             logger.debug(
                 "Created Telegram keyboard",

@@ -1,6 +1,6 @@
 # services/telegram_service/app/state_integration.py
 
-from aiogram.dispatcher import FSMContext
+from aiogram.fsm.context import FSMContext
 
 from common.unified_state_management import state_manager
 

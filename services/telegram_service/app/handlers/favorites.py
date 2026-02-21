@@ -1,8 +1,8 @@
 # services/telegram_service/app/handlers/favorites.py
 import decimal
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
+from aiogram import types, Router, F
+from aiogram.fsm.context import FSMContext
 
 from common.db.session import db_session
 from common.db.repositories.ad_repository import AdRepository
@@ -12,7 +12,7 @@ from common.utils.ad_utils import get_ad_images
 from common.utils.cache_managers import FavoriteCacheManager, AdCacheManager
 from common.utils.cache import get_entity_cache_key
 
-from ..bot import dp, bot
+from ..bot import bot
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
@@ -27,8 +27,10 @@ from ..utils.message_utils import (
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
+router = Router()
 
-@dp.callback_query_handler(lambda c: c.data.startswith("add_fav:"))
+
+@router.callback_query(F.data.startswith("add_fav:"))
 @log_operation("add_favorite")
 async def handle_add_fav(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
@@ -140,7 +142,7 @@ async def handle_add_fav(callback_query: types.CallbackQuery):
             reply_markup = callback_query.message.reply_markup
 
             # Find and replace the button
-            new_markup = InlineKeyboardMarkup()
+            new_rows = []
             for row in reply_markup.inline_keyboard:
                 new_row = []
                 for button in row:
@@ -150,13 +152,14 @@ async def handle_add_fav(callback_query: types.CallbackQuery):
                         # Replace it with the "remove from favorites" button
                         new_row.append(
                             InlineKeyboardButton(
-                                "💚 Додано до обраних",
+                                text="💚 Додано до обраних",
                                 callback_data=f"rm_fav_from_ad:{ad_id}",
                             )
                         )
                     else:
                         new_row.append(button)
-                new_markup.row(*new_row)
+                new_rows.append(new_row)
+            new_markup = InlineKeyboardMarkup(inline_keyboard=new_rows)
 
             # Update the message with a new markup
             await callback_query.message.edit_reply_markup(reply_markup=new_markup)
@@ -189,7 +192,7 @@ async def handle_add_fav(callback_query: types.CallbackQuery):
             await callback_query.answer("Сталася помилка.", show_alert=True)
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("rm_fav_from_ad:"))
+@router.callback_query(F.data.startswith("rm_fav_from_ad:"))
 @log_operation("remove_favorite_from_ad")
 async def handle_rm_fav_from_ad(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
@@ -259,7 +262,7 @@ async def handle_rm_fav_from_ad(callback_query: types.CallbackQuery):
             reply_markup = callback_query.message.reply_markup
 
             # Find and replace the button back to "Add to favorites"
-            new_markup = InlineKeyboardMarkup()
+            new_rows = []
             for row in reply_markup.inline_keyboard:
                 new_row = []
                 for button in row:
@@ -269,12 +272,13 @@ async def handle_rm_fav_from_ad(callback_query: types.CallbackQuery):
                         # Replace it with the "add to favorites" button
                         new_row.append(
                             InlineKeyboardButton(
-                                "❤️ Додати в обрані", callback_data=f"add_fav:{ad_id}"
+                                text="❤️ Додати в обрані", callback_data=f"add_fav:{ad_id}"
                             )
                         )
                     else:
                         new_row.append(button)
-                new_markup.row(*new_row)
+                new_rows.append(new_row)
+            new_markup = InlineKeyboardMarkup(inline_keyboard=new_rows)
 
             # Update the message with a new markup
             await callback_query.message.edit_reply_markup(reply_markup=new_markup)
@@ -295,7 +299,7 @@ async def handle_rm_fav_from_ad(callback_query: types.CallbackQuery):
             )
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("rm_fav:"))
+@router.callback_query(F.data.startswith("rm_fav:"))
 @log_operation("remove_favorite")
 async def handle_remove_fav(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id
@@ -377,7 +381,7 @@ async def handle_remove_fav(callback_query: types.CallbackQuery):
             )
 
 
-@dp.message_handler(lambda msg: msg.text == "❤️ Обрані")
+@router.message(F.text == "❤️ Обрані")
 @log_operation("show_favorites_carousel")
 async def show_favorites_carousel(message: types.Message, state: FSMContext):
     telegram_id = message.from_user.id
@@ -558,22 +562,22 @@ async def show_favorite_at_index(chat_id, favorites, index):
         text = build_ad_text(full_ad)
 
         # Create navigation buttons
-        kb = InlineKeyboardMarkup(row_width=2)
+        rows = []
 
         # Add navigation buttons
         nav_row = []
         if index > 0:
             nav_row.append(
-                InlineKeyboardButton("◀️ Попереднє", callback_data=f"fav_prev:{index}")
+                InlineKeyboardButton(text="◀️ Попереднє", callback_data=f"fav_prev:{index}")
             )
 
         if index < len(favorites) - 1:
             nav_row.append(
-                InlineKeyboardButton("Наступне ▶️", callback_data=f"fav_next:{index}")
+                InlineKeyboardButton(text="Наступне ▶️", callback_data=f"fav_next:{index}")
             )
 
         if nav_row:
-            kb.row(*nav_row)
+            rows.append(nav_row)
 
         # Add resource URL and other info
         resource_url = full_ad.get("resource_url")
@@ -602,23 +606,25 @@ async def show_favorite_at_index(chat_id, favorites, index):
             phone_webapp_url = f"{WEBAPP_URL}/phones?numbers="
 
         # Add action buttons
-        kb.add(
+        rows.append([
             InlineKeyboardButton(
                 text="🖼 Більше фото", web_app=WebAppInfo(url=gallery_url)
             ),
             InlineKeyboardButton(
                 text="📲 Подзвонити", web_app=WebAppInfo(url=phone_webapp_url)
             ),
-        )
-        kb.add(
+        ])
+        rows.append([
             InlineKeyboardButton(
-                "💚 Видалити з обраних",
+                text="💚 Видалити з обраних",
                 callback_data=f"rm_fav_carousel:{ad_id}:{index}",
             ),
             InlineKeyboardButton(
-                "ℹ️ Повний опис", callback_data=f"show_more_fav:{resource_url}"
+                text="ℹ️ Повний опис", callback_data=f"show_more_fav:{resource_url}"
             ),
-        )
+        ])
+
+        kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
         # Send the message with a photo
         try:
@@ -653,7 +659,7 @@ async def show_favorite_at_index(chat_id, favorites, index):
                 logger.error("Final fallback message failed", exc_info=True, extra={"error": str(e)})
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("fav_next:"))
+@router.callback_query(F.data.startswith("fav_next:"))
 @log_operation("handle_next_favorite")
 async def handle_next_favorite(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id
@@ -693,7 +699,7 @@ async def handle_next_favorite(callback_query: types.CallbackQuery, state: FSMCo
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("fav_prev:"))
+@router.callback_query(F.data.startswith("fav_prev:"))
 @log_operation("handle_prev_favorite")
 async def handle_prev_favorite(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = callback_query.from_user.id
@@ -733,7 +739,7 @@ async def handle_prev_favorite(callback_query: types.CallbackQuery, state: FSMCo
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("rm_fav_carousel:"))
+@router.callback_query(F.data.startswith("rm_fav_carousel:"))
 @log_operation("remove_favorite_from_carousel")
 async def handle_rm_fav_carousel(
     callback_query: types.CallbackQuery, state: FSMContext
@@ -805,7 +811,7 @@ async def handle_rm_fav_carousel(
             )
             await callback_query.message.delete()
             await callback_query.message.answer("У вас більше немає обраних оголошень.")
-            await state.finish()
+            await state.clear()
             await callback_query.answer("Видалено з обраних!")
             return
 
@@ -836,7 +842,7 @@ async def handle_rm_fav_carousel(
         await callback_query.answer("Видалено з обраних!")
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("show_more_fav:"))
+@router.callback_query(F.data.startswith("show_more_fav:"))
 @log_operation("show_more_favorite_description")
 async def handle_show_more_fav(callback_query: types.CallbackQuery):
     telegram_id = callback_query.from_user.id

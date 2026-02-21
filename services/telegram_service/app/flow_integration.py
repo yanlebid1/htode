@@ -1,9 +1,9 @@
 # services/telegram_service/app/flow_integration.py
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
+from aiogram import types, Router, F
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 
-from .bot import dp
 from common.messaging.unified_flow import flow_library
 from common.messaging.unified_flow import (
     check_and_process_flow,
@@ -15,8 +15,10 @@ from common.messaging.unified_flow import (
 from . import logger
 from common.utils.logging_config import log_operation, log_context
 
+router = Router()
 
-@dp.message_handler(lambda message: True, state="*")
+
+@router.message()
 @log_operation("flow_message_handler")
 async def flow_message_handler(message: types.Message, state: FSMContext = None):
     """
@@ -50,7 +52,7 @@ async def flow_message_handler(message: types.Message, state: FSMContext = None)
             return
 
 
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith("flow:"), state="*")
+@router.callback_query(F.data.startswith("flow:"))
 @log_operation("flow_callback_handler")
 async def flow_callback_handler(
     callback_query: types.CallbackQuery, state: FSMContext = None
@@ -77,7 +79,7 @@ async def flow_callback_handler(
 
 
 # Command handler for starting property search
-@dp.message_handler(commands=["search", "find", "property"])
+@router.message(Command("search", "find", "property"))
 async def start_property_search(message: types.Message):
     """
     Start the property search flow via command
@@ -89,7 +91,7 @@ async def start_property_search(message: types.Message):
 
 
 # Command handler for starting subscription management
-@dp.message_handler(commands=["subscribe", "subscription"])
+@router.message(Command("subscribe", "subscription"))
 async def start_subscription_flow(message: types.Message):
     """
     Start the subscription management flow via command
@@ -101,7 +103,7 @@ async def start_subscription_flow(message: types.Message):
 
 
 # Command handler for showing all available flows
-@dp.message_handler(commands=["flows"])
+@router.message(Command("flows"))
 async def show_flows_command(message: types.Message):
     """
     Show all available flows to the user
@@ -124,17 +126,26 @@ def create_flow_keyboard(flow_name: str, actions: list):
     Returns:
         InlineKeyboardMarkup
     """
-    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    row_width = 2
+    rows = []
+    current_row = []
 
     for action_info in actions:
         text = action_info["text"]
         action = action_info["action"]
 
         # Create button with appropriate callback data
-        keyboard.insert(
-            types.InlineKeyboardButton(
-                text=text, callback_data=f"flow:{flow_name}:{action}"
-            )
+        button = types.InlineKeyboardButton(
+            text=text, callback_data=f"flow:{flow_name}:{action}"
         )
+        current_row.append(button)
 
-    return keyboard
+        if len(current_row) >= row_width:
+            rows.append(current_row)
+            current_row = []
+
+    # Add any remaining buttons
+    if current_row:
+        rows.append(current_row)
+
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)

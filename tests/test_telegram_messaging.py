@@ -8,49 +8,15 @@ sys.modules.setdefault(
     "common.utils.phone_utils.adspower_manager", MagicMock()
 )
 
-# Pre-mock aiogram.utils.exceptions (aiogram 2.x API, not available in 3.x)
-# Create real exception classes so isinstance checks work
-class _TelegramAPIError(Exception):
-    pass
-
-class _BotBlocked(_TelegramAPIError):
-    pass
-
-class _ChatNotFound(_TelegramAPIError):
-    pass
-
-class _UserDeactivated(_TelegramAPIError):
-    pass
-
-class _RetryAfter(_TelegramAPIError):
-    pass
-
-class _BadRequest(_TelegramAPIError):
-    pass
-
-_exc_module = MagicMock()
-_exc_module.BotBlocked = _BotBlocked
-_exc_module.ChatNotFound = _ChatNotFound
-_exc_module.UserDeactivated = _UserDeactivated
-_exc_module.RetryAfter = _RetryAfter
-_exc_module.TelegramAPIError = _TelegramAPIError
-_exc_module.BadRequest = _BadRequest
-sys.modules.setdefault("aiogram.utils.exceptions", _exc_module)
-
 import pytest
 
-# Patch ParseMode into aiogram.types (moved to aiogram.enums in 3.x)
-import aiogram.types
-try:
-    from aiogram.types import ParseMode
-except ImportError:
-    from aiogram.enums import ParseMode
-    aiogram.types.ParseMode = ParseMode
-
-# Now these are safe to reference
-BotBlocked = _BotBlocked
-ChatNotFound = _ChatNotFound
-BadRequest = _BadRequest
+# Import real v3 exception classes
+from aiogram.exceptions import (
+    TelegramForbiddenError,
+    TelegramNotFound,
+    TelegramBadRequest,
+    TelegramAPIError,
+)
 
 # Force-reload the real module in case test_multibot_messaging pre-mocked it
 import importlib
@@ -58,6 +24,15 @@ sys.modules.pop("common.messaging.telegram_messaging", None)
 import common.messaging.telegram_messaging as _tm_mod
 importlib.reload(_tm_mod)
 from common.messaging.telegram_messaging import TelegramMessaging
+
+
+def _make_telegram_error(cls, message="test error"):
+    """Create a TelegramAPIError subclass instance with required method/message attrs."""
+    # aiogram v3 TelegramAPIError requires method and message params
+    try:
+        return cls(method=MagicMock(), message=message)
+    except TypeError:
+        return cls(message)
 
 
 @pytest.fixture
@@ -107,20 +82,24 @@ class TestSendText:
 
     @pytest.mark.asyncio
     async def test_returns_none_on_bot_blocked(self, messenger, mock_bot):
-        mock_bot.send_message.side_effect = BotBlocked("blocked")
+        mock_bot.send_message.side_effect = _make_telegram_error(
+            TelegramForbiddenError, "Forbidden: bot was blocked by the user"
+        )
         result = await messenger.send_text("123", "Hello!")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_returns_none_on_chat_not_found(self, messenger, mock_bot):
-        mock_bot.send_message.side_effect = ChatNotFound("not found")
+        mock_bot.send_message.side_effect = _make_telegram_error(
+            TelegramNotFound, "Not Found: chat not found"
+        )
         result = await messenger.send_text("123", "Hello!")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_passes_reply_markup(self, messenger, mock_bot):
         mock_bot.send_message.return_value = MagicMock(message_id=1)
-        markup = MagicMock()  # Use MagicMock since aiogram 3.x changed constructor
+        markup = MagicMock()
         await messenger.send_text("123", "Text", reply_markup=markup)
         call_kwargs = mock_bot.send_message.call_args.kwargs
         assert call_kwargs["reply_markup"] is markup
@@ -148,13 +127,17 @@ class TestSendMedia:
 
     @pytest.mark.asyncio
     async def test_returns_none_on_bot_blocked(self, messenger, mock_bot):
-        mock_bot.send_photo.side_effect = BotBlocked("blocked")
+        mock_bot.send_photo.side_effect = _make_telegram_error(
+            TelegramForbiddenError, "Forbidden: bot was blocked by the user"
+        )
         result = await messenger.send_media("123", "https://cdn.example.com/img.jpg")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_falls_back_to_text_on_bad_request_wrong_type(self, messenger, mock_bot):
-        mock_bot.send_photo.side_effect = BadRequest("Wrong type of web page content")
+        mock_bot.send_photo.side_effect = _make_telegram_error(
+            TelegramBadRequest, "Wrong type of web page content"
+        )
         mock_bot.send_message.return_value = MagicMock(message_id=66)
 
         result = await messenger.send_media(

@@ -11,12 +11,7 @@ sys.modules.setdefault(
     "common.utils.phone_utils.adspower_manager", MagicMock()
 )
 
-# Pre-mock aiogram.dispatcher.FSMContext if it doesn't exist (aiogram v2 vs v3 compat)
-try:
-    from aiogram.dispatcher import FSMContext  # noqa: F401
-except ImportError:
-    import aiogram.dispatcher as _adisp
-    _adisp.FSMContext = MagicMock()
+# aiogram v3 FSMContext is at aiogram.fsm.context — no pre-mocking needed
 
 # Ensure common.db.database has get_db_session (handlers.py imports it)
 try:
@@ -32,13 +27,9 @@ import logging
 _fake_app_pkg = types.ModuleType("services.dispatcher_service.app")
 _fake_app_pkg.logger = logging.getLogger("test.dispatcher")
 
-# 2. Create a fake "services.dispatcher_service.app.bot" with dp that passes through
+# 2. Create a fake "services.dispatcher_service.app.bot" with bot instance
 _fake_bot_mod = types.ModuleType("services.dispatcher_service.app.bot")
 _fake_bot_mod.bot = MagicMock()
-_mock_dp = MagicMock()
-# Make dp.message_handler() a passthrough decorator so handler functions stay real
-_mock_dp.message_handler = MagicMock(side_effect=lambda *a, **kw: lambda fn: fn)
-_fake_bot_mod.dp = _mock_dp
 
 # 3. Register all levels in sys.modules
 sys.modules["services.dispatcher_service"] = types.ModuleType("services.dispatcher_service")

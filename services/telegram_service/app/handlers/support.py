@@ -1,8 +1,7 @@
 # services/telegram_service/app/handlers/support.py
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
-from ..bot import dp
+from aiogram import types, Router, F
+from aiogram.fsm.context import FSMContext
 from ..states.support_states import SupportStates
 from common.messaging.handlers.support_handler import (
     handle_support_command,
@@ -14,11 +13,13 @@ from ..utils.message_utils import safe_answer_callback_query, delete_message_saf
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
+router = Router()
+
 # store trigger info for support menu
 SUPPORT_TRIGGER = {}
 
 
-@dp.message_handler(lambda msg: msg.text == "🧑‍💻 Техпідтримка")
+@router.message(F.text == "🧑‍💻 Техпідтримка")
 @log_operation("handle_support_command_telegram")
 async def handle_support_command_telegram(message: types.Message, state: FSMContext):
     """
@@ -29,7 +30,7 @@ async def handle_support_command_telegram(message: types.Message, state: FSMCont
 
     with log_context(logger, user_id=user_id, action="start_support"):
         # Set the state first since we have direct access to the state manager
-        await SupportStates.waiting_for_category.set()
+        await state.set_state(SupportStates.waiting_for_category)
 
         bot_msg = await handle_support_command(
             message.from_user.id, platform="telegram"
@@ -43,9 +44,9 @@ async def handle_support_command_telegram(message: types.Message, state: FSMCont
         logger.info("Support conversation started", extra={"user_id": user_id})
 
 
-@dp.message_handler(
-    lambda msg: msg.text in ["Оплата", "Технічні проблеми", "Інше"],
-    state=SupportStates.waiting_for_category,
+@router.message(
+    F.text.in_(["Оплата", "Технічні проблеми", "Інше"]),
+    SupportStates.waiting_for_category,
 )
 @log_operation("process_support_category_telegram")
 async def process_support_category_telegram(message: types.Message, state: FSMContext):
@@ -58,7 +59,7 @@ async def process_support_category_telegram(message: types.Message, state: FSMCo
 
     with log_context(logger, user_id=user_id, category=category):
         # End the FSM as no further input is needed
-        await state.finish()
+        await state.clear()
 
         # Use the unified handler for category processing
         await handle_support_category(
@@ -70,10 +71,9 @@ async def process_support_category_telegram(message: types.Message, state: FSMCo
         )
 
 
-@dp.callback_query_handler(
-    lambda c: c.data
-    in ["support_payment", "support_technical", "support_other", "back_to_menu"],
-    state=SupportStates.waiting_for_category,
+@router.callback_query(
+    F.data.in_(["support_payment", "support_technical", "support_other", "back_to_menu"]),
+    SupportStates.waiting_for_category,
 )
 @log_operation("process_support_category_telegram_cb")
 async def process_support_category_telegram_cb(
@@ -85,7 +85,7 @@ async def process_support_category_telegram_cb(
 
     # If user tapped back, simply finish state and return to main menu
     if data == "back_to_menu":
-        await state.finish()
+        await state.clear()
 
         # delete trigger and menu messages
         info = SUPPORT_TRIGGER.pop(user_id, None)
@@ -117,7 +117,7 @@ async def process_support_category_telegram_cb(
     category = category_mapping.get(data, "other")
 
     # Finish state before proceeding
-    await state.finish()
+    await state.clear()
 
     # Delegate to unified handler
     await handle_support_category(user_id, category, platform="telegram")

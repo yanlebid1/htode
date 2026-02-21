@@ -192,14 +192,13 @@ class TelegramKeyboardFactory:
         """Create the main menu keyboard for Telegram"""
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.row(KeyboardButton("📝 Мої підписки"), KeyboardButton("❤️ Обрані"))
-        keyboard.row(
-            KeyboardButton("🤔 Як це працює?"), KeyboardButton("💳 Оплатити підписку")
-        )
-        keyboard.row(
-            KeyboardButton("🧑‍💻 Техпідтримка"),
-            KeyboardButton("📱 Додати номер телефону"),
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📝 Мої підписки"), KeyboardButton(text="❤️ Обрані")],
+                [KeyboardButton(text="🤔 Як це працює?"), KeyboardButton(text="💳 Оплатити підписку")],
+                [KeyboardButton(text="🧑‍💻 Техпідтримка"), KeyboardButton(text="📱 Додати номер телефону")],
+            ],
+            resize_keyboard=True,
         )
 
         logger.debug("Created Telegram main menu keyboard")
@@ -211,10 +210,13 @@ class TelegramKeyboardFactory:
         """Create keyboard for property type selection"""
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-        keyboard = InlineKeyboardMarkup(row_width=2)
-        keyboard.add(
-            InlineKeyboardButton("Квартира", callback_data="property_type_apartment"),
-            InlineKeyboardButton("Будинок", callback_data="property_type_house"),
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="Квартира", callback_data="property_type_apartment"),
+                    InlineKeyboardButton(text="Будинок", callback_data="property_type_house"),
+                ]
+            ]
         )
 
         logger.debug("Created Telegram property type keyboard")
@@ -233,35 +235,38 @@ class TelegramKeyboardFactory:
         start = page * per_page
         end = start + per_page
         page_cities = cities[start:end]
-        keyboard = InlineKeyboardMarkup(row_width=row_width)
+
+        rows = []
+
         # Add cities in 3x2 grid
         for idx in range(0, len(page_cities), row_width):
             row = []
             for city in page_cities[idx : idx + row_width]:
                 label = f"✅ {city}" if city == selected_city else city
-                row.append(InlineKeyboardButton(label, callback_data=f"city_{city}"))
-            keyboard.row(*row)
+                row.append(InlineKeyboardButton(text=label, callback_data=f"city_{city}"))
+            rows.append(row)
+
         # Pagination controls
         total_pages = (len(cities) - 1) // per_page + 1
         nav_buttons = []
         if page > 0:
             nav_buttons.append(
-                InlineKeyboardButton("⬅️", callback_data=f"city_page_{page-1}")
+                InlineKeyboardButton(text="⬅️", callback_data=f"city_page_{page-1}")
             )
         if page < total_pages - 1:
             nav_buttons.append(
-                InlineKeyboardButton("➡️", callback_data=f"city_page_{page+1}")
+                InlineKeyboardButton(text="➡️", callback_data=f"city_page_{page+1}")
             )
         if nav_buttons:
-            keyboard.row(*nav_buttons)
+            rows.append(nav_buttons)
 
         # Save / Back rows (for edit mode)
         if show_save:
-            keyboard.row(InlineKeyboardButton("💾 Зберегти", callback_data="city_save"))
+            rows.append([InlineKeyboardButton(text="💾 Зберегти", callback_data="city_save")])
         if show_back:
-            keyboard.row(InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"))
+            rows.append([InlineKeyboardButton(text="↪️ Назад", callback_data="cancel_edit")])
 
-        return keyboard
+        return InlineKeyboardMarkup(inline_keyboard=rows)
 
     @staticmethod
     @log_operation("create_rooms_keyboard")
@@ -273,34 +278,38 @@ class TelegramKeyboardFactory:
             selected_rooms = []
 
         with log_context(logger, selected_rooms=selected_rooms):
-            keyboard = InlineKeyboardMarkup(row_width=3)
+            row_width = 3
+            buttons = []
             for rooms in range(1, 6):
                 label = "5+" if rooms == 5 else str(rooms)
                 if rooms in selected_rooms:
                     button_text = f"✅ {label}"
                 else:
                     button_text = label
-                keyboard.insert(
-                    InlineKeyboardButton(button_text, callback_data=f"rooms_{rooms}")
+                buttons.append(
+                    InlineKeyboardButton(text=button_text, callback_data=f"rooms_{rooms}")
                 )
+
+            # Group room buttons into rows of row_width
+            rows = [buttons[i:i + row_width] for i in range(0, len(buttons), row_width)]
 
             if show_save:
-                keyboard.add(
-                    InlineKeyboardButton("💾 Зберегти", callback_data="rooms_save")
+                rows.append(
+                    [InlineKeyboardButton(text="💾 Зберегти", callback_data="rooms_save")]
                 )
             else:
-                keyboard.add(InlineKeyboardButton("Далі", callback_data="rooms_done"))
+                rows.append([InlineKeyboardButton(text="Далі", callback_data="rooms_done")])
 
             if show_back:
-                keyboard.add(
-                    InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit")
+                rows.append(
+                    [InlineKeyboardButton(text="↪️ Назад", callback_data="cancel_edit")]
                 )
 
             logger.debug(
                 "Created Telegram rooms keyboard",
                 extra={"selected_count": len(selected_rooms)},
             )
-            return keyboard
+            return InlineKeyboardMarkup(inline_keyboard=rows)
 
     @staticmethod
     @log_operation("create_price_keyboard")
@@ -310,7 +319,8 @@ class TelegramKeyboardFactory:
 
         with log_context(logger, city=city):
             intervals = get_price_ranges(city)
-            keyboard = InlineKeyboardMarkup(row_width=2)
+            row_width = 2
+            buttons = []
             for low, high in intervals:
                 if high is None:
                     label = f"Більше {low}"
@@ -323,15 +333,18 @@ class TelegramKeyboardFactory:
                         label = f"{low}-{high}"
                     callback_data = f"price_{low}_{high}"
 
-                keyboard.insert(
-                    InlineKeyboardButton(label, callback_data=callback_data)
+                buttons.append(
+                    InlineKeyboardButton(text=label, callback_data=callback_data)
                 )
+
+            # Group buttons into rows of row_width
+            rows = [buttons[i:i + row_width] for i in range(0, len(buttons), row_width)]
 
             logger.debug(
                 "Created Telegram price keyboard",
                 extra={"city": city, "intervals_count": len(intervals)},
             )
-            return keyboard
+            return InlineKeyboardMarkup(inline_keyboard=rows)
 
     @staticmethod
     @log_operation("create_confirmation_keyboard")
@@ -339,15 +352,16 @@ class TelegramKeyboardFactory:
         """Create keyboard for subscription confirmation"""
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-        keyboard = InlineKeyboardMarkup(row_width=2)
-        keyboard.add(
-            InlineKeyboardButton("Розширений пошук", callback_data="advanced_search"),
-            InlineKeyboardButton("Редагувати", callback_data="edit_parameters"),
-            InlineKeyboardButton("Підписатися", callback_data="subscribe"),
-        )
+        row_width = 2
+        buttons = [
+            InlineKeyboardButton(text="Розширений пошук", callback_data="advanced_search"),
+            InlineKeyboardButton(text="Редагувати", callback_data="edit_parameters"),
+            InlineKeyboardButton(text="Підписатися", callback_data="subscribe"),
+        ]
+        rows = [buttons[i:i + row_width] for i in range(0, len(buttons), row_width)]
 
         logger.debug("Created Telegram confirmation keyboard")
-        return keyboard
+        return InlineKeyboardMarkup(inline_keyboard=rows)
 
     @staticmethod
     @log_operation("create_edit_parameters_keyboard")
@@ -355,18 +369,19 @@ class TelegramKeyboardFactory:
         """Create keyboard for parameter editing"""
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-        keyboard = InlineKeyboardMarkup(row_width=2)
-        keyboard.add(
-            InlineKeyboardButton("Місто", callback_data="edit_city"),
-            InlineKeyboardButton("Кількість кімнат", callback_data="edit_rooms"),
-            InlineKeyboardButton("З тваринами?", callback_data="pets_allowed"),
-            InlineKeyboardButton("Від власника?", callback_data="without_broker"),
-            InlineKeyboardButton("Поверх", callback_data="edit_floor"),
-            InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"),
-        )
+        row_width = 2
+        buttons = [
+            InlineKeyboardButton(text="Місто", callback_data="edit_city"),
+            InlineKeyboardButton(text="Кількість кімнат", callback_data="edit_rooms"),
+            InlineKeyboardButton(text="З тваринами?", callback_data="pets_allowed"),
+            InlineKeyboardButton(text="Від власника?", callback_data="without_broker"),
+            InlineKeyboardButton(text="Поверх", callback_data="edit_floor"),
+            InlineKeyboardButton(text="↪️ Назад", callback_data="cancel_edit"),
+        ]
+        rows = [buttons[i:i + row_width] for i in range(0, len(buttons), row_width)]
 
         logger.debug("Created Telegram edit parameters keyboard")
-        return keyboard
+        return InlineKeyboardMarkup(inline_keyboard=rows)
 
     @staticmethod
     @log_operation("create_floor_keyboard")
@@ -389,50 +404,48 @@ class TelegramKeyboardFactory:
             def mark(label, active):
                 return f"{'✅ ' if active else ''}{label}"
 
-            kb = InlineKeyboardMarkup(row_width=2)
-            kb.insert(
+            rows = []
+
+            # Row 1: "Не перший" and "Не останній" (row_width=2)
+            rows.append([
                 InlineKeyboardButton(
-                    mark("Не перший", floor_opts["not_first"]),
+                    text=mark("Не перший", floor_opts["not_first"]),
                     callback_data="toggle_floor_not_first",
-                )
-            )
-            kb.insert(
+                ),
                 InlineKeyboardButton(
-                    mark("Не останній", floor_opts["not_last"]),
+                    text=mark("Не останній", floor_opts["not_last"]),
                     callback_data="toggle_floor_not_last",
-                )
-            )
+                ),
+            ])
 
-            kb.add(
+            # Row 2: Floor max options (3 buttons in one row, matching original .add() + .insert() + .insert())
+            rows.append([
                 InlineKeyboardButton(
-                    mark("До 6 поверху", floor_opts.get("floor_max_6", False)),
+                    text=mark("До 6 поверху", floor_opts.get("floor_max_6", False)),
                     callback_data="toggle_floor_6",
-                )
-            )
-            kb.insert(
+                ),
                 InlineKeyboardButton(
-                    mark("До 10 поверху", floor_opts.get("floor_max_10", False)),
+                    text=mark("До 10 поверху", floor_opts.get("floor_max_10", False)),
                     callback_data="toggle_floor_10",
-                )
-            )
-            kb.insert(
+                ),
                 InlineKeyboardButton(
-                    mark("До 17 поверху", floor_opts.get("floor_max_17", False)),
+                    text=mark("До 17 поверху", floor_opts.get("floor_max_17", False)),
                     callback_data="toggle_floor_17",
-                )
-            )
+                ),
+            ])
 
-            kb.add(
+            # Row 3: "Останній" on its own row
+            rows.append([
                 InlineKeyboardButton(
-                    mark("Останній", floor_opts.get("only_last", False)),
+                    text=mark("Останній", floor_opts.get("only_last", False)),
                     callback_data="toggle_floor_only_last",
-                )
-            )
+                ),
+            ])
 
-            # add Back / Done buttons
+            # Add Back / Done buttons
             if show_back:
-                kb.add(InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"))
-            kb.add(InlineKeyboardButton("💾 Зберегти", callback_data="floor_done"))
+                rows.append([InlineKeyboardButton(text="↪️ Назад", callback_data="cancel_edit")])
+            rows.append([InlineKeyboardButton(text="💾 Зберегти", callback_data="floor_done")])
 
             logger.debug("Created Telegram floor keyboard")
-            return kb
+            return InlineKeyboardMarkup(inline_keyboard=rows)

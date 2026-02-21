@@ -67,28 +67,33 @@ def subscription_menu_keyboard():
     """Sub-menu for "Моя підписка" """
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row(KeyboardButton("🛑 Відключити"), KeyboardButton("✅ Включити"))
-    keyboard.row(KeyboardButton("✏️ Редагувати"), KeyboardButton("↪️ Назад"))
-    return keyboard
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🛑 Відключити"), KeyboardButton(text="✅ Включити")],
+            [KeyboardButton(text="✏️ Редагувати"), KeyboardButton(text="↪️ Назад")],
+        ],
+        resize_keyboard=True,
+    )
 
 
 def how_to_use_keyboard():
     """Sub-menu for 'Як це працює?'"""
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton("↪️ Назад"))
-    return keyboard
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="↪️ Назад")]],
+        resize_keyboard=True,
+    )
 
 
 def tech_support_keyboard():
     """Sub-menu for 'Техпідтримка'"""
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton("↪️ Назад"))
-    return keyboard
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="↪️ Назад")]],
+        resize_keyboard=True,
+    )
 
 
 def make_subscriptions_page_kb(user_id, page, subscriptions, total_count, per_page=5):
@@ -96,7 +101,7 @@ def make_subscriptions_page_kb(user_id, page, subscriptions, total_count, per_pa
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     from common.config import GEO_ID_MAPPING
 
-    kb = InlineKeyboardMarkup()
+    rows = []
 
     # 1) Add each subscription as a separate button:
     for sub in subscriptions:
@@ -127,8 +132,8 @@ def make_subscriptions_page_kb(user_id, page, subscriptions, total_count, per_pa
 
         paused_str = " (Призупинена)" if sub.get("is_paused") else ""
         button_text = f"м.{city}, {ua_lang_property_type}, {rooms_text} к., {price_min}-{price_max} тис.грн.{paused_str}"
-        kb.add(
-            InlineKeyboardButton(button_text, callback_data=f"sub_open:{sub_id}:{page}")
+        rows.append(
+            [InlineKeyboardButton(text=button_text, callback_data=f"sub_open:{sub_id}:{page}")]
         )
 
     # 2) Build the navigation row (Prev / Next) if needed
@@ -136,34 +141,39 @@ def make_subscriptions_page_kb(user_id, page, subscriptions, total_count, per_pa
     nav_row = []
     if page > 0:
         nav_row.append(
-            InlineKeyboardButton("<< Prev", callback_data=f"subs_page:{page - 1}")
+            InlineKeyboardButton(text="<< Prev", callback_data=f"subs_page:{page - 1}")
         )
     if page < max_pages:
         nav_row.append(
-            InlineKeyboardButton("Next >>", callback_data=f"subs_page:{page + 1}")
+            InlineKeyboardButton(text="Next >>", callback_data=f"subs_page:{page + 1}")
         )
 
     if nav_row:
-        kb.row(*nav_row)
+        rows.append(nav_row)
 
     # NEW: Add button to create a brand-new subscription
-    kb.add(InlineKeyboardButton("➕ Додати підписку", callback_data="subs_new"))
+    rows.append([InlineKeyboardButton(text="➕ Додати підписку", callback_data="subs_new")])
 
     # Optionally add a "Close" or "Back" button
-    kb.add(InlineKeyboardButton("Закрити", callback_data="subs_close"))
-    return kb
+    rows.append([InlineKeyboardButton(text="Закрити", callback_data="subs_close")])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def support_category_keyboard():
     """A reply keyboard that asks the user to choose a support category."""
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.add(KeyboardButton("Оплата"))
-    kb.add(KeyboardButton("Технічні проблеми"))
-    kb.add(KeyboardButton("Інше"))
-    kb.add(KeyboardButton("Назад"))
-    return kb
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Оплата")],
+            [KeyboardButton(text="Технічні проблеми")],
+            [KeyboardButton(text="Інше")],
+            [KeyboardButton(text="Назад")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
 
 
 def support_redirect_keyboard(template_data: str):
@@ -172,40 +182,43 @@ def support_redirect_keyboard(template_data: str):
 
     # For testing, if your support bot is @bookly_beekly, the deep link URL is:
     url = f"https://t.me/bookly_beekly?start={template_data}"
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("Перейти до техпідтримки", url=url))
-    return kb
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="Перейти до техпідтримки", url=url)]]
+    )
 
 
 def phone_request_keyboard():
     """Create a keyboard with a button to share phone number."""
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    keyboard.add(
-        KeyboardButton(text="Поділитися номером телефону", request_contact=True)
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Поділитися номером телефону", request_contact=True)],
+            [KeyboardButton(text="↪️ Назад")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
     )
-    keyboard.add(KeyboardButton(text="↪️ Назад"))
-    return keyboard
 
 
 def verification_code_keyboard():
     """Simple keyboard for when waiting for verification code."""
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton(text="↪️ Назад"))
-    return keyboard
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="↪️ Назад")]],
+        resize_keyboard=True,
+    )
 
 
 def verification_success_keyboard():
     """Keyboard to show after successful verification."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(
-        InlineKeyboardButton(
-            "Повернутися до головного меню", callback_data="return_to_main_menu"
-        )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text="Повернутися до головного меню", callback_data="return_to_main_menu"
+            )]
+        ]
     )
-    return keyboard

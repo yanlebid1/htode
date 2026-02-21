@@ -482,7 +482,7 @@ async def safe_edit_message_telegram(
     with log_context(logger, chat_id=chat_id, message_id=message_id):
         try:
             from services.telegram_service.app.bot import bot
-            from aiogram.utils.exceptions import MessageNotModified, TelegramAPIError
+            from aiogram.exceptions import TelegramBadRequest, TelegramAPIError
 
             try:
                 result = await bot.edit_message_text(
@@ -495,8 +495,15 @@ async def safe_edit_message_telegram(
                 )
                 logger.info("Message edited successfully")
                 return result
-            except MessageNotModified:
-                logger.info("Message not modified (content is the same)")
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    logger.info("Message not modified (content is the same)")
+                    return None
+                logger.error(
+                    "Failed to edit message",
+                    exc_info=True,
+                    extra={"error_type": type(e).__name__},
+                )
                 return None
             except TelegramAPIError as e:
                 logger.error(
@@ -532,7 +539,7 @@ async def safe_answer_callback_query_telegram(
     with log_context(logger, callback_query_id=callback_query_id):
         try:
             from services.telegram_service.app.bot import bot
-            from aiogram.utils.exceptions import InvalidQueryID, TelegramAPIError
+            from aiogram.exceptions import TelegramBadRequest, TelegramAPIError
 
             try:
                 await bot.answer_callback_query(
@@ -542,8 +549,15 @@ async def safe_answer_callback_query_telegram(
                 )
                 logger.info("Callback query answered successfully")
                 return True
-            except InvalidQueryID:
-                logger.warning("Invalid query ID (callback is too old)")
+            except TelegramBadRequest as e:
+                if "query is too old" in str(e) or "query_id_invalid" in str(e).lower():
+                    logger.warning("Invalid query ID (callback is too old)")
+                    return False
+                logger.error(
+                    "Failed to answer callback query",
+                    exc_info=True,
+                    extra={"error_type": type(e).__name__},
+                )
                 return False
             except TelegramAPIError as e:
                 logger.error(
@@ -578,18 +592,22 @@ async def delete_message_safe_telegram(
     with log_context(logger, chat_id=chat_id, message_id=message_id):
         try:
             from services.telegram_service.app.bot import bot
-            from aiogram.utils.exceptions import (
-                MessageToDeleteNotFound,
-                TelegramAPIError,
-            )
+            from aiogram.exceptions import TelegramBadRequest, TelegramAPIError
 
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=message_id)
                 logger.info("Message deleted successfully")
                 return True
-            except MessageToDeleteNotFound:
-                logger.info("Message to delete not found (already deleted)")
-                return True
+            except TelegramBadRequest as e:
+                if "message to delete not found" in str(e).lower():
+                    logger.info("Message to delete not found (already deleted)")
+                    return True
+                logger.error(
+                    "Failed to delete message",
+                    exc_info=True,
+                    extra={"error_type": type(e).__name__},
+                )
+                return False
             except TelegramAPIError as e:
                 logger.error(
                     "Failed to delete message",

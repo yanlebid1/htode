@@ -1,5 +1,6 @@
 # services/telegram_service/app/tasks.py
 from common.celery_app import celery_app
+from aiogram import Router, F
 from aiogram.types import CallbackQuery
 
 # Import service logger and logging utilities
@@ -7,10 +8,12 @@ from . import logger
 from common.utils.logging_config import log_operation, log_context
 
 # Import the bot for the callback handler
-from .bot import dp, bot
+from .bot import bot
 
 # Import utility to send messages safely
 from .utils.message_utils import safe_send_message
+
+router = Router()
 
 
 @celery_app.task(name="telegram_service.app.tasks.send_ad_with_extra_buttons")
@@ -135,7 +138,7 @@ def check_expiring_subscriptions():
 
 
 # This handler needs to remain in the Telegram service as it's tied to the callback query handler
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith("show_more:"))
+@router.callback_query(F.data.startswith("show_more:"))
 @log_operation("show_more_description")
 async def handle_show_more(callback_query: CallbackQuery):
     """

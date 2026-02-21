@@ -1,15 +1,15 @@
 # services/telegram_service/app/handlers/advanced_handlers.py
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
+from aiogram import types, Router, F
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    ParseMode,
-    MediaGroup,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
 )
-from aiogram.utils.exceptions import MessageNotModified
-from ..bot import dp, bot
+from aiogram.enums import ParseMode
+from aiogram.utils.media_group import MediaGroupBuilder
+from aiogram.exceptions import TelegramBadRequest
+from ..bot import bot
 from ..states.basis_states import FilterStates
 from ..keyboards import floor_keyboard, edit_parameters_keyboard, city_keyboard
 from ..utils.message_utils import safe_edit_message
@@ -20,10 +20,10 @@ from common.messaging.keyboard_utils import AVAILABLE_CITIES
 from .. import logger
 from common.utils.logging_config import log_operation, log_context
 
+router = Router()
 
-@dp.callback_query_handler(
-    lambda c: c.data == "advanced_search", state=FilterStates.waiting_for_confirmation
-)
+
+@router.callback_query(F.data == "advanced_search", FilterStates.waiting_for_confirmation)
 @log_operation("advanced_search")
 async def advanced_search_handler(
     callback_query: types.CallbackQuery, state: FSMContext
@@ -34,7 +34,7 @@ async def advanced_search_handler(
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data == "return_to_advanced_menu", state="*")
+@router.callback_query(F.data == "return_to_advanced_menu")
 @log_operation("return_to_advanced_menu")
 async def return_to_advanced_menu_handler(
     callback_query: types.CallbackQuery, state: FSMContext
@@ -64,22 +64,30 @@ async def return_to_advanced_menu_handler(
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data == "edit_floor_max", state="*")
+@router.callback_query(F.data == "edit_floor_max")
 @log_operation("edit_floor_max")
 async def edit_floor_max_handler(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     user_id = callback_query.from_user.id
     with log_context(logger, user_id=user_id, callback_data=callback_query.data):
-        keyboard = InlineKeyboardMarkup(row_width=5)
         floors = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        rows = []
+        # Build rows of 5 buttons each (equivalent to row_width=5)
+        current_row = []
         for f in floors:
-            keyboard.insert(
-                InlineKeyboardButton(str(f), callback_data=f"floor_max_{f}")
+            current_row.append(
+                InlineKeyboardButton(text=str(f), callback_data=f"floor_max_{f}")
             )
-        keyboard.add(
-            InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu")
+            if len(current_row) == 5:
+                rows.append(current_row)
+                current_row = []
+        if current_row:
+            rows.append(current_row)
+        rows.append(
+            [InlineKeyboardButton(text="↪️ Назад", callback_data="return_to_advanced_menu")]
         )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
         await callback_query.message.answer(
             "Виберіть максимальний поверх:", reply_markup=keyboard
@@ -87,7 +95,7 @@ async def edit_floor_max_handler(
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("floor_max_"), state="*")
+@router.callback_query(F.data.startswith("floor_max_"))
 @log_operation("set_floor_max")
 async def set_floor_max(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
@@ -107,21 +115,18 @@ async def set_floor_max(callback_query: types.CallbackQuery, state: FSMContext):
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data == "edit_is_not_first_floor", state="*")
+@router.callback_query(F.data == "edit_is_not_first_floor")
 @log_operation("edit_is_not_first_floor")
 async def edit_is_not_first_floor_handler(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     user_id = callback_query.from_user.id
     with log_context(logger, user_id=user_id, callback_data=callback_query.data):
-        keyboard = InlineKeyboardMarkup()
-        keyboard.add(
-            InlineKeyboardButton("Так", callback_data="is_not_first_floor_yes")
-        )
-        keyboard.add(InlineKeyboardButton("Ні", callback_data="is_not_first_floor_no"))
-        keyboard.add(
-            InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu")
-        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Так", callback_data="is_not_first_floor_yes")],
+            [InlineKeyboardButton(text="Ні", callback_data="is_not_first_floor_no")],
+            [InlineKeyboardButton(text="↪️ Назад", callback_data="return_to_advanced_menu")],
+        ])
 
         await callback_query.message.answer(
             "Чи виключати перший поверх?", reply_markup=keyboard
@@ -129,9 +134,7 @@ async def edit_is_not_first_floor_handler(
         await callback_query.answer()
 
 
-@dp.callback_query_handler(
-    lambda c: c.data.startswith("is_not_first_floor_"), state="*"
-)
+@router.callback_query(F.data.startswith("is_not_first_floor_"))
 @log_operation("set_is_not_first_floor")
 async def set_is_not_first_floor(
     callback_query: types.CallbackQuery, state: FSMContext
@@ -155,21 +158,20 @@ async def set_is_not_first_floor(
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data == "edit_last_floor", state="*")
+@router.callback_query(F.data == "edit_last_floor")
 @log_operation("edit_last_floor")
 async def edit_last_floor_handler(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     user_id = callback_query.from_user.id
     with log_context(logger, user_id=user_id, callback_data=callback_query.data):
-        keyboard = InlineKeyboardMarkup()
-        keyboard.add(
-            InlineKeyboardButton("Так", callback_data="last_floor_yes"),
-            InlineKeyboardButton("Ні", callback_data="last_floor_no"),
-        )
-        keyboard.add(
-            InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu")
-        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Так", callback_data="last_floor_yes"),
+                InlineKeyboardButton(text="Ні", callback_data="last_floor_no"),
+            ],
+            [InlineKeyboardButton(text="↪️ Назад", callback_data="return_to_advanced_menu")],
+        ])
 
         await callback_query.message.answer(
             "Виключати останній поверх?", reply_markup=keyboard
@@ -177,7 +179,7 @@ async def edit_last_floor_handler(
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("last_floor_"), state="*")
+@router.callback_query(F.data.startswith("last_floor_"))
 @log_operation("set_last_floor")
 async def set_last_floor(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
@@ -193,7 +195,7 @@ async def set_last_floor(callback_query: types.CallbackQuery, state: FSMContext)
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data == "pets_allowed", state="*")
+@router.callback_query(F.data == "pets_allowed")
 @log_operation("edit_pets_allowed")
 async def edit_pets_allowed_handler(
     callback_query: types.CallbackQuery, state: FSMContext
@@ -202,14 +204,13 @@ async def edit_pets_allowed_handler(
     with log_context(logger, user_id=user_id, callback_data=callback_query.data):
         await state.update_data(current_edit="pets_allowed")
 
-        keyboard = InlineKeyboardMarkup()
-        keyboard.add(
-            InlineKeyboardButton("Так", callback_data="pets_allowed_yes"),
-            InlineKeyboardButton("Ні", callback_data="pets_allowed_no"),
-        )
-        keyboard.add(
-            InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu")
-        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Так", callback_data="pets_allowed_yes"),
+                InlineKeyboardButton(text="Ні", callback_data="pets_allowed_no"),
+            ],
+            [InlineKeyboardButton(text="↪️ Назад", callback_data="return_to_advanced_menu")],
+        ])
 
         await callback_query.message.answer(
             "🐶🐈🐹 Чи дозволено з тваринами?", reply_markup=keyboard
@@ -217,7 +218,7 @@ async def edit_pets_allowed_handler(
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("pets_allowed_"), state="*")
+@router.callback_query(F.data.startswith("pets_allowed_"))
 @log_operation("set_pets_allowed")
 async def set_pets_allowed(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
@@ -252,7 +253,7 @@ async def set_pets_allowed(callback_query: types.CallbackQuery, state: FSMContex
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data == "without_broker", state="*")
+@router.callback_query(F.data == "without_broker")
 @log_operation("edit_without_broker")
 async def edit_without_broker_handler(
     callback_query: types.CallbackQuery, state: FSMContext
@@ -262,14 +263,13 @@ async def edit_without_broker_handler(
         # Mark that we are in edit flow so Back returns to edit menu
         await state.update_data(current_edit="without_broker")
 
-        keyboard = InlineKeyboardMarkup()
-        keyboard.add(
-            InlineKeyboardButton("Від власника", callback_data="without_broker_owner"),
-            InlineKeyboardButton("Усі оголошення", callback_data="without_broker_all"),
-        )
-        keyboard.add(
-            InlineKeyboardButton("↪️ Назад", callback_data="return_to_advanced_menu")
-        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Від власника", callback_data="without_broker_owner"),
+                InlineKeyboardButton(text="Усі оголошення", callback_data="without_broker_all"),
+            ],
+            [InlineKeyboardButton(text="↪️ Назад", callback_data="return_to_advanced_menu")],
+        ])
 
         await callback_query.message.answer(
             "Виберіть вид оголошень:", reply_markup=keyboard
@@ -277,7 +277,7 @@ async def edit_without_broker_handler(
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("without_broker_"), state="*")
+@router.callback_query(F.data.startswith("without_broker_"))
 @log_operation("set_without_broker")
 async def set_without_broker(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
@@ -318,7 +318,7 @@ async def set_without_broker(callback_query: types.CallbackQuery, state: FSMCont
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data == "advanced_done", state="*")
+@router.callback_query(F.data == "advanced_done")
 @log_operation("advanced_done")
 async def advanced_done_handler(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
@@ -331,11 +331,12 @@ async def advanced_done_handler(callback_query: types.CallbackQuery, state: FSMC
         summary_escaped = escape_md(summary)
 
         # A new keyboard that shows "Редагувати" or "Підписатися"
-        kb = InlineKeyboardMarkup()
-        kb.add(
-            InlineKeyboardButton("Редагувати", callback_data="edit_parameters"),
-            InlineKeyboardButton("Підписатися", callback_data="subscribe"),
-        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Редагувати", callback_data="edit_parameters"),
+                InlineKeyboardButton(text="Підписатися", callback_data="subscribe"),
+            ],
+        ])
 
         logger.info("Advanced settings completed", extra={"user_id": user_id})
         await callback_query.message.answer(
@@ -344,7 +345,7 @@ async def advanced_done_handler(callback_query: types.CallbackQuery, state: FSMC
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data == "edit_floor", state="*")
+@router.callback_query(F.data == "edit_floor")
 @log_operation("edit_floor")
 async def edit_floor_handler(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
@@ -370,7 +371,7 @@ async def edit_floor_handler(callback_query: types.CallbackQuery, state: FSMCont
         await callback_query.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("toggle_floor_"), state="*")
+@router.callback_query(F.data.startswith("toggle_floor_"))
 @log_operation("toggle_floor")
 async def toggle_floor_callback(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
@@ -420,7 +421,7 @@ async def toggle_floor_callback(callback_query: types.CallbackQuery, state: FSMC
             await callback_query.message.edit_text(
                 "🏢 Налаштуйте поверх:", reply_markup=kb
             )
-        except MessageNotModified:
+        except TelegramBadRequest:
             await callback_query.answer("Немає змін.")
 
         await callback_query.answer()
@@ -430,7 +431,7 @@ def floor_opts_key(num_str):
     return f"floor_max_{num_str}"
 
 
-@dp.callback_query_handler(lambda c: c.data == "floor_done", state="*")
+@router.callback_query(F.data == "floor_done")
 @log_operation("floor_done")
 async def floor_done_handler(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
@@ -509,23 +510,18 @@ async def floor_done_handler(callback_query: types.CallbackQuery, state: FSMCont
 async def show_advanced_options(message: types.Message, state: FSMContext):
     with log_context(logger, chat_id=message.chat.id):
         # Build a keyboard for advanced fields
-        keyboard = InlineKeyboardMarkup()
-        keyboard.add(
-            InlineKeyboardButton("Поверх", callback_data="edit_floor"),
-        )
-        keyboard.add(
-            InlineKeyboardButton("З тваринами?", callback_data="pets_allowed"),
-        )
-        keyboard.add(
-            InlineKeyboardButton("Від власника?", callback_data="without_broker"),
-        )
-        # "Готово" -> return to summary
-        keyboard.add(InlineKeyboardButton("↪️ Назад", callback_data="advanced_done"))
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Поверх", callback_data="edit_floor")],
+            [InlineKeyboardButton(text="З тваринами?", callback_data="pets_allowed")],
+            [InlineKeyboardButton(text="Від власника?", callback_data="without_broker")],
+            # "Готово" -> return to summary
+            [InlineKeyboardButton(text="↪️ Назад", callback_data="advanced_done")],
+        ])
 
         await message.answer("Оберіть параметр для зміни:", reply_markup=keyboard)
 
 
-@dp.callback_query_handler(lambda c: c.data.startswith("view_photos:"))
+@router.callback_query(F.data.startswith("view_photos:"))
 @log_operation("handle_view_photos")
 async def handle_view_photos(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -536,14 +532,14 @@ async def handle_view_photos(callback_query: types.CallbackQuery):
             extra_images = get_extra_images(resource_url)
 
             if extra_images:
-                media = MediaGroup()
+                media = MediaGroupBuilder()
                 for i, url in enumerate(extra_images):
                     if i == 0:
-                        media.attach_photo(url, caption="Додаткові фото:")
+                        media.add_photo(media=url, caption="Додаткові фото:")
                     else:
-                        media.attach_photo(url)
+                        media.add_photo(media=url)
                 await bot.send_media_group(
-                    chat_id=callback_query.from_user.id, media=media
+                    chat_id=callback_query.from_user.id, media=media.build()
                 )
                 logger.info(
                     "Extra photos sent",
@@ -632,9 +628,9 @@ def build_full_summary(data: dict) -> str:
     return "**Поточні параметри пошуку**\n" + "\n".join(lines)
 
 
-@dp.callback_query_handler(
-    lambda c: c.data and c.data.startswith("city_page_"),
-    state=FilterStates.waiting_for_city,
+@router.callback_query(
+    F.data.startswith("city_page_"),
+    FilterStates.waiting_for_city,
 )
 @log_operation("handle_city_pagination")
 async def handle_city_pagination(
@@ -647,7 +643,9 @@ async def handle_city_pagination(
         kb_city = city_keyboard(AVAILABLE_CITIES, page=page)
         # if in edit flow add back button
         if (await state.get_data()).get("current_edit") == "city":
-            kb_city.add(InlineKeyboardButton("↪️ Назад", callback_data="cancel_edit"))
+            kb_city.inline_keyboard.append(
+                [InlineKeyboardButton(text="↪️ Назад", callback_data="cancel_edit")]
+            )
 
         await safe_edit_message(
             chat_id=user_id,
