@@ -22,15 +22,15 @@ logger = logging.getLogger(__name__)
 class BrowserRequest(BaseModel):
     url: str = Field(..., description="URL to load in browser")
     wait_after_load: int = Field(
-        3000, description="Time to wait after page load (milliseconds)"
+        3000, ge=0, le=30000, description="Time to wait after page load (milliseconds)"
     )
     proxy: Optional[str] = Field(None, description="Optional proxy URL")
-    timeout: int = Field(30, description="Timeout in seconds")
+    timeout: int = Field(30, ge=1, le=120, description="Timeout in seconds")
     execute_script: Optional[str] = Field(
-        None, description="Optional JavaScript to execute on the page"
+        None, max_length=10000, description="Optional JavaScript to execute on the page"
     )
     wait_for_selector: Optional[str] = Field(
-        None, description="Optional CSS selector to wait for"
+        None, max_length=500, description="Optional CSS selector to wait for"
     )
 
 
