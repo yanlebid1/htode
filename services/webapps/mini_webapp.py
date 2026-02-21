@@ -6,7 +6,7 @@ import hashlib
 import hmac
 from typing import Optional
 
-from fastapi import FastAPI, Query, BackgroundTasks
+from fastapi import FastAPI, Query, BackgroundTasks, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -320,14 +320,17 @@ def verify_wayforpay_signature(data: dict) -> bool:
 
 @app.get("/gallery", response_class=HTMLResponse)
 @log_operation("gallery_route")
-async def gallery_route(images: str = Query(None)):
+async def gallery_route(images: str = Query(None, max_length=10000)):
     """Gallery mini-app for viewing images"""
     with log_context(logger, endpoint="gallery"):
+        image_count = len(images.split(",")) if images else 0
+        if image_count > 50:
+            raise HTTPException(status_code=400, detail="Too many images (max 50)")
         logger.info(
             "Gallery page requested",
             extra={
                 "has_images": bool(images),
-                "image_count": len(images.split(",")) if images else 0,
+                "image_count": image_count,
             },
         )
         return GALLERY_HTML
@@ -335,14 +338,17 @@ async def gallery_route(images: str = Query(None)):
 
 @app.get("/phones", response_class=HTMLResponse)
 @log_operation("phones_route")
-async def phones_route(numbers: str = Query(None)):
+async def phones_route(numbers: str = Query(None, max_length=2000)):
     """Phone numbers mini-app for viewing and calling"""
     with log_context(logger, endpoint="phones"):
+        number_count = len(numbers.split(",")) if numbers else 0
+        if number_count > 20:
+            raise HTTPException(status_code=400, detail="Too many numbers (max 20)")
         logger.info(
             "Phones page requested",
             extra={
                 "has_numbers": bool(numbers),
-                "number_count": len(numbers.split(",")) if numbers else 0,
+                "number_count": number_count,
             },
         )
         return PHONE_HTML
