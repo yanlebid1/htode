@@ -4,6 +4,7 @@ Manages multiple AdsPower profiles and OLX accounts with rotation logic.
 """
 
 import json
+import os
 import time
 import random
 from typing import Dict, List, Optional, Tuple
@@ -51,8 +52,8 @@ class AdsPowerManager:
         self.profiles: List[AdsPowerProfile] = []
         self.current_profile_index = 0
         self.stats = ExtractionStats()
-        self.adspower_api_url = "http://local.adspower.net:50325"
-        self.chromedriver_path = "/tmp/chromedriver-linux64/chromedriver"  # Path to Chrome 134 driver
+        self.adspower_api_url = os.getenv("ADSPOWER_API_URL", "http://local.adspower.net:50325")
+        self.chromedriver_path = os.getenv("CHROMEDRIVER_PATH", "/tmp/chromedriver-linux64/chromedriver")
         
         self.load_config()
         
@@ -65,9 +66,9 @@ class AdsPowerManager:
                     self.profiles = [AdsPowerProfile(**profile) for profile in data.get('profiles', [])]
                     if 'stats' in data:
                         self.stats = ExtractionStats(**data['stats'])
-                    logger.info(f"Loaded {len(self.profiles)} AdsPower profiles")
+                    logger.info("Loaded AdsPower profiles", extra={"count": len(self.profiles)})
             except Exception as e:
-                logger.error(f"Failed to load AdsPower config: {e}")
+                logger.error("Failed to load AdsPower config", extra={"error": str(e)})
                 self.profiles = []
         else:
             # Create default config template
@@ -128,7 +129,7 @@ class AdsPowerManager:
         with open(self.config_file, 'w') as f:
             json.dump(data, f, indent=2)
         
-        logger.info(f"Created default config at {self.config_file}")
+        logger.info("Created default config", extra={"config_file": str(self.config_file)})
         logger.warning("Please update the config file with your actual AdsPower profile IDs and OLX credentials")
         
         self.profiles = default_profiles
@@ -176,23 +177,23 @@ class AdsPowerManager:
                 "open_tabs": 1
             }
             
-            logger.info(f"Starting AdsPower profile: {profile.profile_name}")
+            logger.info("Starting AdsPower profile", extra={"profile": profile.profile_name})
             response = requests.get(url, params=params)
             
             if response.status_code == 200:
                 data = response.json()
                 if data.get("code") == 0:
-                    logger.info(f"Successfully started profile {profile.profile_name}")
+                    logger.info("Successfully started profile", extra={"profile": profile.profile_name})
                     return data["data"]
                 else:
-                    logger.error(f"Failed to start profile: {data.get('msg')}")
+                    logger.error("Failed to start profile", extra={"msg": data.get("msg")})
                     return None
             else:
-                logger.error(f"HTTP error starting profile: {response.status_code}")
+                logger.error("HTTP error starting profile", extra={"status_code": response.status_code})
                 return None
                 
         except Exception as e:
-            logger.error(f"Exception starting profile {profile.profile_name}: {e}")
+            logger.error("Exception starting profile", extra={"profile": profile.profile_name, "error": str(e)})
             return None
     
     def stop_profile(self, profile: AdsPowerProfile) -> bool:
@@ -206,16 +207,16 @@ class AdsPowerManager:
                 data = response.json()
                 success = data.get("code") == 0
                 if success:
-                    logger.info(f"Successfully stopped profile {profile.profile_name}")
+                    logger.info("Successfully stopped profile", extra={"profile": profile.profile_name})
                 else:
-                    logger.error(f"Failed to stop profile: {data.get('msg')}")
+                    logger.error("Failed to stop profile", extra={"msg": data.get("msg")})
                 return success
             else:
-                logger.error(f"HTTP error stopping profile: {response.status_code}")
+                logger.error("HTTP error stopping profile", extra={"status_code": response.status_code})
                 return False
                 
         except Exception as e:
-            logger.error(f"Exception stopping profile {profile.profile_name}: {e}")
+            logger.error("Exception stopping profile", extra={"profile": profile.profile_name, "error": str(e)})
             return False
     
     def create_driver(self, connection_data: Dict) -> Optional[webdriver.Chrome]:
@@ -232,7 +233,7 @@ class AdsPowerManager:
             return driver
             
         except Exception as e:
-            logger.error(f"Failed to create driver: {e}")
+            logger.error("Failed to create driver", extra={"error": str(e)})
             return None
     
 
@@ -240,7 +241,7 @@ class AdsPowerManager:
     def extract_phone_from_olx_ad(self, driver: webdriver.Chrome, ad_url: str, profile: AdsPowerProfile) -> Optional[str]:
         """Extract phone number from an OLX ad using AdsPower browser"""
         try:
-            logger.info(f"Extracting phone from {ad_url} using profile {profile.profile_name}")
+            logger.info("Extracting phone", extra={"ad_url": ad_url, "profile": profile.profile_name})
             
             # Navigate to ad
             driver.get(ad_url)
@@ -267,7 +268,7 @@ class AdsPowerManager:
             except TimeoutException:
                 logger.debug("No survey popup found")
             except Exception as e:
-                logger.debug(f"Failed to close survey popup: {e}")
+                logger.debug("Failed to close survey popup", extra={"error": str(e)})
             
             # Scroll down to find phone button
             max_scrolls = 5
@@ -301,7 +302,7 @@ class AdsPowerManager:
                     time.sleep(1)
                     
                 except Exception as e:
-                    logger.debug(f"Scroll {scroll + 1} failed: {e}")
+                    logger.debug("Scroll failed", extra={"scroll": scroll + 1, "error": str(e)})
             
             if not phone_button:
                 logger.error("Phone button not found")
@@ -320,7 +321,7 @@ class AdsPowerManager:
                         # Try ActionChains click
                         ActionChains(driver).move_to_element(phone_button).click().perform()
                     except Exception as e:
-                        logger.error(f"All click methods failed: {e}")
+                        logger.error("All click methods failed", extra={"error": str(e)})
                         return None
             
             time.sleep(2)
@@ -343,7 +344,7 @@ class AdsPowerManager:
                                 # Clean phone number
                                 phone = phone_text.replace('tel:', '').strip()
                                 if phone and len(phone) >= 10:
-                                    logger.info(f"Successfully extracted phone: {phone}")
+                                    logger.info("Successfully extracted phone")
                                     
                                     # Update profile stats
                                     profile.usage_count += 1
@@ -355,7 +356,7 @@ class AdsPowerManager:
                                     
                                     return phone
                 except Exception as e:
-                    logger.debug(f"Phone extraction with selector {selector} failed: {e}")
+                    logger.debug("Phone extraction with selector failed", extra={"selector": selector, "error": str(e)})
             
             logger.error("No phone number found in page")
             self.stats.failed_extractions += 1
@@ -364,7 +365,7 @@ class AdsPowerManager:
             return None
             
         except Exception as e:
-            logger.error(f"Error extracting phone: {e}")
+            logger.error("Error extracting phone", extra={"error": str(e)})
             self.stats.failed_extractions += 1
             self.stats.total_extractions += 1
             self.save_config()
@@ -401,7 +402,7 @@ class AdsPowerManager:
             if driver:
                 try:
                     driver.quit()
-                except:
+                except Exception:
                     pass
             self.stop_profile(profile)
     

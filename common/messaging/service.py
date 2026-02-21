@@ -151,7 +151,10 @@ class MessagingService:
         from common.messaging.unified_platform_utils import resolve_user_id
 
         with log_context(logger, user_id=user_id, ad_id=ad_data.get("id")):
-            logger.info(f'Sending ad {ad_data.get("id")} to user {user_id}...')
+            logger.info(
+                "Sending ad",
+                extra={"ad_id": ad_data.get("id"), "user_id": user_id},
+            )
             # Get platform info using resolve_user_id
             _, platform_name, platform_id = resolve_user_id(user_id)
 
@@ -219,25 +222,7 @@ class MessagingService:
         """
         with log_context(logger, service_name=service_name):
             service = cls()
-            try:
-                pass
-
-                # Don't import the bot here, let the telegram service do it
-                logger.info("Telegram messenger type imported successfully")
-
-            except ImportError as e:
-                logger.error(
-                    "Failed to import telegram messaging type",
-                    exc_info=True,
-                    extra={"error_type": type(e).__name__},
-                )
-            except Exception as e:
-                logger.error(
-                    "Failed to initialize telegram messaging",
-                    exc_info=True,
-                    extra={"error_type": type(e).__name__},
-                )
-
+            logger.info("Messaging service created for service", extra={"service_name": service_name})
             return service
 
 

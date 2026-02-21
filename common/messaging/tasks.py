@@ -219,7 +219,10 @@ def send_ad_with_extra_buttons(
         resolve_user_id,
         get_messenger_instance,
     )
+    from common.config import WEBAPP_URL
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+
+    webapp_url = WEBAPP_URL
 
     with log_context(logger, user_id=user_id, ad_id=ad_id):
 
@@ -250,7 +253,7 @@ def send_ad_with_extra_buttons(
                     InlineKeyboardButton(
                         "🖼 Більше фото",
                         web_app=WebAppInfo(
-                            url=f"https://f3cc-178-150-42-6.ngrok-free.app/gallery?images={imgs}"
+                            url=f"{webapp_url}/gallery?images={imgs}"
                         ),
                     )
                 )
@@ -261,7 +264,7 @@ def send_ad_with_extra_buttons(
                     InlineKeyboardButton(
                         "📲 Подзвонити",
                         web_app=WebAppInfo(
-                            url=f"https://f3cc-178-150-42-6.ngrok-free.app/phones?numbers={phones}"
+                            url=f"{webapp_url}/phones?numbers={phones}"
                         ),
                     )
                 )
@@ -340,7 +343,8 @@ def process_show_more_description(
                     await safe_edit_message_telegram(user_id, message_id, text)
                     return
                 except Exception:
-                    pass
+                    logger.debug("Failed to edit message, falling back to new message",
+                                 extra={"user_id": user_id, "message_id": message_id})
             # Fallback: send new message
             await safe_send_message(user_id, text, platform=platform)
 
@@ -379,7 +383,7 @@ def send_ad_multibot(
     # Get bot configuration
     bot_config = multibot_config.get_bot_by_name(bot_name)
     if not bot_config:
-        logger.error(f"Bot configuration not found: {bot_name}")
+        logger.error("Bot configuration not found", extra={"bot_name": bot_name})
         return False
     
     try:
@@ -440,5 +444,5 @@ def send_ad_multibot(
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(bot.close())
                 loop.close()
-            except:
+            except Exception:
                 pass

@@ -51,7 +51,7 @@ def run_migration():
     try:
         with engine.connect() as conn:
             for query in migration_queries:
-                logger.info(f"Executing migration: {query.strip()[:50]}...")
+                logger.info("Executing migration", extra={"query_preview": query.strip()[:50]})
                 conn.execute(text(query))
                 conn.commit()
                 logger.info("✓ Success")
@@ -71,10 +71,10 @@ def run_migration():
             
             logger.info("\nNew columns:")
             for row in result:
-                logger.info(f"  - {row[0]}: {row[1]} (nullable: {row[2]})")
+                logger.info("Column info", extra={"column": row[0], "type": row[1], "nullable": row[2]})
                 
     except Exception as e:
-        logger.error(f"Migration failed: {e}")
+        logger.error("Migration failed", extra={"error": str(e)})
         raise
 
 def rollback_migration():
@@ -97,13 +97,13 @@ def rollback_migration():
     try:
         with engine.connect() as conn:
             for query in rollback_queries:
-                logger.info(f"Executing rollback: {query.strip()[:50]}...")
+                logger.info("Executing rollback", extra={"query_preview": query.strip()[:50]})
                 conn.execute(text(query))
                 conn.commit()
                 
         logger.info("Rollback completed")
     except Exception as e:
-        logger.error(f"Rollback failed: {e}")
+        logger.error("Rollback failed", extra={"error": str(e)})
         raise
 
 if __name__ == "__main__":

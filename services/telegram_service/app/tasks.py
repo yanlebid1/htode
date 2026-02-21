@@ -61,7 +61,7 @@ def send_subscription_reminders():
         try:
             # Get users who need reminders
             users = get_users_for_reminders()
-            logger.info(f"Found {len(users)} users for reminders")
+            logger.info("Found users for reminders", extra={"count": len(users)})
 
             for user in users:
                 telegram_id = user.get("telegram_id")
@@ -97,7 +97,7 @@ def check_expiring_subscriptions():
         try:
             # Get subscriptions expiring soon
             expiring_subscriptions = get_expiring_subscriptions()
-            logger.info(f"Found {len(expiring_subscriptions)} expiring subscriptions")
+            logger.info("Found expiring subscriptions", extra={"count": len(expiring_subscriptions)})
 
             for subscription in expiring_subscriptions:
                 subscription.get("user_id")
