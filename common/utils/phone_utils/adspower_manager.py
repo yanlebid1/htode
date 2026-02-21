@@ -178,7 +178,7 @@ class AdsPowerManager:
             }
             
             logger.info("Starting AdsPower profile", extra={"profile": profile.profile_name})
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, timeout=30)
             
             if response.status_code == 200:
                 data = response.json()
@@ -202,7 +202,7 @@ class AdsPowerManager:
             url = f"{self.adspower_api_url}/api/v1/browser/stop"
             params = {"user_id": profile.profile_id}
             
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, timeout=30)
             if response.status_code == 200:
                 data = response.json()
                 success = data.get("code") == 0

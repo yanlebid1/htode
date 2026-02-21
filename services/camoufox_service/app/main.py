@@ -10,6 +10,7 @@ import urllib.parse
 import os
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from camoufox.async_api import AsyncCamoufox
 
@@ -164,7 +165,13 @@ app = FastAPI(
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "camoufox"}
+    stats = await browser_pool.get_stats()
+    if not browser_pool._initialized or stats['available_browsers'] == 0:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "service": "camoufox", "available_browsers": stats['available_browsers']}
+        )
+    return {"status": "healthy", "service": "camoufox", "available_browsers": stats['available_browsers']}
 
 
 @app.get("/stats")
