@@ -23,6 +23,8 @@ geoip2==4.8.0
 maxminddb==2.5.1
 selenium==4.25.0
 
+cryptography==44.0.2
+
 # OpenTelemetry tracing
 opentelemetry-api==1.22.0
 opentelemetry-sdk==1.22.0

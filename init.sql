@@ -166,6 +166,21 @@ CREATE TRIGGER update_users_updated_at_trigger
     FOR EACH ROW
     EXECUTE FUNCTION update_users_updated_at();
 
+-- PII encryption columns (backward compatible — plaintext columns kept until migration verified)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_encrypted TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_search_token VARCHAR(64);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_encrypted TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_search_token VARCHAR(64);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_token ON users(email_search_token);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_token ON users(phone_search_token);
+
+-- Verification target encryption columns
+ALTER TABLE verifications ADD COLUMN IF NOT EXISTS target_encrypted TEXT;
+ALTER TABLE verifications ADD COLUMN IF NOT EXISTS target_search_token VARCHAR(64);
+
+CREATE INDEX IF NOT EXISTS idx_verification_target_token ON verifications(target_search_token);
+
 -- High-priority indexes
 CREATE INDEX IF NOT EXISTS idx_ads_resource_url ON ads (resource_url);
 CREATE INDEX IF NOT EXISTS idx_ad_images_ad_id ON ad_images (ad_id);

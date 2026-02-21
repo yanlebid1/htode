@@ -1,6 +1,6 @@
 # common/db/models/verification.py
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from common.db.base import Base
@@ -18,6 +18,10 @@ class Verification(Base):
     attempts = Column(Integer, default=0)
     verified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
+
+    # PII encrypted columns
+    target_encrypted = Column(Text, nullable=True)
+    target_search_token = Column(String(64), index=True, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="verifications")
