@@ -71,9 +71,8 @@ def sort_and_notify_new_ads(new_ads):
             ad_id = ad.get("id")
             with log_context(logger, ad_id=ad_id):
                 try:
-                    s3_image_urls = (
-                        get_ad_images_local(ad)[0] if get_ad_images_local(ad) else None
-                    )
+                    images = get_ad_images_local(ad)
+                    s3_image_urls = images[0] if images else None
                     users_to_notify = find_users_for_ad(ad)
 
                     logger.info(

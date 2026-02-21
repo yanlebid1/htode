@@ -114,8 +114,8 @@ class RedisClusterManager:
                 try:
                     self.sentinels = Sentinel(
                         self.sentinel_hosts,
-                        socket_timeout=0.1,
-                        socket_connect_timeout=0.1,
+                        socket_timeout=0.5,
+                        socket_connect_timeout=0.5,
                         socket_keepalive=True,
                         socket_keepalive_options={},
                     )

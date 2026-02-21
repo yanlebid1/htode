@@ -77,19 +77,24 @@ class BaseCacheManager:
         """
         with log_context(logger, pattern=pattern):
             try:
-                keys = redis_client.keys(pattern)
-                if keys:
-                    count = redis_client.delete(*keys)
+                cursor = 0
+                count = 0
+                while True:
+                    cursor, keys = redis_client.scan(cursor, match=pattern, count=100)
+                    if keys:
+                        count += redis_client.delete(*keys)
+                    if cursor == 0:
+                        break
+                if count:
                     logger.info(
                         "Deleted keys by pattern",
                         extra={"pattern": pattern, "count": count},
                     )
-                    return count
                 else:
                     logger.debug(
                         "No keys found for pattern", extra={"pattern": pattern}
                     )
-                    return 0
+                return count
             except Exception as e:
                 logger.error(
                     "Error deleting keys by pattern",

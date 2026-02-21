@@ -177,6 +177,12 @@ CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_email ON email_verifica
 CREATE INDEX IF NOT EXISTS idx_users_phone_number ON users (phone_number);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
+-- Missing indexes for common WHERE/JOIN columns
+CREATE INDEX IF NOT EXISTS idx_verification_codes_expires ON verification_codes (expires_at);
+CREATE INDEX IF NOT EXISTS idx_payment_orders_user_id ON payment_orders (user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_history_user_id ON payment_history (user_id);
+CREATE INDEX IF NOT EXISTS idx_users_last_active ON users (last_active DESC);
+
 -- Query-specific indexes
 CREATE INDEX IF NOT EXISTS idx_ads_filter_query ON ads (city, property_type, price, rooms_count, insert_time DESC);
 CREATE INDEX IF NOT EXISTS idx_user_filters_active ON user_filters (user_id, city, property_type)
@@ -211,6 +217,25 @@ GROUP BY uf.property_type;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_stats_active ON mv_subscription_stats (active_subscribers);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_by_city ON mv_subscription_by_city (city);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_by_property ON mv_subscription_by_property (property_type);
+
+-- CHECK constraints to prevent invalid data
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_payment_orders_amount_positive') THEN
+        ALTER TABLE payment_orders ADD CONSTRAINT chk_payment_orders_amount_positive CHECK (amount > 0);
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_payment_history_amount_positive') THEN
+        ALTER TABLE payment_history ADD CONSTRAINT chk_payment_history_amount_positive CHECK (amount > 0);
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_user_filters_price_range') THEN
+        ALTER TABLE user_filters ADD CONSTRAINT chk_user_filters_price_range CHECK (price_min IS NULL OR price_max IS NULL OR price_min <= price_max);
+    END IF;
+END $$;
 
 -- Grant appropriate permissions
 GRANT SELECT, INSERT, UPDATE, DELETE ON verification_codes TO current_user;

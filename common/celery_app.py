@@ -25,6 +25,10 @@ celery_app.conf.update(
     task_acks_late=True,  # Tasks are acknowledged after execution (not before)
     task_reject_on_worker_lost=True,  # Reject tasks if worker crashes or disconnects
     worker_prefetch_multiplier=1,  # Prefetch just one task at a time for better load balancing
+    # Task time limits — prevent runaway tasks from blocking workers indefinitely
+    task_soft_time_limit=300,      # 5 min soft limit — raises SoftTimeLimitExceeded
+    task_time_limit=360,           # 6 min hard kill
+    task_track_started=True,       # Track when tasks enter "started" state
     # Retry settings
     task_default_retry_delay=60,  # 1 minute delay between retries
     task_max_retries=3,  # Maximum number of retries
@@ -40,7 +44,9 @@ celery_app.conf.update(
     # Rate limiting - optimized for batch processing and high throughput
     task_annotations={
         "scraper_service.app.tasks.fetch_new_ads": {
-            "rate_limit": "1/m"
+            "rate_limit": "1/m",
+            "time_limit": 1800,           # 30 min hard limit for scraping
+            "soft_time_limit": 1500,      # 25 min soft limit
         },  # 1 per minute - scraping rate limit
         # BATCH NOTIFICATION SYSTEM - Safe rates respecting Telegram limits
         "common.tasks.notify_user_batch": {
@@ -85,6 +91,8 @@ celery_app.conf.task_queues = (
     Queue("notification_queue", task_exchange, routing_key="notify.#", priority=1),
     # Maintenance tasks
     Queue("maintenance_queue", task_exchange, routing_key="maintenance.#", priority=2),
+    # Dead letter queue for permanently failed tasks
+    Queue("dead_letter", Exchange("dead_letter"), routing_key="dead_letter"),
     
     # Multi-bot queues - flower-themed bot pool 🌸
     # Each flower bot gets its own queue for parallel processing
