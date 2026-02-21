@@ -201,6 +201,65 @@ class TestNotifyUserBatchV3:
         assert result["failed_count"] == 1
         assert result["success_count"] == 0
 
+    @patch("common.utils.cache.redis_client")
+    @patch("common.tasks.celery_app")
+    @patch("common.tasks.build_ad_text", return_value="Ad text")
+    @patch("common.db.session.db_session")
+    def test_dedup_skips_duplicate_notification(self, mock_session_ctx, mock_build, mock_celery, mock_redis):
+        from common.tasks import notify_user_batch_v3
+
+        user1 = MagicMock(id=1, telegram_id=111, assigned_bot_name="orchid")
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = [user1]
+        mock_session_ctx.return_value.__enter__ = MagicMock(return_value=mock_db)
+        mock_session_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        # Redis set returns False → key already exists → duplicate
+        mock_redis.set.return_value = False
+
+        result = notify_user_batch_v3([1], {"id": 10, "resource_url": "url", "external_id": "e1"})
+        assert result["skipped_dedup"] == 1
+        assert result["success_count"] == 0
+        mock_celery.send_task.assert_not_called()
+
+    @patch("common.utils.cache.redis_client")
+    @patch("common.tasks.celery_app")
+    @patch("common.tasks.build_ad_text", return_value="Ad text")
+    @patch("common.db.session.db_session")
+    def test_dedup_allows_first_notification(self, mock_session_ctx, mock_build, mock_celery, mock_redis):
+        from common.tasks import notify_user_batch_v3
+
+        user1 = MagicMock(id=1, telegram_id=111, assigned_bot_name="orchid")
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = [user1]
+        mock_session_ctx.return_value.__enter__ = MagicMock(return_value=mock_db)
+        mock_session_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        # Redis set returns True → key was set → first time
+        mock_redis.set.return_value = True
+
+        result = notify_user_batch_v3([1], {"id": 10, "resource_url": "url", "external_id": "e1"})
+        assert result["skipped_dedup"] == 0
+        assert result["success_count"] == 1
+        mock_celery.send_task.assert_called_once()
+
+    @patch("common.utils.cache.redis_client")
+    @patch("common.tasks.celery_app")
+    @patch("common.tasks.build_ad_text", return_value="Ad text")
+    @patch("common.db.session.db_session")
+    def test_dedup_proceeds_on_redis_failure(self, mock_session_ctx, mock_build, mock_celery, mock_redis):
+        """If Redis is unavailable, notifications should still be sent."""
+        from common.tasks import notify_user_batch_v3
+
+        user1 = MagicMock(id=1, telegram_id=111, assigned_bot_name="orchid")
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = [user1]
+        mock_session_ctx.return_value.__enter__ = MagicMock(return_value=mock_db)
+        mock_session_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_redis.set.side_effect = Exception("Redis down")
+
+        result = notify_user_batch_v3([1], {"id": 10, "resource_url": "url", "external_id": "e1"})
+        assert result["success_count"] == 1
+        mock_celery.send_task.assert_called_once()
+
 
 # ── cleanup_stale_extractions() ────────────────────────────────────────────
 

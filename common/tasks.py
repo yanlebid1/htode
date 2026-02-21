@@ -192,9 +192,11 @@ def notify_user_batch_v3(
     """
     MULTI-BOT batch notification system v3.
     Routes notifications through assigned pool bots for 20x throughput.
+    Includes Redis-based deduplication to prevent duplicate notifications.
     """
     from common.db.session import db_session
     from common.db.models import User
+    from common.utils.cache import redis_client
     from collections import defaultdict
     import time
 
@@ -203,16 +205,18 @@ def notify_user_batch_v3(
         success_count = 0
         failed_count = 0
         no_bot_count = 0
+        skipped_dedup = 0
 
         # Format the ad text once
         text = build_ad_text(ad_data)
+        ad_id = ad_data.get("id")
 
         # Get users and group by assigned bot
         users_by_bot = defaultdict(list)
-        
+
         with db_session() as db:
             users = db.query(User).filter(User.id.in_(user_ids)).all()
-            
+
             for user in users:
                 if user.assigned_bot_name:
                     users_by_bot[user.assigned_bot_name].append({
@@ -228,15 +232,25 @@ def notify_user_batch_v3(
 
         # Dispatch notifications to appropriate bot queues
         bot_stats = {}
-        
+
         for bot_name, bot_users in users_by_bot.items():
             bot_success = 0
             bot_failed = 0
-            
+
             # Create a dedicated queue for each bot
             queue_name = f"telegram_bot_{bot_name}_queue"
-            
+
             for user in bot_users:
+                # Deduplication: skip if this user already received this ad
+                if ad_id is not None:
+                    dedup_key = f"notif_sent:{user['user_id']}:{ad_id}"
+                    try:
+                        if not redis_client.set(dedup_key, "1", nx=True, ex=86400):
+                            skipped_dedup += 1
+                            continue
+                    except Exception:
+                        pass  # If Redis fails, proceed with sending
+
                 try:
                     # Send to bot-specific queue with bot context
                     celery_app.send_task(
@@ -246,7 +260,7 @@ def notify_user_batch_v3(
                             text,
                             s3_image_url,
                             ad_data.get("resource_url"),
-                            ad_data.get("id"),
+                            ad_id,
                             ad_data.get("external_id"),
                             bot_name  # Pass bot name for routing
                         ],
@@ -259,7 +273,7 @@ def notify_user_batch_v3(
                     bot_failed += 1
                     failed_count += 1
                     logger.error(
-                        f"Failed to dispatch notification",
+                        "Failed to dispatch notification",
                         extra={
                             "telegram_id": user['telegram_id'],
                             "bot_name": bot_name,
@@ -283,8 +297,9 @@ def notify_user_batch_v3(
                 "total_users": len(user_ids),
                 "success_count": success_count,
                 "failed_count": failed_count,
+                "skipped_dedup": skipped_dedup,
                 "no_bot_assigned": no_bot_count,
-                "ad_id": ad_data.get("id"),
+                "ad_id": ad_id,
                 "processing_time_ms": processing_time * 1000,
                 "users_per_second": users_per_second,
                 "bots_used": len(users_by_bot),
@@ -296,6 +311,7 @@ def notify_user_batch_v3(
         return {
             "success_count": success_count,
             "failed_count": failed_count,
+            "skipped_dedup": skipped_dedup,
             "no_bot_assigned": no_bot_count,
             "total": len(user_ids),
             "processing_time": processing_time,

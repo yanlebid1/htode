@@ -257,3 +257,127 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON verification_codes TO current_user;
 GRANT USAGE, SELECT ON SEQUENCE verification_codes_id_seq TO current_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON email_verification_tokens TO current_user;
 GRANT USAGE, SELECT ON SEQUENCE email_verification_tokens_id_seq TO current_user;
+
+-- =============================================================================
+-- Row-Level Security (RLS) policies
+-- Dual-policy pattern:
+--   1. User policy: when app.current_user_id is set (via SET LOCAL), only that user's rows
+--   2. System policy: when app.current_user_id is unset/empty, all rows visible (maintenance, notifier, scraper)
+-- =============================================================================
+
+ALTER TABLE user_filters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE favorite_ads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payment_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payment_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE verification_codes ENABLE ROW LEVEL SECURITY;
+
+-- Force RLS for table owner too (otherwise owner bypasses policies)
+ALTER TABLE user_filters FORCE ROW LEVEL SECURITY;
+ALTER TABLE favorite_ads FORCE ROW LEVEL SECURITY;
+ALTER TABLE subscriptions FORCE ROW LEVEL SECURITY;
+ALTER TABLE payment_orders FORCE ROW LEVEL SECURITY;
+ALTER TABLE payment_history FORCE ROW LEVEL SECURITY;
+ALTER TABLE verification_codes FORCE ROW LEVEL SECURITY;
+
+-- user_filters
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'user_filters_user_policy') THEN
+        CREATE POLICY user_filters_user_policy ON user_filters
+            USING (user_id = current_setting('app.current_user_id', true)::integer)
+            WITH CHECK (user_id = current_setting('app.current_user_id', true)::integer);
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'user_filters_system_policy') THEN
+        CREATE POLICY user_filters_system_policy ON user_filters
+            USING (current_setting('app.current_user_id', true) IS NULL
+                   OR current_setting('app.current_user_id', true) = '');
+    END IF;
+END $$;
+
+-- favorite_ads
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'favorite_ads_user_policy') THEN
+        CREATE POLICY favorite_ads_user_policy ON favorite_ads
+            USING (user_id = current_setting('app.current_user_id', true)::integer)
+            WITH CHECK (user_id = current_setting('app.current_user_id', true)::integer);
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'favorite_ads_system_policy') THEN
+        CREATE POLICY favorite_ads_system_policy ON favorite_ads
+            USING (current_setting('app.current_user_id', true) IS NULL
+                   OR current_setting('app.current_user_id', true) = '');
+    END IF;
+END $$;
+
+-- subscriptions
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'subscriptions_user_policy') THEN
+        CREATE POLICY subscriptions_user_policy ON subscriptions
+            USING (user_id = current_setting('app.current_user_id', true)::integer)
+            WITH CHECK (user_id = current_setting('app.current_user_id', true)::integer);
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'subscriptions_system_policy') THEN
+        CREATE POLICY subscriptions_system_policy ON subscriptions
+            USING (current_setting('app.current_user_id', true) IS NULL
+                   OR current_setting('app.current_user_id', true) = '');
+    END IF;
+END $$;
+
+-- payment_orders
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'payment_orders_user_policy') THEN
+        CREATE POLICY payment_orders_user_policy ON payment_orders
+            USING (user_id = current_setting('app.current_user_id', true)::integer)
+            WITH CHECK (user_id = current_setting('app.current_user_id', true)::integer);
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'payment_orders_system_policy') THEN
+        CREATE POLICY payment_orders_system_policy ON payment_orders
+            USING (current_setting('app.current_user_id', true) IS NULL
+                   OR current_setting('app.current_user_id', true) = '');
+    END IF;
+END $$;
+
+-- payment_history
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'payment_history_user_policy') THEN
+        CREATE POLICY payment_history_user_policy ON payment_history
+            USING (user_id = current_setting('app.current_user_id', true)::integer)
+            WITH CHECK (user_id = current_setting('app.current_user_id', true)::integer);
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'payment_history_system_policy') THEN
+        CREATE POLICY payment_history_system_policy ON payment_history
+            USING (current_setting('app.current_user_id', true) IS NULL
+                   OR current_setting('app.current_user_id', true) = '');
+    END IF;
+END $$;
+
+-- verification_codes
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'verification_codes_user_policy') THEN
+        CREATE POLICY verification_codes_user_policy ON verification_codes
+            USING (user_id = current_setting('app.current_user_id', true)::integer)
+            WITH CHECK (user_id = current_setting('app.current_user_id', true)::integer);
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'verification_codes_system_policy') THEN
+        CREATE POLICY verification_codes_system_policy ON verification_codes
+            USING (current_setting('app.current_user_id', true) IS NULL
+                   OR current_setting('app.current_user_id', true) = '');
+    END IF;
+END $$;

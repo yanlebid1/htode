@@ -6,6 +6,7 @@ from .cleanup import cleanup_old_ads, clear_ad_cache, cleanup_expired_verificati
 from .cache import cleanup_redis_cache, cache_warming
 from .database import optimize_database, check_database_connections
 from .statistics import check_subscription_statistics, update_currency_rate
+from .backup import backup_database, cleanup_old_backups
 
 __all__ = [
     "check_expiring_subscriptions",
@@ -18,4 +19,6 @@ __all__ = [
     "check_database_connections",
     "check_subscription_statistics",
     "update_currency_rate",
+    "backup_database",
+    "cleanup_old_backups",
 ]

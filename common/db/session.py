@@ -2,7 +2,7 @@
 from contextlib import contextmanager
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -78,6 +78,21 @@ def db_session() -> Generator[Session, None, None]:
     finally:
         db.close()
         logger.debug("Database session closed", extra={"session_id": id(db)})
+
+
+@contextmanager
+@log_operation("rls_session")
+def rls_session(user_id: int) -> Generator[Session, None, None]:
+    """Session with Row-Level Security — restricts queries to the given user's rows.
+
+    Uses SET LOCAL so the variable is scoped to the current transaction and
+    automatically cleared when the transaction ends (important for PgBouncer
+    transaction pooling with DISCARD ALL).
+    """
+    with db_session() as db:
+        db.execute(text("SET LOCAL app.current_user_id = :uid"), {"uid": str(user_id)})
+        logger.debug("RLS session activated", extra={"user_id": user_id, "session_id": id(db)})
+        yield db
 
 
 @log_operation("get_db_dependency")

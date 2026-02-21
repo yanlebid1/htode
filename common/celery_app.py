@@ -50,8 +50,8 @@ celery_app.conf.update(
         },  # 1 per minute - scraping rate limit
         # BATCH NOTIFICATION SYSTEM - Safe rates respecting Telegram limits
         "common.tasks.notify_user_batch": {
-            "rate_limit": "15/m"
-        },  # SAFE: 15 batches/min = 1,500 users/min (100 users per batch, 25 msg/sec limit)
+            "rate_limit": "25/m"
+        },  # SAFE: 25 batches/min × 250 users = 6,250 users/min (25 msg/sec limit per bot)
         "notifier_service.app.tasks.notify_user_with_ads": {
             "rate_limit": "30/m"
         },  # Increased from 10/m to 30/m for individual notifications
@@ -72,6 +72,11 @@ celery_app.conf.update(
         "system.maintenance.cleanup_redis_cache": {
             "rate_limit": "1/h"
         },  # Once per hour
+        "system.maintenance.backup_database": {
+            "rate_limit": "1/h",
+            "time_limit": 3600,        # 1 hour hard limit
+            "soft_time_limit": 1800,   # 30 min soft limit
+        },
     },
 )
 
@@ -255,6 +260,17 @@ celery_app.conf.beat_schedule = {
     "cleanup-stale-phone-extractions": {
         "task": "common.tasks.cleanup_stale_extractions",
         "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
+    },
+    # Daily PostgreSQL backup to S3
+    "backup-database-daily": {
+        "task": "system.maintenance.backup_database",
+        "schedule": crontab(hour=2, minute=0),  # Daily at 2 AM UTC
+    },
+    # Weekly cleanup of old backups from S3
+    "cleanup-old-backups-weekly": {
+        "task": "system.maintenance.cleanup_old_backups",
+        "schedule": crontab(day_of_week="sun", hour=4, minute=0),  # Sunday 4 AM
+        "kwargs": {"retention_days": 30},
     },
 }
 
