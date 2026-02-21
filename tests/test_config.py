@@ -69,6 +69,25 @@ class TestBuildAdText:
         assert "Невідомо" in text
 
 
+    def test_price_defaults_to_zero(self):
+        """Test that missing price defaults to 0."""
+        ad = {"city": "Київ"}
+        text = build_ad_text(ad)
+        assert "0 грн" in text
+
+    def test_markdown_uses_з_for_floor(self):
+        """Test that markdown format uses 'з' for floor separator."""
+        ad = {"price": 1000, "floor": 5, "total_floors": 10}
+        text = build_ad_text(ad, markdown=True)
+        assert "*5* з *10*" in text
+
+    def test_plain_uses_из_for_floor(self):
+        """Test that plain format uses 'из' for floor separator."""
+        ad = {"price": 1000, "floor": 5, "total_floors": 10}
+        text = build_ad_text(ad, markdown=False)
+        assert "5 из 10" in text
+
+
 class TestGetKeyByValue:
     """Tests for get_key_by_value() reverse lookup."""
 
@@ -80,6 +99,11 @@ class TestGetKeyByValue:
     def test_not_found(self):
         """Test that unknown value returns None."""
         result = get_key_by_value("Nonexistent City", GEO_ID_MAPPING)
+        assert result is None
+
+    def test_empty_mapping_returns_none(self):
+        """Test that empty mapping returns None."""
+        result = get_key_by_value("Київ", {})
         assert result is None
 
 
@@ -94,6 +118,18 @@ class TestGeoIdMapping:
         assert "Одеса" in city_names
         assert "Дніпро" in city_names
         assert "Харків" in city_names
+
+    def test_contains_kyiv_geo_id(self):
+        assert 10009580 in GEO_ID_MAPPING
+        assert GEO_ID_MAPPING[10009580] == "Київ"
+
+    def test_contains_lviv_geo_id(self):
+        assert 10012684 in GEO_ID_MAPPING
+        assert GEO_ID_MAPPING[10012684] == "Львів"
+
+    def test_expected_city_count(self):
+        """GEO_ID_MAPPING should have 23 entries (22 cities + Kyiv suburbs)."""
+        assert len(GEO_ID_MAPPING) == 23
 
 
 class TestConstants:
