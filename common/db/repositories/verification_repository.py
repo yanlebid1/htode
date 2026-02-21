@@ -1,6 +1,6 @@
 # common/db/repositories/verification_repository.py
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 import string
 import secrets
@@ -11,6 +11,7 @@ from sqlalchemy import and_
 from common.db.models.verification import Verification
 from common.db.models.user import User
 from common.db.repositories.base_repository import BaseRepository
+from common.utils.encryption import encrypt, make_search_token, is_encryption_configured
 from common.utils.logging_config import log_operation, log_context
 
 # Import the repository logger
@@ -50,7 +51,7 @@ class VerificationRepository(BaseRepository):
             code = VerificationRepository._generate_code(verification_type)
 
             # Set expiration time
-            expires_at = datetime.now() + timedelta(minutes=expiry_minutes)
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)
 
             # Delete any existing verifications for this target
             deleted = (
@@ -74,7 +75,7 @@ class VerificationRepository(BaseRepository):
                     },
                 )
 
-            # Create new verification
+            # Create new verification with optional encryption
             verification = Verification(
                 user_id=user_id,
                 type=verification_type,
@@ -82,6 +83,9 @@ class VerificationRepository(BaseRepository):
                 code=code,
                 expires_at=expires_at,
             )
+            if is_encryption_configured():
+                verification.target_encrypted = encrypt(target)
+                verification.target_search_token = make_search_token(target)
 
             db.add(verification)
             db.commit()
@@ -116,7 +120,7 @@ class VerificationRepository(BaseRepository):
                         Verification.type == verification_type,
                         Verification.target == target,
                         Verification.code == code,
-                        Verification.expires_at > datetime.now(),
+                        Verification.expires_at > datetime.now(timezone.utc),
                     )
                 )
                 .first()
@@ -124,7 +128,7 @@ class VerificationRepository(BaseRepository):
 
             if verification:
                 # Mark as verified
-                verification.verified_at = datetime.now()
+                verification.verified_at = datetime.now(timezone.utc)
 
                 # Update user verification status if user_id exists
                 if verification.user_id:
@@ -158,7 +162,7 @@ class VerificationRepository(BaseRepository):
                     and_(
                         Verification.type == verification_type,
                         Verification.target == target,
-                        Verification.expires_at > datetime.now(),
+                        Verification.expires_at > datetime.now(timezone.utc),
                     )
                 )
                 .first()
@@ -194,7 +198,7 @@ class VerificationRepository(BaseRepository):
                     and_(
                         Verification.type == verification_type,
                         Verification.target == target,
-                        Verification.expires_at > datetime.now(),
+                        Verification.expires_at > datetime.now(timezone.utc),
                     )
                 )
                 .first()
@@ -219,7 +223,7 @@ class VerificationRepository(BaseRepository):
         with log_context(logger):
             result = (
                 db.query(Verification)
-                .filter(Verification.expires_at <= datetime.now())
+                .filter(Verification.expires_at <= datetime.now(timezone.utc))
                 .delete()
             )
 
@@ -243,7 +247,7 @@ class VerificationRepository(BaseRepository):
             target=target[:5] + "...",
             minutes=minutes,
         ):
-            time_threshold = datetime.now() - timedelta(minutes=minutes)
+            time_threshold = datetime.now(timezone.utc) - timedelta(minutes=minutes)
 
             count = (
                 db.query(Verification)
@@ -288,10 +292,10 @@ class VerificationRepository(BaseRepository):
                 return False
 
             if verification_type == "phone":
-                user.phone_number = target
+                user.set_phone(target)
                 user.phone_verified = True
             elif verification_type == "email":
-                user.email = target
+                user.set_email(target)
                 user.email_verified = True
 
             db.commit()

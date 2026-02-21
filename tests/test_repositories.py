@@ -1,7 +1,7 @@
 # tests/test_repositories.py
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from common.db.models.user import User
@@ -79,7 +79,11 @@ class TestUserRepository:
 
         db_session.refresh(user)
         assert user.free_until is not None
-        assert user.free_until > datetime.now()
+        # SQLite returns naive datetimes; normalize for comparison
+        free_until = user.free_until
+        if free_until.tzinfo is None:
+            free_until = free_until.replace(tzinfo=timezone.utc)
+        assert free_until > datetime.now(timezone.utc)
 
     def test_start_free_subscription_user_not_found(self, db_session):
         from common.db.repositories.user_repository import UserRepository
@@ -93,7 +97,7 @@ class TestUserRepository:
         user = self._create_user(
             db_session,
             telegram_id="stat_user",
-            free_until=datetime.now() + timedelta(days=5),
+            free_until=datetime.now(timezone.utc) + timedelta(days=5),
         )
         status = UserRepository.get_subscription_status(db_session, user.id)
         assert status["active"] is True
@@ -438,7 +442,7 @@ class TestPaymentRepository:
             amount=100.0,
             period="1 month",
             status="pending",
-            created_at=datetime.now() - timedelta(hours=48),
+            created_at=datetime.now(timezone.utc) - timedelta(hours=48),
         )
         db_session.add(payment)
         db_session.commit()

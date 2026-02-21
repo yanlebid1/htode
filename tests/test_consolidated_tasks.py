@@ -2,7 +2,7 @@
 
 import sys
 from unittest.mock import patch, MagicMock, AsyncMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Pre-mock adspower_manager to avoid selenium import chain
 sys.modules.setdefault(
@@ -127,7 +127,7 @@ class TestSendSubscriptionReminder:
         # Mock user with subscription expiring in 2 days
         mock_user = MagicMock()
         mock_user.id = 100
-        mock_user.subscription_until = datetime.now() + timedelta(days=2)
+        mock_user.subscription_until = datetime.now(timezone.utc) + timedelta(days=2)
 
         mock_db.query.return_value.filter.return_value.all.return_value = [mock_user]
 

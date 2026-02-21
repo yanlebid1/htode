@@ -11,7 +11,7 @@ import psutil
 import os
 import sys
 import signal
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 # Add the project root to the path
@@ -109,7 +109,7 @@ class DatabaseConnectionMonitor:
     
     def print_stats(self):
         """Print formatted statistics"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n{'='*80}")
         print(f"📊 Database Connection Pool Monitor - {timestamp}")
         print(f"{'='*80}")

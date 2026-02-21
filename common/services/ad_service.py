@@ -1,7 +1,7 @@
 # common/services/ad_service.py
 
 from typing import Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -314,7 +314,7 @@ class AdService:
             images_deleted_count = 0
 
             # Calculate cutoff date
-            cutoff_date = datetime.now() - timedelta(days=days_old)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
 
             # Get old ads
             old_ads = AdRepository.get_older_than(db, cutoff_date)

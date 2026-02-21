@@ -12,7 +12,7 @@ import time
 import sys
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 # Add the project root to the path
@@ -51,7 +51,7 @@ class ConnectionPoolLoadTest:
                     "success": True,
                     "duration": end_time - start_time,
                     "user_count": user_count,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "pg_version": result.pg_version[:50] if result else "Unknown"
                 }
         
@@ -63,7 +63,7 @@ class ConnectionPoolLoadTest:
                 "duration": end_time - start_time,
                 "error": str(e),
                 "error_type": type(e).__name__,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
     
     def run_concurrent_test(self, num_connections: int = 30, max_workers: int = 20) -> Dict[str, Any]:
@@ -98,7 +98,7 @@ class ConnectionPoolLoadTest:
                         "success": False,
                         "error": str(e),
                         "error_type": type(e).__name__,
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now(timezone.utc).isoformat()
                     }
                     self.errors.append(error_result)
                     print(f"❌ Operation {operation_id} exception: {e}")

@@ -10,7 +10,7 @@ import json
 import random
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from concurrent.futures import ThreadPoolExecutor
@@ -90,7 +90,7 @@ class RedisClusterLoadTester:
                 "id": 12345,
                 "name": "Test Object",
                 "data": [1, 2, 3, 4, 5],
-                "metadata": {"created": datetime.now().isoformat()}
+                "metadata": {"created": datetime.now(timezone.utc).isoformat()}
             }),
             "list": [f"item_{i}" for i in range(10)],
             "number": 42

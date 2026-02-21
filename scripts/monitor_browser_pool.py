@@ -8,7 +8,7 @@ import asyncio
 import aiohttp
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 import os
 import sys
@@ -118,7 +118,7 @@ class BrowserPoolMonitor:
         os.system('clear' if os.name == 'posix' else 'cls')
         
         print("=" * 80)
-        print(f"🚀 BROWSER POOL SCALING MONITOR - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"🚀 BROWSER POOL SCALING MONITOR - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 80)
         
         # Overall summary
@@ -214,7 +214,7 @@ class BrowserPoolMonitor:
         totals = self.calculate_totals(all_stats)
         
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "services": all_stats,
             "totals": totals
         }

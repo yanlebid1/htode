@@ -2,7 +2,7 @@
 
 from typing import List, Optional, Dict, Any
 import decimal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
@@ -393,7 +393,7 @@ class AdRepository:
                 query = query.filter(Ad.price <= filters["price_max"])
 
             # Filter by date
-            days_ago = datetime.now() - timedelta(days=days)
+            days_ago = datetime.now(timezone.utc) - timedelta(days=days)
             query = query.filter(Ad.insert_time >= days_ago)
 
             # Order by newest first
@@ -459,8 +459,8 @@ class AdRepository:
                 # Filter for active users only
                 query = query.filter(
                     or_(
-                        User.free_until > datetime.now(),
-                        User.subscription_until > datetime.now(),
+                        User.free_until > datetime.now(timezone.utc),
+                        User.subscription_until > datetime.now(timezone.utc),
                     )
                 )
 

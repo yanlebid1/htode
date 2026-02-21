@@ -4,7 +4,7 @@ Bot Assignment Service
 Manages the assignment of users to pool bots and tracks bot capacity.
 """
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 
@@ -101,7 +101,7 @@ class BotAssignmentService:
 
                 user.assigned_bot_name = bot_name
                 user.assigned_bot_username = bot_config.username
-                user.assignment_date = datetime.utcnow()
+                user.assignment_date = datetime.now(timezone.utc)
                 user.dispatcher_chat_id = dispatcher_chat_id
 
                 session.commit()
@@ -171,10 +171,10 @@ class BotAssignmentService:
         old_bot = user.assigned_bot_name
         user.assigned_bot_name = new_bot_name
         user.assigned_bot_username = bot_config.username
-        user.assignment_date = datetime.utcnow()
-        
+        user.assignment_date = datetime.now(timezone.utc)
+
         session.commit()
-        
+
         logger.info(
             "User reassigned",
             extra={

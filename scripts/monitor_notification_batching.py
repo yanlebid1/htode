@@ -11,7 +11,7 @@ import redis
 import sys
 import os
 import signal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
 from collections import defaultdict, deque
 
@@ -168,7 +168,7 @@ class NotificationBatchingMonitor:
     
     def print_dashboard(self):
         """Print comprehensive notification system dashboard"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n{'='*90}")
         print(f"📊 NOTIFICATION BATCHING SYSTEM DASHBOARD - {timestamp}")
         print(f"{'='*90}")

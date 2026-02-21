@@ -9,7 +9,7 @@ import time
 import random
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, asdict
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -150,7 +150,7 @@ class AdsPowerManager:
             logger.error("No AdsPower profiles configured")
             return None
         
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         
         # Try each profile once
         for _ in range(len(self.profiles)):
@@ -348,10 +348,10 @@ class AdsPowerManager:
                                     
                                     # Update profile stats
                                     profile.usage_count += 1
-                                    profile.last_used = datetime.now().strftime('%Y-%m-%d')
+                                    profile.last_used = datetime.now(timezone.utc).strftime('%Y-%m-%d')
                                     self.stats.successful_extractions += 1
                                     self.stats.total_extractions += 1
-                                    self.stats.last_extraction = datetime.now().isoformat()
+                                    self.stats.last_extraction = datetime.now(timezone.utc).isoformat()
                                     self.save_config()
                                     
                                     return phone

@@ -13,7 +13,7 @@ from common.utils.logging_config import log_operation, log_context
 from . import logger
 
 # Import datetime for user creation
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = Router()
 
@@ -67,7 +67,7 @@ async def start_handler(message: types.Message):
             if not user:
                 user = User(
                     telegram_id=telegram_id,
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc)
                 )
                 session.add(user)
                 session.commit()

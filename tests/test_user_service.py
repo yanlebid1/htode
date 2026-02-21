@@ -3,7 +3,7 @@
 import sys
 import pytest
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Pre-mock the adspower_manager module to avoid selenium import chain
 # adspower_manager imports selenium which is not installed in test env
@@ -47,7 +47,7 @@ class TestGetOrCreateUser:
         # Args: (db, messenger_id, messenger_type, free_until)
         call_args = mock_repo.create_messenger_user.call_args
         free_until = call_args[0][3]  # 4th positional arg
-        expected = datetime.now() + timedelta(days=FREE_TRIAL_DAYS)
+        expected = datetime.now(timezone.utc) + timedelta(days=FREE_TRIAL_DAYS)
         assert abs((free_until - expected).total_seconds()) < 5
 
     @patch("common.services.user_service.UserRepository")
@@ -83,7 +83,7 @@ class TestCheckExpiringSubscriptions:
     @patch("common.services.user_service.send_notification")
     def test_sends_reminder_for_expiring_user(self, mock_notif, mock_db):
         """Test that a user expiring in 3 days gets a reminder with 'Нагадування'."""
-        today = datetime.now().date()
+        today = datetime.now(timezone.utc).date()
         target_3day = today + timedelta(days=3)
         user = self._make_user(20, datetime.combine(target_3day, datetime.min.time()))
 
@@ -110,7 +110,7 @@ class TestCheckExpiringSubscriptions:
     @patch("common.services.user_service.send_notification")
     def test_sends_tomorrow_template_for_1_day(self, mock_notif, mock_db):
         """Regression: days_word must be defined before the data dict even for days==1."""
-        today = datetime.now().date()
+        today = datetime.now(timezone.utc).date()
         target_1day = today + timedelta(days=1)
         user = self._make_user(10, datetime.combine(target_1day, datetime.min.time()))
 

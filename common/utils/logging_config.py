@@ -2,7 +2,7 @@
 import logging
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from functools import wraps
 import inspect
@@ -21,7 +21,7 @@ class StructuredLogger(logging.Logger):
             extra.update(self._context)
 
         # Add timestamp in ISO format
-        extra["timestamp"] = datetime.utcnow().isoformat()
+        extra["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         # Add service name if set
         if hasattr(self, "_service_name"):
@@ -246,7 +246,7 @@ class LogAggregator:
         self.operation = operation
         self.items = []
         self.errors = []
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
 
     def add_item(self, item: Dict[str, Any], success: bool = True):
         """Add an item to the aggregation"""
@@ -258,7 +258,7 @@ class LogAggregator:
 
     def log_summary(self, level: int = logging.INFO):
         """Log the aggregated summary"""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - self.start_time).total_seconds()
 
         successful_items = [item for item in self.items if item["success"]]

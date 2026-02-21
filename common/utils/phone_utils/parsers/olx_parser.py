@@ -7,7 +7,7 @@ import json
 from bs4 import BeautifulSoup
 from typing import Optional, List, Dict
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from common.utils import logger
 from common.utils.phone_utils.phone_models import ExtractionResult
 from ..http_client import AsyncHTTPClient, REQUEST_TIMEOUT
@@ -44,8 +44,8 @@ class OLXSessionManager:
         session = {
             'cookies': cookies,
             'email': email or 'manual_login',
-            'created_at': datetime.now().isoformat(),
-            'last_used': datetime.now().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'last_used': datetime.now(timezone.utc).isoformat(),
             'request_count': 0
         }
         self._sessions.append(session)
@@ -71,7 +71,7 @@ class OLXSessionManager:
             # Check if session is not overused (max 100 requests per session)
             if session.get('request_count', 0) < 100:
                 # Update usage
-                session['last_used'] = datetime.now().isoformat()
+                session['last_used'] = datetime.now(timezone.utc).isoformat()
                 session['request_count'] = session.get('request_count', 0) + 1
                 self._save_to_file()
                 return session

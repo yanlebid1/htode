@@ -1,12 +1,13 @@
 # common/db/repositories/user_repository.py
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy.orm import Session
 
 from common.db.models.user import User
 from common.utils.cache_managers import UserCacheManager
+from common.utils.encryption import make_search_token, is_encryption_configured
 from common.utils.logging_config import log_operation, log_context
 
 # Import the repository logger
@@ -65,9 +66,13 @@ class UserRepository:
     @staticmethod
     @log_operation("get_by_phone")
     def get_by_phone(db: Session, phone_number: str) -> Optional[User]:
-        """Get user by phone number"""
+        """Get user by phone number (uses search token if encryption is configured)"""
         with log_context(logger, phone_number=phone_number[:5] + "..."):
-            user = db.query(User).filter(User.phone_number == phone_number).first()
+            if is_encryption_configured():
+                token = make_search_token(phone_number)
+                user = db.query(User).filter(User.phone_search_token == token).first()
+            else:
+                user = db.query(User).filter(User.phone_number == phone_number).first()
 
             if user:
                 logger.debug(
@@ -88,9 +93,13 @@ class UserRepository:
     @staticmethod
     @log_operation("get_by_email")
     def get_by_email(db: Session, email: str) -> Optional[User]:
-        """Get user by email"""
+        """Get user by email (uses search token if encryption is configured)"""
         with log_context(logger, email=email[:5] + "..."):
-            user = db.query(User).filter(User.email == email.lower()).first()
+            if is_encryption_configured():
+                token = make_search_token(email)
+                user = db.query(User).filter(User.email_search_token == token).first()
+            else:
+                user = db.query(User).filter(User.email == email.lower()).first()
 
             if user:
                 logger.debug(
@@ -122,7 +131,7 @@ class UserRepository:
                     "messenger_id": messenger_id,
                     "user_id": user.id,
                     "is_new": not hasattr(user, "created_at")
-                    or user.created_at == datetime.now(),
+                    or user.created_at == datetime.now(timezone.utc),
                 },
             )
 
@@ -142,7 +151,7 @@ class UserRepository:
                 return False
 
             old_date = user.free_until
-            user.free_until = datetime.now() + timedelta(days=7)
+            user.free_until = datetime.now(timezone.utc) + timedelta(days=7)
             db.commit()
 
             # Invalidate cache using the cache manager
@@ -181,9 +190,15 @@ class UserRepository:
                 )
                 return {"active": False}
 
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             free_until = user.free_until
             subscription_until = user.subscription_until
+
+            # Ensure naive datetimes from DB are treated as UTC for comparison
+            if free_until and free_until.tzinfo is None:
+                free_until = free_until.replace(tzinfo=timezone.utc)
+            if subscription_until and subscription_until.tzinfo is None:
+                subscription_until = subscription_until.replace(tzinfo=timezone.utc)
 
             free_active = free_until and free_until > now
             paid_active = subscription_until and subscription_until > now
@@ -222,7 +237,7 @@ class UserRepository:
                 return False
 
             old_time = user.last_active
-            user.last_active = datetime.now()
+            user.last_active = datetime.now(timezone.utc)
             db.commit()
 
             logger.debug(
@@ -318,7 +333,7 @@ class UserRepository:
                 return False
 
             old_phone = user.phone_number
-            user.phone_number = phone_number
+            user.set_phone(phone_number)
             user.phone_verified = verified
             db.commit()
 
@@ -341,14 +356,14 @@ class UserRepository:
         Get users whose subscription is expiring in the specified number of days.
         """
         with log_context(logger, days=days):
-            future_date = datetime.now() + timedelta(days=days, hours=1)
-            past_date = datetime.now() + timedelta(days=days - 1)
+            future_date = datetime.now(timezone.utc) + timedelta(days=days, hours=1)
+            past_date = datetime.now(timezone.utc) + timedelta(days=days - 1)
 
             users = (
                 db.query(User)
                 .filter(
                     User.subscription_until.isnot(None),
-                    User.subscription_until > datetime.now(),
+                    User.subscription_until > datetime.now(timezone.utc),
                     User.subscription_until < future_date,
                     User.subscription_until > past_date,
                 )
@@ -369,7 +384,7 @@ class UserRepository:
         Get users who have been active within the specified number of days.
         """
         with log_context(logger, days=days, limit=limit):
-            cutoff_date = datetime.now() - timedelta(days=days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
             users = (
                 db.query(User).filter(User.last_active > cutoff_date).limit(limit).all()
             )

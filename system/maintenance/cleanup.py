@@ -6,6 +6,7 @@ from ._common import (
     time,
     datetime,
     timedelta,
+    timezone,
     logger,
     log_operation,
     log_context,
@@ -48,7 +49,7 @@ def cleanup_old_ads(days_old: int = CLEANUP_DEFAULT_DAYS, check_activity: bool =
         try:
             with db_session() as db:
                 # Calculate cutoff date
-                cutoff_date = datetime.now() - timedelta(days=days_old)
+                cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
 
                 # Get old ads
                 old_ads = AdRepository.get_older_than(db, cutoff_date)
@@ -163,7 +164,7 @@ def cleanup_expired_verification_codes() -> Dict[str, int]:
                 # Cleanup verification codes
                 verification_codes_deleted = (
                     db.query(VerificationCode)
-                    .filter(VerificationCode.expires_at < datetime.now())
+                    .filter(VerificationCode.expires_at < datetime.now(timezone.utc))
                     .delete()
                 )
 

@@ -14,14 +14,15 @@ from pydantic import BaseModel, Field
 from common.db.session import db_session
 from common.db.repositories.payment_repository import PaymentRepository
 from common.db.repositories.user_repository import UserRepository
-from datetime import datetime, timedelta
+from common.utils.secrets import get_secret
+from datetime import datetime, timedelta, timezone
 
 # Import logging utilities from common modules
 from common.utils.logging_config import log_context, log_operation
 
 # Get environment variables
 MERCHANT_ACCOUNT = os.getenv("WAYFORPAY_MERCHANT_LOGIN")
-MERCHANT_SECRET = os.getenv("WAYFORPAY_MERCHANT_SECRET")
+MERCHANT_SECRET = get_secret("wayforpay_secret", fallback_env="WAYFORPAY_MERCHANT_SECRET")
 
 from common.utils.logging_config import setup_logging
 from common.utils.log_management import setup_file_logging
@@ -437,7 +438,7 @@ async def payment_callback(payload: PaymentCallback, background_tasks: Backgroun
                 content={
                     "orderReference": order_id,
                     "status": "accept",
-                    "time": int(datetime.now().timestamp()),
+                    "time": int(datetime.now(timezone.utc).timestamp()),
                 },
             )
 
@@ -562,7 +563,7 @@ async def process_approved_payment(order_id: str, callback_data: dict):
 
                 # Update payment status
                 payment_order.status = "completed"
-                payment_order.updated_at = datetime.now()
+                payment_order.updated_at = datetime.now(timezone.utc)
                 db.commit()
 
                 logger.info(
@@ -592,14 +593,14 @@ async def process_approved_payment(order_id: str, callback_data: dict):
                 user = UserRepository.get_by_id(db, user_id)
 
                 # Update subscription end date
-                if user.subscription_until and user.subscription_until > datetime.now():
+                if user.subscription_until and user.subscription_until > datetime.now(timezone.utc):
                     # Extend existing subscription
                     user.subscription_until = user.subscription_until + timedelta(
                         days=period_days
                     )
                 else:
                     # Set new subscription
-                    user.subscription_until = datetime.now() + timedelta(
+                    user.subscription_until = datetime.now(timezone.utc) + timedelta(
                         days=period_days
                     )
 

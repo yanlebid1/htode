@@ -9,7 +9,7 @@ Usage:
 import asyncio
 import argparse
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import redis
 import psutil
 import docker
@@ -29,7 +29,7 @@ class DeploymentMonitor:
     def __init__(self):
         self.redis_client = redis.from_url(REDIS_URL)
         self.docker_client = docker.from_env()
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(timezone.utc)
         self.metrics = {
             "queue_lengths": [],
             "error_counts": [],
@@ -124,7 +124,7 @@ class DeploymentMonitor:
             container = self.docker_client.containers.get("notifier_service")
 
             # Get logs from last 5 minutes
-            since = datetime.now() - timedelta(minutes=5)
+            since = datetime.now(timezone.utc) - timedelta(minutes=5)
             logs = container.logs(since=since.timestamp(), timestamps=True).decode(
                 "utf-8"
             )
@@ -151,7 +151,7 @@ class DeploymentMonitor:
         try:
             with db_session() as db:
                 # Count ads created in last minute
-                one_minute_ago = datetime.utcnow() - timedelta(minutes=1)
+                one_minute_ago = datetime.now(timezone.utc) - timedelta(minutes=1)
                 count = (
                     db.query(func.count(Ad.id))
                     .filter(Ad.created_at >= one_minute_ago)
@@ -168,8 +168,8 @@ class DeploymentMonitor:
 
         # Header
         print("=" * 80)
-        print(f"📊 DEPLOYMENT MONITOR - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"   Running for: {datetime.now() - self.start_time}")
+        print(f"📊 DEPLOYMENT MONITOR - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"   Running for: {datetime.now(timezone.utc) - self.start_time}")
         print("=" * 80)
 
         # Queue Status
@@ -279,7 +279,7 @@ class DeploymentMonitor:
             json.dump(
                 {
                     "start_time": self.start_time.isoformat(),
-                    "end_time": datetime.now().isoformat(),
+                    "end_time": datetime.now(timezone.utc).isoformat(),
                     "metrics": self.metrics,
                 },
                 f,
@@ -290,13 +290,13 @@ class DeploymentMonitor:
 
     async def monitor(self, interval: int = 5, duration: int = None):
         """Run monitoring loop"""
-        end_time = datetime.now() + timedelta(minutes=duration) if duration else None
+        end_time = datetime.now(timezone.utc) + timedelta(minutes=duration) if duration else None
 
         try:
             while True:
                 self.print_dashboard()
 
-                if end_time and datetime.now() >= end_time:
+                if end_time and datetime.now(timezone.utc) >= end_time:
                     print("\n⏰ Monitoring duration reached")
                     break
 

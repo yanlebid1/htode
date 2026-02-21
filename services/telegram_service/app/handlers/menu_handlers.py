@@ -491,9 +491,9 @@ def fetch_ads_for_period(filters, days, limit=3):
                     query = query.filter(Ad.price <= filters["price_max"])
 
                 # Add time window
-                from datetime import datetime, timedelta
+                from datetime import datetime, timedelta, timezone
 
-                cutoff_date = datetime.now() - timedelta(days=days)
+                cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
                 query = query.filter(Ad.insert_time >= cutoff_date)
 
                 # Order and limit

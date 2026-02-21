@@ -8,6 +8,7 @@ from ._common import (
     time,
     datetime,
     timedelta,
+    timezone,
     logger,
     log_operation,
     log_context,
@@ -36,15 +37,15 @@ def check_expiring_subscriptions() -> Dict[str, Any]:
                 # Check for subscriptions expiring in 3, 2, and 1 days
                 for days in SUBSCRIPTION_REMINDER_DAYS:
                     with log_context(logger, days_until_expiry=days):
-                        future_date = datetime.now() + timedelta(days=days, hours=1)
-                        past_date = datetime.now() + timedelta(days=days - 1)
+                        future_date = datetime.now(timezone.utc) + timedelta(days=days, hours=1)
+                        past_date = datetime.now(timezone.utc) + timedelta(days=days - 1)
 
                         # Get users whose subscription expires in the specified time window
                         users = (
                             db.query(User)
                             .filter(
                                 User.subscription_until.isnot(None),
-                                User.subscription_until > datetime.now(),
+                                User.subscription_until > datetime.now(timezone.utc),
                                 User.subscription_until < future_date,
                                 User.subscription_until > past_date,
                             )
@@ -97,7 +98,7 @@ def check_expiring_subscriptions() -> Dict[str, Any]:
                             )
 
                 # Also notify on the day of expiration
-                today = datetime.now().date()
+                today = datetime.now(timezone.utc).date()
                 users_today = (
                     db.query(User)
                     .filter(

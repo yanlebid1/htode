@@ -1,11 +1,12 @@
 # common/db/models/user.py
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from common.db.base import Base
+from common.utils.encryption import encrypt, decrypt, make_search_token, is_encryption_configured
 
 
 class User(Base):
@@ -21,7 +22,13 @@ class User(Base):
     subscription_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
+
+    # PII encrypted columns
+    email_encrypted = Column(Text, nullable=True)
+    email_search_token = Column(String(64), unique=True, index=True, nullable=True)
+    phone_encrypted = Column(Text, nullable=True)
+    phone_search_token = Column(String(64), unique=True, index=True, nullable=True)
+
     # Multi-bot architecture fields
     assigned_bot_name = Column(String, nullable=True, index=True)  # e.g., "bot_1", "bot_2", etc.
     assigned_bot_username = Column(String, nullable=True)  # e.g., "@YourBot_1"
@@ -43,11 +50,50 @@ class User(Base):
     )
 
     @property
+    def email_decrypted(self):
+        """Return decrypted email, falling back to plaintext column."""
+        if self.email_encrypted:
+            decrypted = decrypt(self.email_encrypted)
+            if decrypted:
+                return decrypted
+        return self.email
+
+    @property
+    def phone_decrypted(self):
+        """Return decrypted phone, falling back to plaintext column."""
+        if self.phone_encrypted:
+            decrypted = decrypt(self.phone_encrypted)
+            if decrypted:
+                return decrypted
+        return self.phone_number
+
+    def set_email(self, email):
+        """Set email with encryption if configured."""
+        self.email = email
+        if is_encryption_configured() and email:
+            self.email_encrypted = encrypt(email)
+            self.email_search_token = make_search_token(email)
+
+    def set_phone(self, phone_number):
+        """Set phone number with encryption if configured."""
+        self.phone_number = phone_number
+        if is_encryption_configured() and phone_number:
+            self.phone_encrypted = encrypt(phone_number)
+            self.phone_search_token = make_search_token(phone_number)
+
+    @property
     def is_subscription_active(self) -> bool:
         """Check if the user has an active subscription"""
-        now = datetime.now()
-        free_active = self.free_until and self.free_until > now
-        paid_active = self.subscription_until and self.subscription_until > now
+        now = datetime.now(timezone.utc)
+        free_until = self.free_until
+        subscription_until = self.subscription_until
+        # Ensure naive datetimes from DB are treated as UTC for comparison
+        if free_until and free_until.tzinfo is None:
+            free_until = free_until.replace(tzinfo=timezone.utc)
+        if subscription_until and subscription_until.tzinfo is None:
+            subscription_until = subscription_until.replace(tzinfo=timezone.utc)
+        free_active = free_until and free_until > now
+        paid_active = subscription_until and subscription_until > now
         return free_active or paid_active
 
     @property
@@ -64,7 +110,7 @@ class User(Base):
             return user
 
         # Create a new user
-        free_until = datetime.now() + timedelta(days=7)
+        free_until = datetime.now(timezone.utc) + timedelta(days=7)
         new_user = cls(telegram_id=telegram_id, free_until=free_until)
         db.add(new_user)
         db.commit()

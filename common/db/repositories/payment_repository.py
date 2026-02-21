@@ -1,7 +1,7 @@
 # common/db/repositories/payment_repository.py
 
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import desc, and_
 from sqlalchemy.orm import Session
 
@@ -88,11 +88,11 @@ class PaymentRepository(BaseRepository):
             if payment:
                 old_status = payment.status
                 payment.status = status
-                payment.updated_at = datetime.now()
+                payment.updated_at = datetime.now(timezone.utc)
 
                 # If completed, set completion time
                 if status == "completed" and not payment.completed_at:
-                    payment.completed_at = datetime.now()
+                    payment.completed_at = datetime.now(timezone.utc)
 
                 # Add transaction details if provided
                 if transaction_id:
@@ -200,7 +200,7 @@ class PaymentRepository(BaseRepository):
     def cleanup_expired_pending_payments(db: Session, hours: int = 24) -> int:
         """Clean up pending payments older than specified hours"""
         with log_context(logger, hours=hours):
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
 
             result = (
                 db.query(Payment)
@@ -208,7 +208,7 @@ class PaymentRepository(BaseRepository):
                     and_(Payment.status == "pending", Payment.created_at < cutoff_time)
                 )
                 .update(
-                    {"status": "expired", "updated_at": datetime.now()},
+                    {"status": "expired", "updated_at": datetime.now(timezone.utc)},
                     synchronize_session=False,
                 )
             )

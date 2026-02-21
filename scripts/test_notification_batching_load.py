@@ -12,7 +12,7 @@ import sys
 import os
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 # Add the project root to the path
@@ -93,7 +93,7 @@ class NotificationBatchingLoadTest:
                 "duration": end_time - start_time,
                 "batch_size": len(user_ids),
                 "task_id": result.id,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         except Exception as e:
@@ -104,7 +104,7 @@ class NotificationBatchingLoadTest:
                 "batch_size": len(user_ids),
                 "error": str(e),
                 "error_type": type(e).__name__,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
     
     def run_concurrent_batch_test(self, total_users: int, batch_size: int = 100, max_workers: int = 10) -> Dict[str, Any]:
@@ -156,7 +156,7 @@ class NotificationBatchingLoadTest:
                         "success": False,
                         "error": str(e),
                         "error_type": type(e).__name__,
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now(timezone.utc).isoformat()
                     }
                     self.errors.append(error_result)
                     print(f"❌ Batch {batch_idx + 1}/{len(batches)} exception: {e}")

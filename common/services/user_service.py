@@ -1,7 +1,7 @@
 # common/services/user_service.py
 
 from typing import Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -55,7 +55,7 @@ class UserService:
             )
 
             # Create a new user with free trial period
-            free_until = datetime.now() + timedelta(days=FREE_TRIAL_DAYS)
+            free_until = datetime.now(timezone.utc) + timedelta(days=FREE_TRIAL_DAYS)
 
             # Create user with the appropriate messenger ID
             user = UserRepository.create_messenger_user(
@@ -92,7 +92,7 @@ class UserService:
 
             # Check for subscriptions expiring in 3, 2, and 1 days
             for days in SUBSCRIPTION_REMINDER_DAYS:
-                today = datetime.now().date()
+                today = datetime.now(timezone.utc).date()
                 target_date = today + timedelta(days=days)
 
                 # Get users whose subscription expires on the target date

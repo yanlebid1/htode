@@ -349,10 +349,10 @@ def cleanup_stale_extractions():
     """
     from common.db.session import db_session
     from common.db.models import Ad, Phone
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     # Find ads older than 1 hour with no phones
-    cutoff_time = datetime.utcnow() - timedelta(hours=1)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=1)
 
     with db_session() as db:
         ads_without_phones = (

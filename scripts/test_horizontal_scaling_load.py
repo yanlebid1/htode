@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import subprocess
 import argparse
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Configure logging
 logging.basicConfig(
@@ -414,7 +414,7 @@ class HorizontalScalingLoadTester:
         """Print formatted test results"""
         print(f"\n{'='*80}")
         print(f"HORIZONTAL SCALING LOAD TEST RESULTS")
-        print(f"Test completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Test completed at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*80}")
         
         overall_success = True
@@ -459,7 +459,7 @@ class HorizontalScalingLoadTester:
     def save_results(self, results: Dict[str, LoadTestResult], filename: str = None):
         """Save results to JSON file"""
         if filename is None:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
             filename = f"horizontal_scaling_test_{timestamp}.json"
         
         # Convert dataclasses to dictionaries

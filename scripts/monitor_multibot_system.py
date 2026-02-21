@@ -9,7 +9,7 @@ import sys
 import os
 import time
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 
 # Add project root to path
@@ -32,7 +32,7 @@ class MultiBotMonitor:
     
     def __init__(self):
         self.console = Console()
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(timezone.utc)
         
     def get_system_overview(self) -> Dict[str, Any]:
         """Get overall system statistics"""

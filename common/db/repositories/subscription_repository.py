@@ -1,6 +1,6 @@
 # common/db/repositories/subscription_repository.py
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy import or_
@@ -556,8 +556,8 @@ class SubscriptionRepository:
                         UserFilter.city.isnot(None),
                         not UserFilter.is_paused,
                         or_(
-                            User.subscription_until > datetime.now(),
-                            User.free_until > datetime.now(),
+                            User.subscription_until > datetime.now(timezone.utc),
+                            User.free_until > datetime.now(timezone.utc),
                         ),
                     )
                     .distinct()

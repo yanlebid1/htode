@@ -8,6 +8,7 @@ from ._common import (
     time,
     datetime,
     timedelta,
+    timezone,
     logger,
     log_operation,
     log_context,
@@ -131,8 +132,8 @@ def cache_warming() -> Dict[str, int]:
                     .filter(
                         UserFilter.city.isnot(None),
                         or_(
-                            User.subscription_until > datetime.now(),
-                            User.free_until > datetime.now(),
+                            User.subscription_until > datetime.now(timezone.utc),
+                            User.free_until > datetime.now(timezone.utc),
                         ),
                     )
                     .distinct()
@@ -187,7 +188,7 @@ def cache_warming() -> Dict[str, int]:
                 # 3. Warm up cache for active users
                 active_users = (
                     db.query(User.id)
-                    .filter(User.last_active > datetime.now() - timedelta(days=ACTIVE_USER_LOOKBACK_DAYS))
+                    .filter(User.last_active > datetime.now(timezone.utc) - timedelta(days=ACTIVE_USER_LOOKBACK_DAYS))
                     .limit(100)
                     .all()
                 )

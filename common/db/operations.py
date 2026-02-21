@@ -5,7 +5,7 @@ This module contains database operations that combine models and repositories.
 It should be imported after both models and repositories are initialized.
 """
 from typing import List, Dict, Any, Optional, Union, Tuple
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 
 from sqlalchemy import or_
 
@@ -65,7 +65,7 @@ def create_telegram_user(telegram_id: str) -> Optional[User]:
                 # Create new user
                 user = User(
                     telegram_id=telegram_id,
-                    free_until=datetime.now() + timedelta(days=FREE_TRIAL_DAYS),
+                    free_until=datetime.now(timezone.utc) + timedelta(days=FREE_TRIAL_DAYS),
                 )
                 db.add(user)
                 db.commit()
@@ -412,8 +412,8 @@ def batch_find_users_for_ads(ads):
                 db.query(User.id)
                 .filter(
                     or_(
-                        User.free_until > datetime.now(),
-                        User.subscription_until > datetime.now(),
+                        User.free_until > datetime.now(timezone.utc),
+                        User.subscription_until > datetime.now(timezone.utc),
                     )
                 )
                 .all()
@@ -1402,7 +1402,7 @@ def get_subscription_status(user_id: int) -> dict:
                     )
                     return {"active": False}
 
-                now = datetime.now()
+                now = datetime.now(timezone.utc)
                 free_until = user.free_until
                 subscription_until = user.subscription_until
 
@@ -1462,9 +1462,9 @@ def get_users_for_reminders() -> List[Dict[str, Any]]:
             with db_session() as db:
                 # Get users whose subscriptions expire in 3, 7, or 14 days
                 target_dates = [
-                    datetime.now().date() + timedelta(days=3),
-                    datetime.now().date() + timedelta(days=7),
-                    datetime.now().date() + timedelta(days=14),
+                    datetime.now(timezone.utc).date() + timedelta(days=3),
+                    datetime.now(timezone.utc).date() + timedelta(days=7),
+                    datetime.now(timezone.utc).date() + timedelta(days=14),
                 ]
 
                 users = (
@@ -1485,7 +1485,7 @@ def get_users_for_reminders() -> List[Dict[str, Any]]:
                         "telegram_id": user.telegram_id,
                         "subscription_until": user.subscription_until,
                         "days_left": (
-                            user.subscription_until.date() - datetime.now().date()
+                            user.subscription_until.date() - datetime.now(timezone.utc).date()
                         ).days,
                     }
                     result.append(user_dict)
@@ -1526,7 +1526,7 @@ def get_expiring_subscriptions() -> List[Dict[str, Any]]:
 
             with db_session() as db:
                 # Get subscriptions expiring in the next 7 days
-                today = datetime.now().date()
+                today = datetime.now(timezone.utc).date()
                 seven_days_later = today + timedelta(days=7)
 
                 users = (
@@ -1534,7 +1534,7 @@ def get_expiring_subscriptions() -> List[Dict[str, Any]]:
                     .filter(
                         User.telegram_id.isnot(None),
                         User.subscription_until.isnot(None),
-                        User.subscription_until > datetime.now(),
+                        User.subscription_until > datetime.now(timezone.utc),
                         User.subscription_until
                         <= datetime.combine(seven_days_later, datetime.min.time()),
                     )

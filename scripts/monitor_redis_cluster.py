@@ -9,7 +9,7 @@ import time
 import json
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from collections import deque
 import signal
@@ -33,7 +33,7 @@ class RedisClusterMonitor:
     def __init__(self):
         self.running = True
         self.metrics_history = deque(maxlen=60)  # Keep last 60 data points
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(timezone.utc)
         
         # Handle graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -202,7 +202,7 @@ class RedisClusterMonitor:
         os.system('clear' if os.name == 'posix' else 'cls')
         
         print("=" * 80)
-        print(f"🔴 REDIS CLUSTER SCALING MONITOR - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"🔴 REDIS CLUSTER SCALING MONITOR - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 80)
         
         # Cluster overview
@@ -277,7 +277,7 @@ class RedisClusterMonitor:
             print("   🟢 All systems operating normally")
         
         # Runtime information
-        runtime = datetime.now() - self.start_time
+        runtime = datetime.now(timezone.utc) - self.start_time
         print(f"\n📈 MONITORING INFO:")
         print(f"   Monitor Runtime: {self._format_uptime(int(runtime.total_seconds()))}")
         print(f"   Data Points Collected: {len(self.metrics_history)}")
@@ -311,7 +311,7 @@ class RedisClusterMonitor:
                 
                 # Store metrics for history
                 self.metrics_history.append({
-                    "timestamp": datetime.now(),
+                    "timestamp": datetime.now(timezone.utc),
                     "metrics": metrics,
                     "totals": totals
                 })
@@ -337,7 +337,7 @@ class RedisClusterMonitor:
         totals = self.calculate_cluster_totals(metrics)
         
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "cluster_overview": totals,
             "instances": metrics,
             "cluster_available": CLUSTER_AVAILABLE,

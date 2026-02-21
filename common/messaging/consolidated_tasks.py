@@ -220,17 +220,17 @@ def send_subscription_reminder():
                     with db_session() as db:
                         # Use repository to find users with expiring subscriptions
                         from sqlalchemy import func
-                        from datetime import datetime, timedelta
+                        from datetime import datetime, timedelta, timezone
                         from common.db.models.user import User
 
-                        future_date = datetime.now() + timedelta(days=days, hours=1)
-                        past_date = datetime.now() + timedelta(days=days - 1)
+                        future_date = datetime.now(timezone.utc) + timedelta(days=days, hours=1)
+                        past_date = datetime.now(timezone.utc) + timedelta(days=days - 1)
 
                         users = (
                             db.query(User.id, User.subscription_until)
                             .filter(
                                 User.subscription_until.isnot(None),
-                                User.subscription_until > datetime.now(),
+                                User.subscription_until > datetime.now(timezone.utc),
                                 User.subscription_until < future_date,
                                 User.subscription_until > past_date,
                             )

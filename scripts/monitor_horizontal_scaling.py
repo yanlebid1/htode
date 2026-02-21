@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import signal
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Configure logging
 logging.basicConfig(
@@ -317,7 +317,7 @@ class HorizontalScalingMonitor:
     def monitor_cycle(self):
         """Perform one monitoring cycle"""
         print(f"\n{'='*80}")
-        print(f"HORIZONTAL SCALING MONITOR - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"HORIZONTAL SCALING MONITOR - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*80}")
         
         all_service_statuses = {}

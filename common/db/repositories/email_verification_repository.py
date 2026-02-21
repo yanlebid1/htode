@@ -1,6 +1,6 @@
 # common/db/repositories/email_verification_repository.py
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -114,7 +114,7 @@ class EmailVerificationRepository:
                 .filter(
                     EmailVerificationToken.email == email,
                     EmailVerificationToken.token == token,
-                    EmailVerificationToken.expires_at > datetime.now(),
+                    EmailVerificationToken.expires_at > datetime.now(timezone.utc),
                 )
                 .first()
             )

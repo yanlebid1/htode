@@ -7,7 +7,7 @@ allowing old and new versions to coexist during deployments.
 
 import functools
 from typing import Any, Callable, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from common.celery_app import celery_app
 from common.utils import logger
 
@@ -260,5 +260,5 @@ def safe_task_transition(
         "new_version": new_version,
         "steps": canary_steps,
         "duration": canary_duration,
-        "started_at": datetime.now(),
+        "started_at": datetime.now(timezone.utc),
     }

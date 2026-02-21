@@ -733,16 +733,16 @@ def extract_phone_adspower(ad_url: str) -> dict:
                 "phone": phone,
                 "method": "adspower",
                 "stats": adspower_manager.get_stats(),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            
+
             if phone:
                 logger.info("Successfully extracted phone")
             else:
                 logger.warning("Failed to extract phone using AdsPower")
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(
                 "AdsPower phone extraction failed",
@@ -752,8 +752,8 @@ def extract_phone_adspower(ad_url: str) -> dict:
             return {
                 "success": False,
                 "error": str(e),
-                "method": "adspower", 
-                "timestamp": datetime.now().isoformat()
+                "method": "adspower",
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
 

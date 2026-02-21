@@ -8,6 +8,7 @@ from ._common import (
     text,
     time,
     datetime,
+    timezone,
     logger,
     log_operation,
     log_context,
@@ -84,7 +85,7 @@ def check_subscription_statistics() -> Dict[str, Any]:
 
                 # Store statistics in Redis for later access
                 statistics = {
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "active_subscribers": active_subscribers,
                     "paid_subscribers": paid_subscribers,
                     "free_trial_subscribers": free_trial_subscribers,
