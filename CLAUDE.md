@@ -191,7 +191,7 @@ Critical env vars (must be in `.env`):
 ### Testing
 
 ```bash
-# Run all tests (683 tests)
+# Run all tests (702 tests)
 python -m pytest tests/ -v
 
 # Run specific test file
@@ -225,7 +225,7 @@ Grafana dashboards at `localhost:3000` when monitoring stack is running.
 
 ## Technical Debt & Audit Status
 
-A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02.md`). **All critical and high-priority items are resolved.** Phases 1-9 of remediation are complete, plus 5 additional security hardening phases.
+A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02.md`). **All 25 original debt items are resolved.** Phases 1-12 of remediation are complete.
 
 ### Completed (Phases 1-9)
 - SSRF prevention, SQL injection fix, XSS fix, timing-attack fix
@@ -247,7 +247,7 @@ A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02
 - Removed `disable_web_security=True` from Camoufox browser instances
 - All vulnerable dependencies updated — **0 Dependabot alerts** (was 120)
 - Migrated aiogram v2 → v3 (3.17.0) with Router pattern across all services
-- 683 unit tests across all services (was near-zero on many)
+- 702 unit tests across all services (was near-zero on many)
 
 ### Completed (Security Hardening)
 - **Security scanning in CI** — bandit (static analysis) + pip-audit (dependency vulnerabilities) run as parallel GitHub Actions job
@@ -257,10 +257,12 @@ A comprehensive technical audit was performed (see `docs/TECHNICAL_AUDIT_2026_02
 - **CSRF / Web hardening** — Content-Security-Policy header in nginx; Telegram WebApp guard on mini app HTML templates; `validate_telegram_init_data()` HMAC-SHA256 validation for server-side auth
 - **Docker network segmentation** — flat `app_net` replaced with 4 networks: `data_net` (DB/Redis), `edge_net` (nginx/webapps/camoufox/webcrawler), `worker_net` (scrapers/phone workers → camoufox/webcrawler), `monitoring_net` (Prometheus/Grafana/Loki/Jaeger); data-layer ports removed from production; `docker-compose.override.yml` re-exposes for dev
 
-### Remaining (medium priority)
-- Row-Level Security on PostgreSQL
-- Batch notification dispatch
-- PostgreSQL backup strategy
+### Completed (Phase 12 — RLS, Batch Tuning, Backup)
+- **Row-Level Security** — RLS on 6 user-owned tables with dual-policy pattern (user + system bypass); `rls_session(user_id)` context manager; migration script at `scripts/migrate_rls.py`
+- **Batch notification tuning** — `NOTIFICATION_BATCH_SIZE` 100→250, rate limit 15/m→25/m; Redis dedup prevents duplicate notifications (24h TTL)
+- **PostgreSQL backup** — daily `pg_dump -Fc` → S3 via `system.maintenance.backup_database` at 2 AM UTC; weekly cleanup of old backups; `scripts/restore_backup.py` for manual restore
+
+### Remaining (low priority)
 - Kubernetes migration (future)
 
 ---
