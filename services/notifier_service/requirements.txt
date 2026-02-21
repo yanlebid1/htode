@@ -5,7 +5,7 @@ SQLAlchemy==2.0.23
 python-dotenv==1.0.0
 loguru==0.7.2
 pyyaml==6.0.1
-aiohttp==3.11.14
+aiohttp==3.13.3
 requests==2.32.4
 nest_asyncio==1.6.0
 lxml==4.9.3
@@ -15,7 +15,7 @@ httpx[http2]==0.25.2
 aiodns==3.1.1
 curl_cffi==0.5.10
 brotlicffi==1.2.0.0
-pillow==11.1.0
+pillow==12.1.1
 camoufox==0.4.11
 browserforge==1.2.2
 geoip2==4.8.0
