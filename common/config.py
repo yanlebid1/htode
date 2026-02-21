@@ -36,7 +36,10 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 # TODO: I receive an error while passing token for bot creating. Nonetype is received for some reason. Check logs.
 
 # WebApp Configuration - Use internal Docker network if not provided
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://c3df-178-150-42-6.ngrok-free.app")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "")
+if not WEBAPP_URL:
+    import logging
+    logging.getLogger(__name__).warning("WEBAPP_URL is not set — webapp links will be broken")
 
 # Geo ID Mappings
 GEO_ID_MAPPING = {

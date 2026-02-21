@@ -254,6 +254,7 @@ services:
       interval: 5s
       timeout: 2s
       retries: 5
+      start_period: 10s
 
   # Redis for user states and sessions (persistent, smaller dataset)
   redis_state:
@@ -295,6 +296,7 @@ services:
       interval: 5s
       timeout: 2s
       retries: 5
+      start_period: 10s
 
   # Redis for analytics and monitoring (can lose some data, high write load)
   redis_analytics:
@@ -333,6 +335,7 @@ services:
       interval: 5s
       timeout: 2s
       retries: 5
+      start_period: 10s
 
   # Redis Sentinel for high availability (monitors all Redis instances)
   redis_sentinel_1:
@@ -568,6 +571,12 @@ services:
           cpus: '0.5'
           memory: 512M
     command: python -m services.telegram_service.app.main  # Updated command path
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   telegram_service_2:
     volumes:
@@ -605,6 +614,12 @@ services:
           cpus: '0.5'
           memory: 512M
     command: python -m services.telegram_service.app.main  # Updated command path
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   telegram_service_3:
     volumes:
@@ -642,6 +657,12 @@ services:
           cpus: '0.5'
           memory: 512M
     command: python -m services.telegram_service.app.main  # Updated command path
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # TELEGRAM WORKERS - Multiple worker replicas for high throughput
   telegram_worker_1:

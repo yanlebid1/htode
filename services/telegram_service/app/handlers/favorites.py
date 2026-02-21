@@ -16,7 +16,7 @@ from ..bot import dp, bot
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
-from common.config import build_ad_text
+from common.config import build_ad_text, WEBAPP_URL
 from ..utils.message_utils import (
     safe_send_message,
     safe_send_photo,
@@ -582,11 +582,9 @@ async def show_favorite_at_index(chat_id, favorites, index):
         gallery_images = get_ad_images(ad_id)
         if gallery_images:
             image_str = ",".join(gallery_images)
-            gallery_url = (
-                f"https://f3cc-178-150-42-6.ngrok-free.app/gallery?images={image_str}"
-            )
+            gallery_url = f"{WEBAPP_URL}/gallery?images={image_str}"
         else:
-            gallery_url = "https://f3cc-178-150-42-6.ngrok-free.app/gallery?images="
+            gallery_url = f"{WEBAPP_URL}/gallery?images="
 
         # Get phone numbers
         try:
@@ -599,13 +597,9 @@ async def show_favorite_at_index(chat_id, favorites, index):
 
         if phone_list:
             phone_str = ",".join(phone_list)
-            phone_webapp_url = (
-                f"https://f3cc-178-150-42-6.ngrok-free.app/phones?numbers={phone_str}"
-            )
+            phone_webapp_url = f"{WEBAPP_URL}/phones?numbers={phone_str}"
         else:
-            phone_webapp_url = (
-                "https://f3cc-178-150-42-6.ngrok-free.app/phones?numbers="
-            )
+            phone_webapp_url = f"{WEBAPP_URL}/phones?numbers="
 
         # Add action buttons
         kb.add(

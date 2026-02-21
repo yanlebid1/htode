@@ -95,7 +95,8 @@ class CamoufoxClient:
             async with httpx.AsyncClient(timeout=5) as client:
                 response = await client.get(self.health_url)
                 return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            logger.debug("Camoufox health check failed", extra={"error": str(e)})
             return False
 
     def health_check(self) -> bool:
