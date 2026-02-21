@@ -29,6 +29,9 @@ uvicorn[standard]==0.24.0
 pydantic==2.5.0
 python-multipart==0.0.22
 
+# Encryption
+cryptography==44.0.2
+
 # OpenTelemetry tracing
 opentelemetry-api==1.22.0
 opentelemetry-sdk==1.22.0
@@ -40,3 +43,7 @@ pytest-asyncio==0.21.0
 pytest-mock==3.10.0
 pytest-cov==4.1.0
 fakeredis==2.21.0
+
+# --- Security scanning ---
+bandit==1.7.7
+pip-audit==2.7.0

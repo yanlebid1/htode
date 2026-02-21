@@ -1,0 +1,4 @@
+[tool.bandit]
+exclude_dirs = ["tests", "migrations", ".venv"]
+skips = ["B101", "B601"]
+targets = ["common", "services", "system"]

@@ -8,6 +8,28 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install security tools
+      run: pip install bandit pip-audit
+
+    - name: Run bandit (static analysis)
+      run: bandit -r common/ services/ system/ -c pyproject.toml -f json -o bandit-report.json || true
+
+    - name: Run bandit (text summary)
+      run: bandit -r common/ services/ system/ -c pyproject.toml -ll
+
+    - name: Run pip-audit (dependency vulnerabilities)
+      run: pip-audit -r requirements-dev.txt
+
   test:
     runs-on: ubuntu-latest
 
