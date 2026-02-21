@@ -137,12 +137,14 @@ services:
     image: nginx:alpine
     container_name: nginx_loadbalancer
     ports:
-      - "80:80"          # WebApp load balanced
-      - "8888:8888"      # Nginx monitoring
-      - "9100:8100"      # Camoufox load balanced (external port 9100)
-      - "9200:8200"      # WebCrawler load balanced (external port 9200)
+      - "80:80"          # HTTP → HTTPS redirect + health check
+      - "443:443"        # WebApp HTTPS
+      - "8888:8888"      # Nginx monitoring (internal)
+      - "9143:8143"      # Camoufox HTTPS (external port 9143)
+      - "9243:8243"      # WebCrawler HTTPS (external port 9243)
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
       - nginx-logs:/var/log/nginx
     depends_on:
       - mini_webapp_1

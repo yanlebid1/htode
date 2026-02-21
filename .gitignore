@@ -182,3 +182,6 @@ logs/
 
 # Deployment artifacts
 deployment_metrics_*.json
+
+# SSL certificates (private keys must never be committed)
+ssl/*.pem

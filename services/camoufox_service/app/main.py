@@ -87,13 +87,12 @@ class BrowserPool:
         return await AsyncCamoufox(
             headless=True,
             os="windows",
-            locale="uk-UA", 
+            locale="uk-UA",
             geoip=True,
             block_webrtc=True,
             humanize=True,
             # Performance optimizations
             disable_blink_features="AutomationControlled",
-            disable_web_security=True,
             no_sandbox=True,
             disable_dev_shm_usage=True,
         ).__aenter__()
